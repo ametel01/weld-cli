@@ -17,6 +17,7 @@ def run_codex(
     prompt: str,
     exec_path: str = "codex",
     sandbox: str = "read-only",
+    model: str | None = None,
     cwd: Path | None = None,
 ) -> str:
     """Run codex with prompt and return output.
@@ -25,6 +26,7 @@ def run_codex(
         prompt: The prompt to send to Codex
         exec_path: Path to codex executable
         sandbox: Sandbox mode (read-only, network-only, etc.)
+        model: Model to use (e.g., o3, gpt-4o). If None, uses codex default.
         cwd: Working directory
 
     Returns:
@@ -33,8 +35,12 @@ def run_codex(
     Raises:
         CodexError: If codex fails or returns non-zero
     """
+    cmd = [exec_path, "-p", prompt, "--sandbox", sandbox]
+    if model:
+        cmd.extend(["--model", model])
+
     result = subprocess.run(
-        [exec_path, "-p", prompt, "--sandbox", sandbox],
+        cmd,
         cwd=cwd,
         capture_output=True,
         text=True,
