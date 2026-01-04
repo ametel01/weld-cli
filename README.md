@@ -176,7 +176,7 @@ weld plan import --run 20260104-120000-feature --file plan.md
 ```
 
 Creates:
-- `plan/claude.output.md` - Verbatim AI output
+- `plan/output.md` - Verbatim AI output
 - `plan/plan.raw.md` - Normalized plan
 
 Parses steps using strict format first (`## Step N: Title`), falling back to lenient format (`N. Title`).
@@ -185,7 +185,7 @@ Parses steps using strict format first (`## Step N: Title`), falling back to len
 
 #### `weld plan review --run <id> [--apply]`
 
-Review the plan with an AI reviewer (default: Codex).
+Review the plan with the configured AI provider.
 
 ```bash
 weld plan review --run 20260104-120000-feature --apply
@@ -365,15 +365,15 @@ fix_generation = { provider = "claude" }
 
 ### Per-Task Model Selection
 
-Weld supports configuring different AI models for each task type:
+Weld supports configuring different AI providers for each task type. Both Claude and Codex can be used interchangeably for any task.
 
-| Task | Default | Description |
-|------|---------|-------------|
-| `plan_generation` | claude | Create implementation plan from spec |
-| `plan_review` | codex | Review and improve the plan |
-| `implementation` | claude | Generate implementation prompts |
-| `implementation_review` | codex | Review diff against acceptance criteria |
-| `fix_generation` | claude | Generate fix prompts for issues |
+| Task | Description |
+|------|-------------|
+| `plan_generation` | Create implementation plan from spec |
+| `plan_review` | Review and improve the plan |
+| `implementation` | Generate implementation prompts |
+| `implementation_review` | Review diff against acceptance criteria |
+| `fix_generation` | Generate fix prompts for issues |
 
 #### Configuration Examples
 
@@ -464,6 +464,7 @@ Weld follows a modular architecture:
 weld/
 ├── cli.py          # Typer CLI commands
 ├── config.py       # Configuration management
+├── constants.py    # Timeout and other constants
 ├── run.py          # Run lifecycle management
 ├── plan.py         # Plan parsing and prompts
 ├── step.py         # Step management and prompts
@@ -471,10 +472,12 @@ weld/
 ├── review.py       # AI review orchestration
 ├── commit.py       # Commit with transcripts
 ├── codex.py        # Codex CLI integration
+├── claude.py       # Claude CLI integration
 ├── transcripts.py  # Transcript gist generation
 ├── git.py          # Git operations wrapper
 ├── diff.py         # Diff capture utilities
 ├── checks.py       # Checks command runner
+├── validation.py   # Input validation utilities
 └── models/         # Pydantic data models
     ├── meta.py     # Run metadata
     ├── step.py     # Step model
@@ -490,10 +493,13 @@ weld-cli/
 ├── src/
 │   └── weld/           # Main package
 ├── tests/              # Test suite
+│   ├── test_claude.py
+│   ├── test_codex.py
+│   ├── test_config.py
 │   ├── test_models.py
 │   ├── test_plan.py
 │   ├── test_run.py
-│   └── test_config.py
+│   └── test_validation.py
 └── .weld/              # Created per-project
     ├── config.toml
     └── runs/
@@ -503,23 +509,23 @@ weld-cli/
             │   └── spec.ref.json
             ├── plan/
             │   ├── plan.prompt.md
-            │   ├── claude.output.md
+            │   ├── output.md
             │   ├── plan.raw.md
-            │   ├── codex.prompt.md
-            │   ├── codex.output.md
+            │   ├── review.prompt.md
+            │   ├── review.output.md
             │   └── plan.final.md
             ├── steps/
             │   └── 01-<slug>/
             │       ├── step.json
             │       ├── prompt/
             │       │   ├── impl.prompt.md
-            │       │   └── fix.prompt.iter02.md
+            │       │   └── fix.iter02.md
             │       └── iter/
             │           ├── 01/
             │           │   ├── diff.patch
             │           │   ├── checks.txt
-            │           │   ├── codex.review.md
-            │           │   ├── codex.issues.json
+            │           │   ├── review.md
+            │           │   ├── issues.json
             │           │   └── status.json
             │           └── 02/...
             ├── commit/
@@ -557,7 +563,7 @@ class Step(BaseModel):
 ```
 
 #### Issues
-Review result from Codex.
+Review result from AI provider.
 
 ```python
 class Issue(BaseModel):
@@ -625,7 +631,7 @@ mypy src/weld
 | 3 | Not a git repository |
 | 10 | Max iterations reached |
 | 11 | Checks failed (strict mode) |
-| 12 | Codex invocation failed / malformed JSON |
+| 12 | AI provider invocation failed / malformed JSON |
 | 20 | No changes to commit |
 | 21 | Transcript generation failed |
 | 22 | Git commit failed |
