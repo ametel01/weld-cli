@@ -182,6 +182,75 @@ shell: ## Start Python shell with weld imported
 watch: ## Run tests in watch mode (requires pytest-watch)
 	$(VENV)/bin/ptw -- -v
 
+.PHONY: venv
+venv: ## Print command to activate virtual environment
+	@echo "Run this command to activate the virtual environment:"
+	@echo ""
+	@echo "  source $(VENV)/bin/activate"
+	@echo ""
+	@echo "Or use: eval \$$(make venv-eval)"
+
+.PHONY: venv-eval
+venv-eval: ## Output activation command for eval (use: eval $$(make venv-eval))
+	@echo "source $(VENV)/bin/activate"
+
+##@ Versioning
+
+# Get current version from pyproject.toml
+CURRENT_VERSION := $(shell grep -E '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+.PHONY: version
+version: ## Show current package version
+	@echo "Current version: $(CURRENT_VERSION)"
+
+.PHONY: bump
+bump: ## Bump version (usage: make bump PART=patch|minor|major)
+ifndef PART
+	@echo -e "$(YELLOW)Usage: make bump PART=patch|minor|major$(NC)"
+	@echo ""
+	@echo "Current version: $(CURRENT_VERSION)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make bump PART=patch  # 0.1.0 -> 0.1.1"
+	@echo "  make bump PART=minor  # 0.1.0 -> 0.2.0"
+	@echo "  make bump PART=major  # 0.1.0 -> 1.0.0"
+	@exit 1
+else
+	@echo -e "$(BLUE)Bumping $(PART) version...$(NC)"
+	@MAJOR=$$(echo $(CURRENT_VERSION) | cut -d. -f1); \
+	MINOR=$$(echo $(CURRENT_VERSION) | cut -d. -f2); \
+	PATCH=$$(echo $(CURRENT_VERSION) | cut -d. -f3); \
+	case "$(PART)" in \
+		major) MAJOR=$$((MAJOR + 1)); MINOR=0; PATCH=0 ;; \
+		minor) MINOR=$$((MINOR + 1)); PATCH=0 ;; \
+		patch) PATCH=$$((PATCH + 1)) ;; \
+		*) echo -e "$(YELLOW)Invalid PART: $(PART). Use patch, minor, or major$(NC)"; exit 1 ;; \
+	esac; \
+	NEW_VERSION="$$MAJOR.$$MINOR.$$PATCH"; \
+	echo "$(CURRENT_VERSION) -> $$NEW_VERSION"; \
+	sed -i "s/^version = \"$(CURRENT_VERSION)\"/version = \"$$NEW_VERSION\"/" pyproject.toml; \
+	sed -i "s/^__version__ = \"$(CURRENT_VERSION)\"/__version__ = \"$$NEW_VERSION\"/" src/weld/__init__.py; \
+	echo -e "$(GREEN)Updated version to $$NEW_VERSION$(NC)"; \
+	echo ""; \
+	echo "Files modified:"; \
+	echo "  - pyproject.toml"; \
+	echo "  - src/weld/__init__.py"; \
+	echo ""; \
+	echo "Don't forget to commit: git commit -am \"Bump version to $$NEW_VERSION\""
+endif
+
+.PHONY: bump-patch
+bump-patch: ## Bump patch version (0.1.0 -> 0.1.1)
+	@$(MAKE) bump PART=patch
+
+.PHONY: bump-minor
+bump-minor: ## Bump minor version (0.1.0 -> 0.2.0)
+	@$(MAKE) bump PART=minor
+
+.PHONY: bump-major
+bump-major: ## Bump major version (0.1.0 -> 1.0.0)
+	@$(MAKE) bump PART=major
+
 ##@ Help
 
 .PHONY: help
