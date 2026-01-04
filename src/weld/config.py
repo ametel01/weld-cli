@@ -1,10 +1,53 @@
 """Configuration management for weld."""
 
 import tomllib
+from enum import Enum
 from pathlib import Path
 
 import tomli_w
 from pydantic import BaseModel, Field
+
+
+class TaskType(str, Enum):
+    """Types of tasks that can be assigned to different models."""
+
+    PLAN_GENERATION = "plan_generation"
+    PLAN_REVIEW = "plan_review"
+    IMPLEMENTATION = "implementation"
+    IMPLEMENTATION_REVIEW = "implementation_review"
+    FIX_GENERATION = "fix_generation"
+
+
+class ModelConfig(BaseModel):
+    """Configuration for a specific AI model."""
+
+    provider: str = "codex"  # codex, claude, openai, etc.
+    model: str | None = None  # Specific model name (e.g., gpt-4, claude-3-opus)
+    exec: str | None = None  # Override executable path
+
+
+class TaskModelsConfig(BaseModel):
+    """Per-task model assignments."""
+
+    plan_generation: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(provider="claude")
+    )
+    plan_review: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(provider="codex")
+    )
+    implementation: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(provider="claude")
+    )
+    implementation_review: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(provider="codex")
+    )
+    fix_generation: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(provider="claude")
+    )
+
+    def get_model(self, task: TaskType) -> ModelConfig:
+        """Get model config for a specific task type."""
+        return getattr(self, task.value)
 
 
 class ChecksConfig(BaseModel):
@@ -14,11 +57,11 @@ class ChecksConfig(BaseModel):
 
 
 class CodexConfig(BaseModel):
-    """Configuration for Codex integration."""
+    """Configuration for Codex integration (default settings)."""
 
     exec: str = "codex"
     sandbox: str = "read-only"
-    model: str | None = None
+    model: str | None = None  # Default model for Codex provider
 
 
 class TranscriptsConfig(BaseModel):
@@ -31,6 +74,8 @@ class TranscriptsConfig(BaseModel):
 class ClaudeConfig(BaseModel):
     """Configuration for Claude-related settings."""
 
+    exec: str = "claude"  # Path to Claude CLI if available
+    model: str | None = None  # Default model (e.g., claude-3-opus)
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
 
 
@@ -63,6 +108,31 @@ class WeldConfig(BaseModel):
     claude: ClaudeConfig = Field(default_factory=ClaudeConfig)
     git: GitConfig = Field(default_factory=GitConfig)
     loop: LoopConfig = Field(default_factory=LoopConfig)
+    task_models: TaskModelsConfig = Field(default_factory=TaskModelsConfig)
+
+    def get_task_model(self, task: TaskType) -> ModelConfig:
+        """Get effective model config for a task.
+
+        Returns the task-specific model config, with provider defaults
+        filled in from codex/claude sections.
+        """
+        model_cfg = self.task_models.get_model(task)
+
+        # Apply provider defaults if not overridden
+        if model_cfg.provider == "codex":
+            return ModelConfig(
+                provider="codex",
+                model=model_cfg.model or self.codex.model,
+                exec=model_cfg.exec or self.codex.exec,
+            )
+        elif model_cfg.provider == "claude":
+            return ModelConfig(
+                provider="claude",
+                model=model_cfg.model or self.claude.model,
+                exec=model_cfg.exec or self.claude.exec,
+            )
+        else:
+            return model_cfg
 
 
 def load_config(weld_dir: Path) -> WeldConfig:
@@ -96,9 +166,22 @@ def write_config_template(weld_dir: Path) -> Path:
         "project": {"name": "your-project"},
         "checks": {"command": "echo 'Configure your checks command'"},
         "codex": {"exec": "codex", "sandbox": "read-only"},
-        "claude": {"transcripts": {"exec": "claude-code-transcripts", "visibility": "secret"}},
+        "claude": {
+            "exec": "claude",
+            "transcripts": {"exec": "claude-code-transcripts", "visibility": "secret"},
+        },
         "git": {"commit_trailer_key": "Claude-Transcript", "include_run_trailer": True},
         "loop": {"max_iterations": 5, "fail_on_blockers_only": True},
+        # Per-task model selection: customize which AI handles each task
+        # Provider can be "codex", "claude", or any other supported provider
+        # Model is optional and overrides the provider default
+        "task_models": {
+            "plan_generation": {"provider": "claude"},
+            "plan_review": {"provider": "codex"},
+            "implementation": {"provider": "claude"},
+            "implementation_review": {"provider": "codex"},
+            "fix_generation": {"provider": "claude"},
+        },
     }
     with open(config_path, "wb") as f:
         tomli_w.dump(template, f)
