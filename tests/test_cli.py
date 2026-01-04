@@ -1,7 +1,9 @@
 """CLI integration tests for weld."""
 
 import os
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -85,17 +87,52 @@ class TestInitCommand:
         finally:
             os.chdir(original)
 
-    def test_init_in_git_repo(self, runner: CliRunner, temp_git_repo: Path) -> None:
-        """init should work in a git repository (may fail on missing tools)."""
-        result = runner.invoke(app, ["init"])
-        # Exit 0 = success, Exit 2 = missing tools (both acceptable)
-        assert result.exit_code in [0, 2]
+    def test_init_with_all_tools_present(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """init should succeed (exit 0) when all required tools are present."""
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            # Simulate all tools returning success
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+        with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
+            result = runner.invoke(app, ["init"])
+
+        assert result.exit_code == 0
+        assert "initialized successfully" in result.stdout.lower()
+
+    def test_init_with_missing_tools(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """init should exit 2 when some required tools are missing."""
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            # Simulate codex not being installed (non-zero exit)
+            if cmd[0] == "codex":
+                raise FileNotFoundError("codex not found")
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+        with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
+            result = runner.invoke(app, ["init"])
+
+        assert result.exit_code == 2
+        assert "codex" in result.stdout.lower()
+        assert "not found" in result.stdout.lower()
 
     def test_init_already_initialized(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """init should handle already initialized directory."""
-        result = runner.invoke(app, ["init"])
-        # Should either succeed or warn about existing config
-        assert result.exit_code in [0, 2]
+        """init should handle already initialized directory (config exists)."""
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+        with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
+            result = runner.invoke(app, ["init"])
+
+        assert result.exit_code == 0
+        assert "already exists" in result.stdout.lower()
 
 
 class TestListCommand:
@@ -129,13 +166,17 @@ class TestRunCommand:
     """Tests for weld run command."""
 
     def test_run_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
-        """run should fail when not in a git repository."""
+        """run should fail with exit 3 when not in a git repository."""
+        # Create spec file so we get past the spec-exists check
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("# Test Spec\n")
+
         original = os.getcwd()
         os.chdir(tmp_path)
         try:
             result = runner.invoke(app, ["run", "--spec", "spec.md"])
-            # May fail with exit 1 (no weld dir) or 3 (not git repo)
-            assert result.exit_code in [1, 3]
+            assert result.exit_code == 3
+            assert "not a git repository" in result.stdout.lower()
         finally:
             os.chdir(original)
 

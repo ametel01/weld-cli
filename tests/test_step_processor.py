@@ -1,6 +1,12 @@
 """Tests for step processing utilities."""
 
+import re
+import string
+import tempfile
 from pathlib import Path
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from weld.core.step_processor import (
     create_iter_directory,
@@ -259,3 +265,207 @@ class TestGenerateReviewPrompt:
         )
         result = generate_review_prompt(step, "", "")
         assert "- Implementation complete" in result
+
+
+class TestEdgeCases:
+    """Edge case tests for step processor."""
+
+    def test_special_characters_in_title(self) -> None:
+        """Step with special characters in title should be handled correctly."""
+        step = make_step(
+            title="Handle <script>alert('xss')</script> & other $pecial chars!",
+        )
+        result = generate_impl_prompt(step, "pytest")
+        # Title should be preserved exactly (no escaping at this layer)
+        assert "Handle <script>" in result
+        assert "& other $pecial" in result
+
+    def test_special_characters_in_slug(self, tmp_path: Path) -> None:
+        """Step with special characters in slug creates valid directory."""
+        # Slugs should typically be sanitized, but test current behavior
+        step = make_step(slug="my-step_v2.0")
+        result = get_step_dir(tmp_path, step)
+        assert result.name == "01-my-step_v2.0"
+
+    def test_unicode_in_title_and_body(self) -> None:
+        """Step with unicode characters should be handled correctly."""
+        step = make_step(
+            title="实现功能 🚀",
+            body_md="Create a feature with 日本語 support and emoji 🎉",
+        )
+        result = generate_impl_prompt(step, "pytest")
+        assert "实现功能" in result
+        assert "🚀" in result
+        assert "日本語" in result
+        assert "🎉" in result
+
+    def test_very_long_body_md(self) -> None:
+        """Step with very long body_md should be included without truncation."""
+        # Create a 50KB body
+        long_body = "This is a test paragraph.\n" * 2000
+        step = make_step(body_md=long_body)
+        result = generate_impl_prompt(step, "pytest")
+        # The full body should be in the prompt
+        assert long_body in result
+        # Verify approximate size
+        assert len(result) > 50000
+
+    def test_many_acceptance_criteria(self) -> None:
+        """Step with many acceptance criteria should include all."""
+        criteria = [f"Criterion {i}: something must work" for i in range(100)]
+        step = make_step(acceptance_criteria=criteria)
+        result = generate_impl_prompt(step, "pytest")
+        # All criteria should be present
+        for i in range(100):
+            assert f"Criterion {i}" in result
+
+    def test_body_with_markdown_formatting(self) -> None:
+        """Step body with markdown formatting should be preserved."""
+        body = """## Subsection
+
+Here's a code block:
+```python
+def hello():
+    print("Hello, World!")
+```
+
+And a list:
+- Item 1
+- Item 2
+
+> A blockquote
+
+| Column 1 | Column 2 |
+|----------|----------|
+| A        | B        |
+"""
+        step = make_step(body_md=body)
+        result = generate_impl_prompt(step, "pytest")
+        assert "```python" in result
+        assert "def hello():" in result
+        assert "- Item 1" in result
+        assert "> A blockquote" in result
+        assert "| Column 1 |" in result
+
+    def test_step_number_boundary_values(self, tmp_path: Path) -> None:
+        """Step numbers at boundary values should format correctly."""
+        # Test step 0 (edge case, though typically steps start at 1)
+        step_0 = make_step(n=0, slug="step-zero")
+        assert get_step_dir(tmp_path, step_0).name == "00-step-zero"
+
+        # Test step 99 (max two-digit)
+        step_99 = make_step(n=99, slug="step-99")
+        assert get_step_dir(tmp_path, step_99).name == "99-step-99"
+
+        # Test step 100 (three digits)
+        step_100 = make_step(n=100, slug="step-100")
+        assert get_step_dir(tmp_path, step_100).name == "100-step-100"
+
+
+class TestPropertyBasedPathGeneration:
+    """Property-based tests for path generation invariants.
+
+    These tests verify properties that should hold for ANY valid input,
+    catching edge cases that manual test cases might miss.
+    """
+
+    # Slugs should match typical URL-safe patterns
+    slug_strategy = st.text(
+        alphabet=string.ascii_lowercase + string.digits + "-_",
+        min_size=1,
+        max_size=50,
+    ).filter(lambda s: s[0] not in "-_" and s[-1] not in "-_")
+
+    @given(
+        n=st.integers(min_value=1, max_value=99),
+        slug=slug_strategy,
+    )
+    @settings(max_examples=100)
+    def test_step_dir_name_starts_with_zero_padded_number(self, n: int, slug: str) -> None:
+        """Step directory name always starts with zero-padded step number."""
+        step = make_step(n=n, slug=slug)
+        result = get_step_dir(Path("/tmp"), step)
+        # Should start with exactly 2 digits for 1-99
+        assert result.name.startswith(f"{n:02d}-")
+
+    @given(
+        n=st.integers(min_value=1, max_value=999),
+        slug=slug_strategy,
+    )
+    @settings(max_examples=100)
+    def test_step_dir_preserves_slug(self, n: int, slug: str) -> None:
+        """Step directory name always ends with the exact slug."""
+        step = make_step(n=n, slug=slug)
+        result = get_step_dir(Path("/tmp"), step)
+        # Name should end with the slug
+        assert result.name.endswith(f"-{slug}")
+
+    @given(
+        n=st.integers(min_value=1, max_value=999),
+        slug=slug_strategy,
+    )
+    @settings(max_examples=100)
+    def test_step_dir_format_matches_pattern(self, n: int, slug: str) -> None:
+        """Step directory name matches expected pattern: {number}-{slug}."""
+        step = make_step(n=n, slug=slug)
+        result = get_step_dir(Path("/tmp"), step)
+        # Pattern: digits, dash, then the slug
+        pattern = rf"^\d+-{re.escape(slug)}$"
+        assert re.match(pattern, result.name)
+
+    @given(
+        n=st.integers(min_value=1, max_value=999),
+        slug=slug_strategy,
+    )
+    @settings(max_examples=100)
+    def test_step_dir_is_under_steps_subdirectory(self, n: int, slug: str) -> None:
+        """Step directory is always under 'steps' subdirectory."""
+        step = make_step(n=n, slug=slug)
+        result = get_step_dir(Path("/tmp"), step)
+        assert result.parent.name == "steps"
+        assert result.parent.parent == Path("/tmp")
+
+    @given(iter_n=st.integers(min_value=1, max_value=99))
+    @settings(max_examples=50)
+    def test_iter_dir_name_is_zero_padded(self, iter_n: int) -> None:
+        """Iteration directory name is always zero-padded to 2 digits."""
+        result = get_iter_dir(Path("/tmp"), iter_n)
+        # Should be exactly 2 characters for 1-99
+        assert len(result.name) == 2
+        assert result.name == f"{iter_n:02d}"
+
+    @given(iter_n=st.integers(min_value=1, max_value=999))
+    @settings(max_examples=50)
+    def test_iter_dir_is_under_iter_subdirectory(self, iter_n: int) -> None:
+        """Iteration directory is always under 'iter' subdirectory."""
+        result = get_iter_dir(Path("/tmp"), iter_n)
+        assert result.parent.name == "iter"
+        assert result.parent.parent == Path("/tmp")
+
+    @given(
+        n=st.integers(min_value=1, max_value=99),
+        slug=slug_strategy,
+    )
+    @settings(max_examples=50)
+    def test_created_step_dir_matches_get_step_dir(self, n: int, slug: str) -> None:
+        """create_step_directory returns same path as get_step_dir."""
+        # Use tempfile instead of tmp_path fixture for Hypothesis compatibility
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            step = make_step(n=n, slug=slug)
+            expected = get_step_dir(tmp_path, step)
+            actual = create_step_directory(tmp_path, step)
+            assert actual == expected
+            assert actual.exists()
+
+    @given(iter_n=st.integers(min_value=1, max_value=99))
+    @settings(max_examples=50)
+    def test_created_iter_dir_matches_get_iter_dir(self, iter_n: int) -> None:
+        """create_iter_directory returns same path as get_iter_dir."""
+        # Use tempfile instead of tmp_path fixture for Hypothesis compatibility
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            expected = get_iter_dir(tmp_path, iter_n)
+            actual = create_iter_directory(tmp_path, iter_n)
+            assert actual == expected
+            assert actual.exists()
