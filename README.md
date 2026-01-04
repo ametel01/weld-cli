@@ -23,7 +23,7 @@ Spec Doc  -->  AI Plan  -->  AI Review  -->  Implementation Loop  -->  Commit
   - [Architecture](#architecture)
   - [Project Structure](#project-structure)
   - [Data Models](#data-models)
-  - [Testing](#testing)
+  - [Development Commands](#development-commands)
   - [Contributing](#contributing)
 - [Exit Codes](#exit-codes)
 - [Requirements](#requirements)
@@ -63,25 +63,23 @@ weld commit --run <run_id> -m "Implement step 1" --staged
 
 ### Prerequisites
 
-- **Python 3.14+** (or 3.11+ as per spec)
-- **uv** - Python package manager (required)
+- **Python 3.11+**
+- **uv** - Python package manager
+- **make** - Build automation
 - **git** - Version control
 - **gh** - GitHub CLI (authenticated)
 - **claude** - Claude Code CLI (AI provider)
-- **codex** - OpenAI Codex CLI (AI provider, optional)
+- **codex** - OpenAI Codex CLI (optional)
 - **claude-code-transcripts** - For transcript gist generation
 
-### Install with uv
+### Install with make
 
 ```bash
-# Create virtual environment
-uv venv
+# Full development setup (creates venv, installs deps, sets up pre-commit)
+make setup
 
-# Install in editable mode
-uv pip install -e .
-
-# Install with dev dependencies
-uv pip install -e ".[dev]"
+# Activate virtual environment
+eval $(make venv-eval)
 
 # Verify installation
 weld --help
@@ -459,31 +457,46 @@ If strict format isn't found, weld falls back to:
 
 ### Architecture
 
-Weld follows a modular architecture:
+Weld follows a layered architecture separating CLI, business logic, and external services:
 
 ```
 weld/
-├── cli.py          # Typer CLI commands
-├── config.py       # Configuration management
-├── constants.py    # Timeout and other constants
-├── run.py          # Run lifecycle management
-├── plan.py         # Plan parsing and prompts
-├── step.py         # Step management and prompts
-├── loop.py         # Implement-review-fix loop
-├── review.py       # AI review orchestration
-├── commit.py       # Commit with transcripts
-├── codex.py        # Codex CLI integration
-├── claude.py       # Claude CLI integration
-├── transcripts.py  # Transcript gist generation
-├── git.py          # Git operations wrapper
-├── diff.py         # Diff capture utilities
-├── checks.py       # Checks command runner
-├── validation.py   # Input validation utilities
-└── models/         # Pydantic data models
-    ├── meta.py     # Run metadata
-    ├── step.py     # Step model
-    ├── issues.py   # Review issues
-    └── status.py   # Iteration status
+├── cli.py              # Typer app entry point
+├── config.py           # Configuration management
+├── constants.py        # Timeouts and other constants
+├── validation.py       # Input validation utilities
+├── logging.py          # Logging configuration
+├── output.py           # Console output formatting
+│
+├── commands/           # CLI command modules
+│   ├── init.py         # weld init command
+│   ├── run.py          # weld run command
+│   ├── plan.py         # weld plan import/review commands
+│   ├── step.py         # weld step select/loop/snapshot/review commands
+│   └── commit.py       # weld commit command
+│
+├── core/               # Business logic layer
+│   ├── run_manager.py  # Run lifecycle management
+│   ├── plan_parser.py  # Plan parsing and prompt generation
+│   ├── step_processor.py # Step management and prompts
+│   ├── loop.py         # Implement-review-fix loop
+│   ├── review_engine.py # AI review orchestration
+│   └── commit_handler.py # Commit with transcript trailers
+│
+├── services/           # External service integrations
+│   ├── git.py          # Git operations wrapper
+│   ├── diff.py         # Diff capture utilities
+│   ├── checks.py       # Checks command runner
+│   ├── claude.py       # Claude CLI integration
+│   ├── codex.py        # Codex CLI integration
+│   ├── transcripts.py  # Transcript gist generation
+│   └── filesystem.py   # File system operations
+│
+└── models/             # Pydantic data models
+    ├── meta.py         # Run metadata
+    ├── step.py         # Step model
+    ├── issues.py       # Review issues
+    └── status.py       # Iteration status
 ```
 
 ### Project Structure
@@ -491,15 +504,28 @@ weld/
 ```
 weld-cli/
 ├── pyproject.toml      # Package configuration
+├── Makefile            # Build automation
 ├── src/
-│   └── weld/           # Main package
+│   └── weld/           # Main package (see Architecture)
 ├── tests/              # Test suite
+│   ├── conftest.py     # Pytest fixtures
+│   ├── e2e_test.sh     # End-to-end shell tests
+│   ├── test_checks.py
 │   ├── test_claude.py
+│   ├── test_cli.py
 │   ├── test_codex.py
 │   ├── test_config.py
+│   ├── test_diff.py
+│   ├── test_filesystem.py
+│   ├── test_git.py
+│   ├── test_integration.py
 │   ├── test_models.py
+│   ├── test_output.py
 │   ├── test_plan.py
+│   ├── test_review_engine.py
 │   ├── test_run.py
+│   ├── test_step_processor.py
+│   ├── test_transcripts.py
 │   └── test_validation.py
 └── .weld/              # Created per-project
     ├── config.toml
@@ -538,16 +564,30 @@ weld-cli/
 ### Data Models
 
 #### Meta
-Run metadata: timestamps, repo info, config hash.
+Run metadata: timestamps, repo info, config hash, and tool versions.
 
 ```python
 class Meta(BaseModel):
     run_id: str
     created_at: datetime
+    updated_at: datetime
     repo_root: Path
     branch: str
     head_sha: str
     config_hash: str
+    tool_versions: dict[str, str]
+    plan_parse_warnings: list[str]
+```
+
+#### SpecRef
+Reference to the input specification file.
+
+```python
+class SpecRef(BaseModel):
+    absolute_path: Path
+    sha256: str
+    size_bytes: int
+    git_blob_id: str | None
 ```
 
 #### Step
@@ -579,7 +619,7 @@ class Issues(BaseModel):
 ```
 
 #### Status
-Iteration status with counts.
+Iteration status with counts and timestamp.
 
 ```python
 class Status(BaseModel):
@@ -590,35 +630,73 @@ class Status(BaseModel):
     minor_count: int
     checks_exit_code: int
     diff_nonempty: bool
+    timestamp: datetime
 ```
 
-### Testing
+### Development Commands
+
+All common tasks are available via `make`. Run `make help` for the full list.
+
+#### Setup
 
 ```bash
-# Run all tests
-pytest
+make setup          # Complete dev setup (install deps + pre-commit hooks)
+make venv           # Show command to activate virtual environment
+eval $(make venv-eval)  # Activate venv in one command
+```
 
-# Run with coverage
-pytest --cov=weld
+#### Testing
 
-# Run specific test file
-pytest tests/test_models.py -v
+```bash
+make test           # Run all tests
+make test-unit      # Run unit tests only (@pytest.mark.unit)
+make test-cli       # Run CLI integration tests (@pytest.mark.cli)
+make test-cov       # Run tests with coverage report
+make test-e2e       # Run end-to-end tests
+make test-all       # Run all tests (unit + e2e)
+```
 
-# Lint code
-ruff check src/weld
+#### Code Quality
 
-# Type check
-mypy src/weld
+```bash
+make lint           # Run ruff linter
+make lint-fix       # Run linter with auto-fix
+make format         # Format code with ruff
+make typecheck      # Run pyright type checker
+make check          # Run all quality checks (lint + format + types)
+make pre-commit     # Run all pre-commit hooks
+```
+
+#### Security
+
+```bash
+make audit          # Check dependencies for vulnerabilities
+make secrets        # Scan for secrets in codebase
+make security       # Run all security checks
+```
+
+#### Build & Release
+
+```bash
+make build          # Build the package
+make version        # Show current version
+make bump PART=patch  # Bump version (patch|minor|major)
+make clean          # Clean build artifacts
+```
+
+#### CI Pipeline
+
+```bash
+make ci             # Run full CI pipeline (quality + tests + security)
 ```
 
 ### Contributing
 
 1. **Fork and clone** the repository
-2. **Create a virtual environment**: `uv venv && source .venv/bin/activate`
-3. **Install in dev mode**: `uv pip install -e ".[dev]"`
-4. **Make changes** with tests
-5. **Run checks**: `pytest && ruff check && mypy src/weld`
-6. **Submit a PR**
+2. **Setup environment**: `make setup`
+3. **Make changes** with tests
+4. **Run checks**: `make ci`
+5. **Submit a PR**
 
 ---
 
@@ -641,8 +719,9 @@ mypy src/weld
 
 ## Requirements
 
-- Python 3.14+ (3.11+ per spec)
-- uv package manager
+- Python 3.11+
+- uv (package manager)
+- make (build automation)
 - git
 - gh (GitHub CLI, authenticated)
 - claude (Claude Code CLI)
