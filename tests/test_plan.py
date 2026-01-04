@@ -1,6 +1,6 @@
 """Tests for weld plan parsing."""
 
-from weld.plan import parse_steps, parse_steps_lenient, parse_steps_strict
+from weld.core.plan_parser import parse_steps, parse_steps_lenient, parse_steps_strict
 
 STRICT_PLAN = """
 ## Step 1: Create config module

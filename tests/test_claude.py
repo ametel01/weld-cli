@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from weld.claude import ClaudeError, parse_review_json, run_claude
+from weld.services.claude import ClaudeError, parse_review_json, run_claude
 
 
 class TestRunClaude:
@@ -18,7 +18,7 @@ class TestRunClaude:
         mock_result.stdout = "Claude response here"
         mock_result.stderr = ""
 
-        with patch("weld.claude.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.claude.subprocess.run", return_value=mock_result) as mock_run:
             result = run_claude("test prompt")
 
         assert result == "Claude response here"
@@ -33,7 +33,7 @@ class TestRunClaude:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.claude.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.claude.subprocess.run", return_value=mock_result) as mock_run:
             run_claude("prompt", model="claude-sonnet-4-20250514")
 
         call_args = mock_run.call_args[0][0]
@@ -47,7 +47,7 @@ class TestRunClaude:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.claude.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.claude.subprocess.run", return_value=mock_result) as mock_run:
             run_claude("prompt", exec_path="/custom/path/claude")
 
         call_args = mock_run.call_args[0][0]
@@ -57,7 +57,7 @@ class TestRunClaude:
         """Timeout raises ClaudeError."""
         with (
             patch(
-                "weld.claude.subprocess.run",
+                "weld.services.claude.subprocess.run",
                 side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=600),
             ),
             pytest.raises(ClaudeError, match="timed out after 600 seconds"),
@@ -71,7 +71,7 @@ class TestRunClaude:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.claude.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.claude.subprocess.run", return_value=mock_result) as mock_run:
             run_claude("prompt", timeout=120)
 
         call_kwargs = mock_run.call_args[1]
@@ -80,7 +80,7 @@ class TestRunClaude:
     def test_executable_not_found(self) -> None:
         """Missing executable raises ClaudeError."""
         with (
-            patch("weld.claude.subprocess.run", side_effect=FileNotFoundError()),
+            patch("weld.services.claude.subprocess.run", side_effect=FileNotFoundError()),
             pytest.raises(ClaudeError, match="not found"),
         ):
             run_claude("prompt")
@@ -93,7 +93,7 @@ class TestRunClaude:
         mock_result.stderr = "Error: something went wrong"
 
         with (
-            patch("weld.claude.subprocess.run", return_value=mock_result),
+            patch("weld.services.claude.subprocess.run", return_value=mock_result),
             pytest.raises(ClaudeError, match="Claude failed"),
         ):
             run_claude("prompt")

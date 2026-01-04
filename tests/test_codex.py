@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from weld.codex import CodexError, extract_revised_plan, parse_review_json, run_codex
+from weld.services.codex import CodexError, extract_revised_plan, parse_review_json, run_codex
 
 
 class TestRunCodex:
@@ -18,7 +18,7 @@ class TestRunCodex:
         mock_result.stdout = "Codex response here"
         mock_result.stderr = ""
 
-        with patch("weld.codex.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.codex.subprocess.run", return_value=mock_result) as mock_run:
             result = run_codex("test prompt")
 
         assert result == "Codex response here"
@@ -33,7 +33,7 @@ class TestRunCodex:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.codex.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.codex.subprocess.run", return_value=mock_result) as mock_run:
             run_codex("prompt", model="o3")
 
         call_args = mock_run.call_args[0][0]
@@ -47,7 +47,7 @@ class TestRunCodex:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.codex.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.codex.subprocess.run", return_value=mock_result) as mock_run:
             run_codex("prompt", sandbox="network-only")
 
         call_args = mock_run.call_args[0][0]
@@ -62,7 +62,7 @@ class TestRunCodex:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.codex.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.codex.subprocess.run", return_value=mock_result) as mock_run:
             run_codex("prompt", exec_path="/custom/path/codex")
 
         call_args = mock_run.call_args[0][0]
@@ -72,7 +72,7 @@ class TestRunCodex:
         """Timeout raises CodexError."""
         with (
             patch(
-                "weld.codex.subprocess.run",
+                "weld.services.codex.subprocess.run",
                 side_effect=subprocess.TimeoutExpired(cmd="codex", timeout=600),
             ),
             pytest.raises(CodexError, match="timed out after 600 seconds"),
@@ -86,7 +86,7 @@ class TestRunCodex:
         mock_result.stdout = "response"
         mock_result.stderr = ""
 
-        with patch("weld.codex.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("weld.services.codex.subprocess.run", return_value=mock_result) as mock_run:
             run_codex("prompt", timeout=120)
 
         call_kwargs = mock_run.call_args[1]
@@ -100,7 +100,7 @@ class TestRunCodex:
         mock_result.stderr = "Error: something went wrong"
 
         with (
-            patch("weld.codex.subprocess.run", return_value=mock_result),
+            patch("weld.services.codex.subprocess.run", return_value=mock_result),
             pytest.raises(CodexError, match="Codex failed"),
         ):
             run_codex("prompt")

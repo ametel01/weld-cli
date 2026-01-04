@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from weld.run import generate_run_id, sanitize_slug
+from weld.core import generate_run_id, sanitize_slug
 
 
 def test_generate_run_id_with_slug():
