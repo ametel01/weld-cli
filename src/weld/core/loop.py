@@ -1,4 +1,12 @@
-"""Implement-review-fix loop runner for weld."""
+"""Implement-review-fix loop runner for weld.
+
+This module implements the core iteration loop that drives the
+human-in-the-loop development workflow. Each iteration:
+1. Captures the current diff
+2. Runs configured checks (tests, linting)
+3. Submits for AI review
+4. Either passes or generates a fix prompt for the next iteration
+"""
 
 from pathlib import Path
 
@@ -14,7 +22,24 @@ console = Console()
 
 
 class LoopResult:
-    """Result of step implementation loop."""
+    """Result of the step implementation loop.
+
+    Captures the outcome of running the implement-review-fix loop,
+    including whether the step ultimately passed and how many
+    iterations were required.
+
+    Attributes:
+        success: True if the step passed AI review before max iterations.
+        iterations: Number of review iterations that were executed.
+        final_status: Status from the last iteration, or None if no iterations ran.
+
+    Example:
+        >>> result = run_step_loop(run_dir, step, config, repo_root)
+        >>> if result.success:
+        ...     print(f"Passed in {result.iterations} iterations")
+        ... else:
+        ...     print(f"Failed after {result.iterations} iterations")
+    """
 
     def __init__(
         self,
@@ -25,9 +50,9 @@ class LoopResult:
         """Initialize loop result.
 
         Args:
-            success: Whether the step passed review
-            iterations: Number of iterations run
-            final_status: Final status from last iteration
+            success: Whether the step passed review.
+            iterations: Number of iterations run.
+            final_status: Final status from last iteration.
         """
         self.success = success
         self.iterations = iterations
