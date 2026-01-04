@@ -1,0 +1,24 @@
+[project]
+name = "weld"
+version = "0.1.0"
+description = "Human-in-the-loop coding harness: plan, review, iterate, commit with transcript provenance"
+requires-python = ">=3.14"
+dependencies = [
+  "typer>=0.12",
+  "pydantic>=2.6",
+  "rich>=13.7",
+  "tomli-w>=1.0",
+]
+
+[project.scripts]
+weld = "weld.cli:app"
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+
+[tool.ruff]
+line-length = 100
