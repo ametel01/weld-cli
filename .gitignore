@@ -28,6 +28,7 @@ uv.lock
 htmlcov/
 .tox/
 .nox/
+.hypothesis/
 
 # Type checking
 .mypy_cache/
