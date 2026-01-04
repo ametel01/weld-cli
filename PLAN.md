@@ -91,7 +91,7 @@ find src -type f -name "*.py" | sort
 
 ---
 
-## Phase 2: Data Models (Pydantic)
+## Phase 2: Data Models (Pydantic) **COMPLETE**
 
 ### Step 2.1: Create models/meta.py
 
@@ -251,7 +251,7 @@ python -c "from weld.models import Meta, Step, Issues, Status; print('OK')"
 
 ---
 
-## Phase 3: Core Utilities
+## Phase 3: Core Utilities **COMPLETE**
 
 ### Step 3.1: Create config.py
 
@@ -774,7 +774,7 @@ print(f'slug={sanitize_slug(\"My Cool Spec!\")}')
 
 ---
 
-## Phase 4: Plan Handling
+## Phase 4: Plan Handling **COMPLETE**
 
 ### Step 4.1: Create plan.py
 
@@ -1185,7 +1185,7 @@ print(prompt[:200])
 
 ---
 
-## Phase 5: Loop and Review Logic
+## Phase 5: Loop and Review Logic **COMPLETE**
 
 ### Step 5.1: Create review.py
 
@@ -1379,7 +1379,7 @@ print(f'success={r.success}, iterations={r.iterations}')
 
 ---
 
-## Phase 6: Commit Handling
+## Phase 6: Commit Handling **COMPLETE**
 
 ### Step 6.1: Create commit.py
 
@@ -2209,7 +2209,7 @@ weld commit --help
 
 ---
 
-## Phase 8: Update Package Init
+## Phase 8: Update Package Init **COMPLETE**
 
 ### Step 8.1: Update src/weld/__init__.py
 
