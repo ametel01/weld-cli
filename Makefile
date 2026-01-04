@@ -171,8 +171,8 @@ clean-all: clean ## Clean everything including venv
 ##@ Development
 
 .PHONY: run
-run: ## Run weld CLI (pass args with ARGS="...")
-	$(PYTHON) -m weld $(ARGS)
+run: ## Run weld CLI (e.g., make run ARGS="list" or make run ARGS="--help")
+	-@$(PYTHON) -m weld $(ARGS)
 
 .PHONY: shell
 shell: ## Start Python shell with weld imported
