@@ -67,7 +67,8 @@ weld commit --run <run_id> -m "Implement step 1" --staged
 - **uv** - Python package manager (required)
 - **git** - Version control
 - **gh** - GitHub CLI (authenticated)
-- **codex** - OpenAI Codex CLI (or your configured AI tool)
+- **claude** - Claude Code CLI (AI provider)
+- **codex** - OpenAI Codex CLI (AI provider, optional)
 - **claude-code-transcripts** - For transcript gist generation
 
 ### Install with uv
@@ -644,7 +645,8 @@ mypy src/weld
 - uv package manager
 - git
 - gh (GitHub CLI, authenticated)
-- codex (OpenAI Codex CLI)
+- claude (Claude Code CLI)
+- codex (OpenAI Codex CLI, optional)
 - claude-code-transcripts
 
 ---
