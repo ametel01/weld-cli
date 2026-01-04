@@ -457,7 +457,7 @@ def main(
 
 ---
 
-## Phase 3: Security Hardening
+## Phase 3: Security Hardening ✅ COMPLETE
 
 **Goal**: Eliminate security vulnerabilities and establish secure coding patterns.
 
@@ -1110,8 +1110,8 @@ The repository achieves enterprise-grade quality when:
 - [ ] GitHub Actions CI passing on push/PR
 - [ ] pip-audit shows no vulnerabilities
 - [ ] detect-secrets baseline established
-- [ ] All subprocess calls have timeouts
-- [ ] No shell=True in subprocess calls
+- [x] All subprocess calls have timeouts
+- [x] No shell=True in subprocess calls
 - [ ] All public functions have docstrings
 - [x] --version, --verbose, --json, --no-color flags work
 - [ ] python -m weld works
