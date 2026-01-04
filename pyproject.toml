@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "weld"
 version = "0.1.0"
 description = "Human-in-the-loop coding harness: plan, review, iterate, commit with transcript provenance"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
   "typer>=0.12",
