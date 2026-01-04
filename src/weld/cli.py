@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from .codex import CodexError, extract_revised_plan, run_codex
-from .config import load_config, write_config_template
+from .config import TaskType, load_config, write_config_template
 from .git import GitError, get_repo_root
 from .models import Status, Step
 from .run import (
@@ -142,22 +142,27 @@ def run_start(
     spec_ref = create_spec_ref(spec)
     (run_dir / "inputs" / "spec.ref.json").write_text(spec_ref.model_dump_json(indent=2))
 
-    # Generate Claude plan prompt
+    # Generate plan prompt
     from .plan import generate_plan_prompt
 
     spec_content = spec.read_text()
     plan_prompt = generate_plan_prompt(spec_content, spec)
 
-    prompt_path = run_dir / "plan" / "claude.prompt.md"
+    # Get configured model for plan generation
+    model_cfg = config.get_task_model(TaskType.PLAN_GENERATION)
+    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+
+    prompt_path = run_dir / "plan" / "plan.prompt.md"
     prompt_path.write_text(plan_prompt)
 
     # Output
     console.print(Panel(f"[bold]Run created:[/bold] {run_id}", style="green"))
-    console.print(f"\n[bold]Prompt file:[/bold] {prompt_path}")
+    console.print(f"\n[bold]Target model:[/bold] {model_cfg.provider}{model_info}")
+    console.print(f"[bold]Prompt file:[/bold] {prompt_path}")
     console.print("\n" + "=" * 60)
     console.print(plan_prompt)
     console.print("=" * 60)
-    console.print("\n[bold]Next step:[/bold] Copy prompt to Claude, then run:")
+    console.print(f"\n[bold]Next step:[/bold] Copy prompt to {model_cfg.provider}, then run:")
     console.print(f"  weld plan import --run {run_id} --file <plan_output.md>")
 
 
@@ -256,14 +261,17 @@ def plan_review(
     codex_prompt = generate_codex_review_prompt(plan_content)
     (run_dir / "plan" / "codex.prompt.md").write_text(codex_prompt)
 
-    # Run Codex
-    console.print("[cyan]Running Codex plan review...[/cyan]")
+    # Get model config for plan review task
+    model_cfg = config.get_task_model(TaskType.PLAN_REVIEW)
+    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+    console.print(f"[cyan]Running {model_cfg.provider} plan review{model_info}...[/cyan]")
 
     try:
         codex_output = run_codex(
             prompt=codex_prompt,
-            exec_path=config.codex.exec,
+            exec_path=model_cfg.exec or config.codex.exec,
             sandbox=config.codex.sandbox,
+            model=model_cfg.model,
             cwd=repo_root,
         )
         (run_dir / "plan" / "codex.output.md").write_text(codex_output)
@@ -333,11 +341,16 @@ def step_select(
 
     # Generate implementation prompt
     impl_prompt = generate_impl_prompt(step, config.checks.command)
-    prompt_path = step_dir / "prompt" / "claude.impl.prompt.md"
+    prompt_path = step_dir / "prompt" / "impl.prompt.md"
     prompt_path.write_text(impl_prompt)
 
+    # Get configured model for implementation
+    model_cfg = config.get_task_model(TaskType.IMPLEMENTATION)
+    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+
     console.print(f"[green]Selected step {n}: {step.title}[/green]")
-    console.print(f"\n[bold]Prompt file:[/bold] {prompt_path}")
+    console.print(f"\n[bold]Target model:[/bold] {model_cfg.provider}{model_info}")
+    console.print(f"[bold]Prompt file:[/bold] {prompt_path}")
     console.print("\n" + "=" * 60)
     console.print(impl_prompt)
     console.print("=" * 60)
@@ -520,11 +533,16 @@ def step_fix_prompt(
     issues = json.loads((iter_dir / "codex.issues.json").read_text())
 
     # Generate fix prompt
+    config = load_config(weld_dir)
+    model_cfg = config.get_task_model(TaskType.FIX_GENERATION)
+    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+
     fix_prompt = generate_fix_prompt(step, issues, iter)
-    fix_path = step_dir / "prompt" / f"claude.fix.prompt.iter{iter + 1:02d}.md"
+    fix_path = step_dir / "prompt" / f"fix.prompt.iter{iter + 1:02d}.md"
     fix_path.write_text(fix_prompt)
 
     console.print(f"[green]Fix prompt written to:[/green] {fix_path}")
+    console.print(f"[bold]Target model:[/bold] {model_cfg.provider}{model_info}")
     console.print("\n" + "=" * 60)
     console.print(fix_prompt)
     console.print("=" * 60)
@@ -572,9 +590,16 @@ def step_loop(
     # Load step
     step = Step.model_validate(json.loads((step_dir / "step.json").read_text()))
 
-    # Print initial prompt
-    impl_prompt_path = step_dir / "prompt" / "claude.impl.prompt.md"
-    console.print(f"\n[bold]Implementation prompt:[/bold] {impl_prompt_path}")
+    # Print initial prompt with model info
+    impl_model_cfg = config.get_task_model(TaskType.IMPLEMENTATION)
+    impl_model_info = f" ({impl_model_cfg.model})" if impl_model_cfg.model else ""
+    review_model_cfg = config.get_task_model(TaskType.IMPLEMENTATION_REVIEW)
+    review_model_info = f" ({review_model_cfg.model})" if review_model_cfg.model else ""
+
+    impl_prompt_path = step_dir / "prompt" / "impl.prompt.md"
+    console.print(f"\n[bold]Implementation model:[/bold] {impl_model_cfg.provider}{impl_model_info}")
+    console.print(f"[bold]Review model:[/bold] {review_model_cfg.provider}{review_model_info}")
+    console.print(f"[bold]Implementation prompt:[/bold] {impl_prompt_path}")
     console.print("\n" + "=" * 60)
     console.print(impl_prompt_path.read_text())
     console.print("=" * 60 + "\n")
