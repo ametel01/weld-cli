@@ -71,6 +71,7 @@ src/weld/
 - Never include the generated footer or Co-Authored-By trailer
 - Use imperative mood ("Add feature" not "Added feature")
 - Keep commits small and focused
+- Before committing update CHANGELOG.md based on the commit messages
 
 ## Code Quality
 
