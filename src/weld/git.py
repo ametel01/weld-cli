@@ -51,7 +51,7 @@ def get_repo_root(cwd: Path | None = None) -> Path:
         root = run_git("rev-parse", "--show-toplevel", cwd=cwd)
         return Path(root)
     except GitError:
-        raise GitError("Not a git repository")
+        raise GitError("Not a git repository") from None
 
 
 def get_current_branch(cwd: Path | None = None) -> str:

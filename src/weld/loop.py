@@ -11,7 +11,6 @@ from .models import Status, Step
 from .review import run_step_review
 from .step import create_iter_directory, generate_fix_prompt, get_step_dir
 
-
 console = Console()
 
 
@@ -65,9 +64,7 @@ def run_step_loop(
         console.print(f"\n[bold blue]Iteration {iteration}/{max_iter}[/bold blue]")
 
         if wait_mode:
-            console.print(
-                "[yellow]Waiting for implementation... Press Enter when ready.[/yellow]"
-            )
+            console.print("[yellow]Waiting for implementation... Press Enter when ready.[/yellow]")
             input()
 
         iter_dir = create_iter_directory(step_dir, iteration)
@@ -78,14 +75,14 @@ def run_step_loop(
 
         if not diff_nonempty:
             console.print("[yellow]No changes detected. Skipping review.[/yellow]")
-            status = Status.model_validate({
-                "pass": False,
-                "checks_exit_code": -1,
-                "diff_nonempty": False,
-            })
-            (iter_dir / "status.json").write_text(
-                status.model_dump_json(by_alias=True, indent=2)
+            status = Status.model_validate(
+                {
+                    "pass": False,
+                    "checks_exit_code": -1,
+                    "diff_nonempty": False,
+                }
             )
+            (iter_dir / "status.json").write_text(status.model_dump_json(by_alias=True, indent=2))
             continue
 
         # Run checks
@@ -105,12 +102,8 @@ def run_step_loop(
 
         # Write results
         (iter_dir / "codex.review.md").write_text(review_md)
-        (iter_dir / "codex.issues.json").write_text(
-            issues.model_dump_json(by_alias=True, indent=2)
-        )
-        (iter_dir / "status.json").write_text(
-            status.model_dump_json(by_alias=True, indent=2)
-        )
+        (iter_dir / "codex.issues.json").write_text(issues.model_dump_json(by_alias=True, indent=2))
+        (iter_dir / "status.json").write_text(status.model_dump_json(by_alias=True, indent=2))
 
         if status.pass_:
             console.print("[bold green]Step passed![/bold green]")
@@ -118,17 +111,12 @@ def run_step_loop(
 
         # Generate fix prompt
         console.print(
-            f"[red]Found {status.issue_count} issues "
-            f"({status.blocker_count} blockers)[/red]"
+            f"[red]Found {status.issue_count} issues ({status.blocker_count} blockers)[/red]"
         )
 
         if iteration < max_iter:
-            fix_prompt = generate_fix_prompt(
-                step, issues.model_dump(by_alias=True), iteration
-            )
-            fix_path = (
-                step_dir / "prompt" / f"claude.fix.prompt.iter{iteration + 1:02d}.md"
-            )
+            fix_prompt = generate_fix_prompt(step, issues.model_dump(by_alias=True), iteration)
+            fix_path = step_dir / "prompt" / f"claude.fix.prompt.iter{iteration + 1:02d}.md"
             fix_path.parent.mkdir(parents=True, exist_ok=True)
             fix_path.write_text(fix_prompt)
 

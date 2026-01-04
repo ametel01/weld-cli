@@ -218,7 +218,7 @@ Review the following implementation against the step requirements.
 
 Or if issues found:
 ```json
-{{"pass":false,"issues":[{{"severity":"blocker","file":"path/to/file.py","hint":"Description of issue","maps_to":"AC #1"}}]}}
+{{"pass":false,"issues":[{{"severity":"blocker","file":"f.py","hint":"Desc","maps_to":"AC1"}}]}}
 ```
 
 Severity levels: "blocker", "major", "minor"

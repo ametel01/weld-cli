@@ -29,21 +29,13 @@ class ModelConfig(BaseModel):
 class TaskModelsConfig(BaseModel):
     """Per-task model assignments."""
 
-    plan_generation: ModelConfig = Field(
-        default_factory=lambda: ModelConfig(provider="claude")
-    )
-    plan_review: ModelConfig = Field(
-        default_factory=lambda: ModelConfig(provider="codex")
-    )
-    implementation: ModelConfig = Field(
-        default_factory=lambda: ModelConfig(provider="claude")
-    )
+    plan_generation: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
+    plan_review: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="codex"))
+    implementation: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
     implementation_review: ModelConfig = Field(
         default_factory=lambda: ModelConfig(provider="codex")
     )
-    fix_generation: ModelConfig = Field(
-        default_factory=lambda: ModelConfig(provider="claude")
-    )
+    fix_generation: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
 
     def get_model(self, task: TaskType) -> ModelConfig:
         """Get model config for a specific task type."""

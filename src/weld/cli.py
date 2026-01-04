@@ -4,7 +4,6 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -55,7 +54,7 @@ def init() -> None:
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = repo_root / ".weld"
 
@@ -109,7 +108,7 @@ def init() -> None:
 @app.command("run")
 def run_start(
     spec: Path = typer.Option(..., "--spec", "-s", help="Path to spec file"),
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="Run name slug"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Run name slug"),
 ) -> None:
     """Start a new weld run."""
     # Validate spec exists
@@ -121,7 +120,7 @@ def run_start(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     if not weld_dir.exists():
@@ -181,7 +180,7 @@ def plan_import(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -237,7 +236,7 @@ def plan_review(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -287,7 +286,7 @@ def plan_review(
 
     except CodexError as e:
         console.print(f"[red]Codex error: {e}[/red]")
-        raise typer.Exit(12)
+        raise typer.Exit(12) from None
 
 
 # ============================================================================
@@ -305,7 +304,7 @@ def step_select(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -374,7 +373,7 @@ def step_snapshot(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -403,11 +402,13 @@ def step_snapshot(
 
     if not nonempty:
         console.print("[yellow]No changes detected[/yellow]")
-        status = Status.model_validate({
-            "pass": False,
-            "checks_exit_code": -1,
-            "diff_nonempty": False,
-        })
+        status = Status.model_validate(
+            {
+                "pass": False,
+                "checks_exit_code": -1,
+                "diff_nonempty": False,
+            }
+        )
         (iter_dir / "status.json").write_text(status.model_dump_json(by_alias=True, indent=2))
         raise typer.Exit(0)
 
@@ -439,7 +440,7 @@ def step_review_cmd(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -510,7 +511,7 @@ def step_fix_prompt(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -557,7 +558,7 @@ def step_fix_prompt(
 def step_loop(
     run: str = typer.Option(..., "--run", "-r", help="Run ID"),
     n: int = typer.Option(..., "--n", help="Step number"),
-    max: Optional[int] = typer.Option(None, "--max", "-m", help="Max iterations"),
+    max: int | None = typer.Option(None, "--max", "-m", help="Max iterations"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for user between iterations"),
 ) -> None:
     """Run implement-review-fix loop for a step."""
@@ -565,7 +566,7 @@ def step_loop(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -583,7 +584,9 @@ def step_loop(
         # Auto-select step
         console.print(f"[yellow]Step {n} not selected, selecting now...[/yellow]")
         step_select(run=run, n=n)
-        step_dirs = [d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")]
+        step_dirs = [
+            d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")
+        ]
 
     step_dir = step_dirs[0]
 
@@ -597,7 +600,9 @@ def step_loop(
     review_model_info = f" ({review_model_cfg.model})" if review_model_cfg.model else ""
 
     impl_prompt_path = step_dir / "prompt" / "impl.prompt.md"
-    console.print(f"\n[bold]Implementation model:[/bold] {impl_model_cfg.provider}{impl_model_info}")
+    console.print(
+        f"\n[bold]Implementation model:[/bold] {impl_model_cfg.provider}{impl_model_info}"
+    )
     console.print(f"[bold]Review model:[/bold] {review_model_cfg.provider}{review_model_info}")
     console.print(f"[bold]Implementation prompt:[/bold] {impl_prompt_path}")
     console.print("\n" + "=" * 60)
@@ -617,12 +622,16 @@ def step_loop(
     )
 
     if result.success:
-        console.print(f"\n[bold green]Step {n} completed in {result.iterations} iteration(s)![/bold green]")
+        console.print(
+            f"\n[bold green]Step {n} completed in {result.iterations} iteration(s)![/bold green]"
+        )
         console.print("\n[bold]Next step:[/bold] Commit your changes:")
         console.print(f"  weld commit --run {run} -m 'Implement step {n}' --staged")
         raise typer.Exit(0)
     else:
-        console.print(f"\n[bold red]Step {n} did not pass after {result.iterations} iterations[/bold red]")
+        console.print(
+            f"\n[bold red]Step {n} did not pass after {result.iterations} iterations[/bold red]"
+        )
         raise typer.Exit(10)
 
 
@@ -640,7 +649,7 @@ def transcript_gist(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -681,7 +690,7 @@ def commit(
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
@@ -705,13 +714,13 @@ def commit(
     except CommitError as e:
         if "No staged changes" in str(e):
             console.print("[red]Error: No staged changes to commit[/red]")
-            raise typer.Exit(20)
+            raise typer.Exit(20) from None
         elif "gist" in str(e).lower():
             console.print(f"[red]Error: {e}[/red]")
-            raise typer.Exit(21)
+            raise typer.Exit(21) from None
         else:
             console.print(f"[red]Error: {e}[/red]")
-            raise typer.Exit(22)
+            raise typer.Exit(22) from None
 
 
 # ============================================================================
@@ -726,7 +735,7 @@ def list_runs_cmd() -> None:
         repo_root = get_repo_root()
     except GitError:
         console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     runs = list_runs(weld_dir)

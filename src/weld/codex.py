@@ -74,9 +74,9 @@ def parse_review_json(review_md: str) -> Issues:
         data = json.loads(last_line)
         return Issues.model_validate(data)
     except json.JSONDecodeError as e:
-        raise CodexError(f"Invalid JSON in review last line: {e}")
+        raise CodexError(f"Invalid JSON in review last line: {e}") from e
     except Exception as e:
-        raise CodexError(f"Failed to parse issues: {e}")
+        raise CodexError(f"Failed to parse issues: {e}") from e
 
 
 def extract_revised_plan(codex_output: str) -> str:
@@ -99,7 +99,10 @@ def extract_revised_plan(codex_output: str) -> str:
     section_lines: list[str] = []
 
     for line in lines:
-        if line.strip().lower().startswith("## revised plan") or line.strip().lower() == "# revised plan":
+        if (
+            line.strip().lower().startswith("## revised plan")
+            or line.strip().lower() == "# revised plan"
+        ):
             in_section = True
             continue
         if in_section:

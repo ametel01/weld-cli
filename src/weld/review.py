@@ -60,14 +60,16 @@ def run_step_review(
     else:
         pass_result = len(issues.issues) == 0
 
-    status = Status.model_validate({
-        "pass": pass_result,
-        "issue_count": len(issues.issues),
-        "blocker_count": blocker_count,
-        "major_count": major_count,
-        "minor_count": minor_count,
-        "checks_exit_code": checks_exit_code,
-        "diff_nonempty": bool(diff.strip()),
-    })
+    status = Status.model_validate(
+        {
+            "pass": pass_result,
+            "issue_count": len(issues.issues),
+            "blocker_count": blocker_count,
+            "major_count": major_count,
+            "minor_count": minor_count,
+            "checks_exit_code": checks_exit_code,
+            "diff_nonempty": bool(diff.strip()),
+        }
+    )
 
     return review_md, issues, status
