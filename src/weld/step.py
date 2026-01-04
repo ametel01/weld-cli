@@ -165,8 +165,8 @@ The previous implementation has issues that need to be addressed.
 """
 
 
-def generate_codex_review_prompt(step: Step, diff: str, checks_output: str) -> str:
-    """Generate Codex review prompt for implementation.
+def generate_review_prompt(step: Step, diff: str, checks_output: str) -> str:
+    """Generate review prompt for implementation.
 
     Args:
         step: Step being reviewed
@@ -174,7 +174,7 @@ def generate_codex_review_prompt(step: Step, diff: str, checks_output: str) -> s
         checks_output: Output from running checks
 
     Returns:
-        Formatted review prompt for Codex
+        Formatted review prompt
     """
     ac_list = "\n".join(f"- {ac}" for ac in step.acceptance_criteria)
 
