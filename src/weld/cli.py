@@ -9,10 +9,14 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
+from weld import __version__
+
 from .codex import CodexError, extract_revised_plan, run_codex
 from .config import TaskType, load_config, write_config_template
 from .git import GitError, get_repo_root
+from .logging import configure_logging
 from .models import Status, Step
+from .output import OutputContext
 from .run import (
     create_meta,
     create_run_directory,
@@ -22,6 +26,14 @@ from .run import (
     get_weld_dir,
     list_runs,
 )
+
+
+def _version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        typer.echo(f"weld {__version__}")
+        raise typer.Exit()
+
 
 app = typer.Typer(
     name="weld",
@@ -39,6 +51,61 @@ app.add_typer(step_app, name="step")
 app.add_typer(transcript_app, name="transcript")
 
 console = Console()
+
+# Global output context
+_ctx: OutputContext | None = None
+
+
+def get_output_context() -> OutputContext:
+    """Get the current output context."""
+    if _ctx is None:
+        return OutputContext(Console())
+    return _ctx
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit",
+    ),
+    verbose: int = typer.Option(
+        0,
+        "--verbose",
+        "-v",
+        count=True,
+        help="Increase verbosity (-v, -vv)",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress non-error output",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output in JSON format for automation",
+    ),
+    no_color: bool = typer.Option(
+        False,
+        "--no-color",
+        help="Disable colored output",
+    ),
+) -> None:
+    """Weld CLI - Human-in-the-loop coding harness."""
+    global _ctx
+    global console
+    console = configure_logging(
+        verbosity=verbose,
+        quiet=quiet,
+        no_color=no_color,
+    )
+    _ctx = OutputContext(console=console, json_mode=json_output)
 
 
 # ============================================================================
