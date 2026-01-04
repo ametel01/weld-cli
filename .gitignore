@@ -51,3 +51,4 @@ Thumbs.db
 # Claude
 !CLAUDE.md
 !.claude/
+.claude/settings*.json
