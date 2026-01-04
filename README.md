@@ -1,4 +1,6 @@
-# Weld
+<p align="center">
+  <img src=".github/weld-logo.png" alt="Weld Logo" width="400">
+</p>
 
 **Human-in-the-loop coding harness with transcript provenance**
 
