@@ -266,7 +266,7 @@ def plan_import(
     plan_content = file.read_text()
 
     # Write verbatim output
-    (run_dir / "plan" / "claude.output.md").write_text(plan_content)
+    (run_dir / "plan" / "output.md").write_text(plan_content)
 
     # Parse and validate
     from .plan import parse_steps

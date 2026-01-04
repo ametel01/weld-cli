@@ -90,7 +90,7 @@ def run_step_loop(
         write_checks(iter_dir / "checks.txt", checks_output)
 
         # Run review
-        console.print("[cyan]Running Codex review...[/cyan]")
+        console.print("[cyan]Running review...[/cyan]")
         review_md, issues, status = run_step_review(
             step=step,
             diff=diff,
@@ -101,8 +101,8 @@ def run_step_loop(
         )
 
         # Write results
-        (iter_dir / "codex.review.md").write_text(review_md)
-        (iter_dir / "codex.issues.json").write_text(issues.model_dump_json(by_alias=True, indent=2))
+        (iter_dir / "review.md").write_text(review_md)
+        (iter_dir / "issues.json").write_text(issues.model_dump_json(by_alias=True, indent=2))
         (iter_dir / "status.json").write_text(status.model_dump_json(by_alias=True, indent=2))
 
         if status.pass_:
@@ -116,7 +116,7 @@ def run_step_loop(
 
         if iteration < max_iter:
             fix_prompt = generate_fix_prompt(step, issues.model_dump(by_alias=True), iteration)
-            fix_path = step_dir / "prompt" / f"claude.fix.prompt.iter{iteration + 1:02d}.md"
+            fix_path = step_dir / "prompt" / f"fix.iter{iteration + 1:02d}.md"
             fix_path.parent.mkdir(parents=True, exist_ok=True)
             fix_path.write_text(fix_prompt)
 
