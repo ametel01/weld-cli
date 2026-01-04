@@ -13,6 +13,7 @@ from weld import __version__
 
 from .codex import CodexError, extract_revised_plan, run_codex
 from .config import TaskType, load_config, write_config_template
+from .constants import INIT_TOOL_CHECK_TIMEOUT
 from .git import GitError, get_repo_root
 from .logging import configure_logging
 from .models import Status, Step
@@ -148,7 +149,9 @@ def init() -> None:
     all_ok = True
     for name, cmd in tools.items():
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=INIT_TOOL_CHECK_TIMEOUT
+            )
             if result.returncode == 0:
                 console.print(f"[green]✓[/green] {name}")
             else:

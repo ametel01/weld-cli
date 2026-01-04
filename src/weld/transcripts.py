@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from .constants import TRANSCRIPT_TIMEOUT
+
 
 class TranscriptResult(BaseModel):
     """Result from claude-code-transcripts."""
@@ -16,10 +18,17 @@ class TranscriptResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TranscriptError(Exception):
+    """Transcript tool failed."""
+
+    pass
+
+
 def run_transcript_gist(
     exec_path: str = "claude-code-transcripts",
     visibility: str = "secret",
     cwd: Path | None = None,
+    timeout: int | None = None,
 ) -> TranscriptResult:
     """Run transcript tool to create gist.
 
@@ -27,20 +36,30 @@ def run_transcript_gist(
         exec_path: Path to claude-code-transcripts executable
         visibility: Gist visibility ("secret" or "public")
         cwd: Working directory
+        timeout: Optional timeout in seconds (default: 60)
 
     Returns:
         TranscriptResult with parsed URLs and warnings
+
+    Raises:
+        TranscriptError: If transcript tool times out
     """
+    timeout = timeout or TRANSCRIPT_TIMEOUT
+
     args = [exec_path, "--gist"]
     if visibility == "public":
         args.append("--public")
 
-    result = subprocess.run(
-        args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise TranscriptError(f"Transcript tool timed out after {timeout} seconds") from e
 
     output = result.stdout + result.stderr
     warnings: list[str] = []

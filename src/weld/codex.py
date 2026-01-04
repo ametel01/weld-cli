@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from .constants import CODEX_TIMEOUT
 from .models import Issues
 
 
@@ -19,6 +20,7 @@ def run_codex(
     sandbox: str = "read-only",
     model: str | None = None,
     cwd: Path | None = None,
+    timeout: int | None = None,
 ) -> str:
     """Run codex with prompt and return output.
 
@@ -28,23 +30,31 @@ def run_codex(
         sandbox: Sandbox mode (read-only, network-only, etc.)
         model: Model to use (e.g., o3, gpt-4o). If None, uses codex default.
         cwd: Working directory
+        timeout: Optional timeout in seconds (default: 600)
 
     Returns:
         Codex stdout output
 
     Raises:
-        CodexError: If codex fails or returns non-zero
+        CodexError: If codex fails, returns non-zero, or times out
     """
+    timeout = timeout or CODEX_TIMEOUT
+
     cmd = [exec_path, "-p", prompt, "--sandbox", sandbox]
     if model:
         cmd.extend(["--model", model])
 
-    result = subprocess.run(
-        cmd,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise CodexError(f"Codex timed out after {timeout} seconds") from e
+
     if result.returncode != 0:
         raise CodexError(f"Codex failed: {result.stderr}")
     return result.stdout

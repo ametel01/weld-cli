@@ -3,6 +3,8 @@
 import subprocess
 from pathlib import Path
 
+from .constants import GIT_TIMEOUT
+
 
 class GitError(Exception):
     """Git command failed."""
@@ -10,26 +12,38 @@ class GitError(Exception):
     pass
 
 
-def run_git(*args: str, cwd: Path | None = None, check: bool = True) -> str:
+def run_git(
+    *args: str,
+    cwd: Path | None = None,
+    check: bool = True,
+    timeout: int | None = None,
+) -> str:
     """Run git command and return stdout.
 
     Args:
         *args: Git command arguments
         cwd: Working directory for git command
         check: Whether to raise GitError on non-zero exit
+        timeout: Optional timeout in seconds (default: 30)
 
     Returns:
         Stripped stdout output
 
     Raises:
-        GitError: If check=True and git command fails
+        GitError: If check=True and git command fails, or on timeout
     """
-    result = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
+    timeout = timeout or GIT_TIMEOUT
+
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise GitError(f"Git command timed out after {timeout} seconds") from e
     if check and result.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {result.stderr}")
     return result.stdout.strip()
@@ -136,10 +150,15 @@ def has_staged_changes(cwd: Path | None = None) -> bool:
     Returns:
         True if there are staged changes
     """
-    result = subprocess.run(
-        ["git", "diff", "--staged", "--quiet"],
-        cwd=cwd,
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--staged", "--quiet"],
+            cwd=cwd,
+            capture_output=True,
+            timeout=GIT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        # On timeout, assume no changes to avoid blocking
+        return False
     # git diff --quiet exits 1 if there are differences
     return result.returncode != 0
