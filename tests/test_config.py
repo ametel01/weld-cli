@@ -1,6 +1,8 @@
 """Tests for weld configuration."""
 
 from weld.config import (
+    ClaudeConfig,
+    CodexConfig,
     ModelConfig,
     TaskModelsConfig,
     TaskType,
@@ -56,8 +58,8 @@ def test_custom_task_models():
 def test_model_config_inherits_provider_defaults():
     """Task model should inherit defaults from provider config."""
     config = WeldConfig(
-        codex={"exec": "custom-codex", "model": "o3"},
-        claude={"exec": "custom-claude", "model": "claude-3-sonnet"},
+        codex=CodexConfig(exec="custom-codex", model="o3"),
+        claude=ClaudeConfig(exec="custom-claude", model="claude-3-sonnet"),
     )
 
     # Codex task should inherit from codex config
@@ -74,7 +76,7 @@ def test_model_config_inherits_provider_defaults():
 def test_task_specific_override_beats_provider_default():
     """Task-specific model should override provider default."""
     config = WeldConfig(
-        codex={"exec": "codex", "model": "default-model"},
+        codex=CodexConfig(exec="codex", model="default-model"),
         task_models=TaskModelsConfig(
             plan_review=ModelConfig(provider="codex", model="specific-model"),
         ),
