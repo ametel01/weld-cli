@@ -14,6 +14,20 @@ def test_default_task_models():
     """Default task models should be set correctly."""
     config = WeldConfig()
 
+    # Discovery phase defaults to Claude
+    discover = config.get_task_model(TaskType.DISCOVER)
+    assert discover.provider == "claude"
+
+    interview = config.get_task_model(TaskType.INTERVIEW)
+    assert interview.provider == "claude"
+
+    # Research phase defaults
+    research = config.get_task_model(TaskType.RESEARCH)
+    assert research.provider == "claude"
+
+    research_review = config.get_task_model(TaskType.RESEARCH_REVIEW)
+    assert research_review.provider == "codex"
+
     # Plan generation defaults to Claude
     plan_gen = config.get_task_model(TaskType.PLAN_GENERATION)
     assert plan_gen.provider == "claude"

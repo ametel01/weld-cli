@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New TaskType values: `DISCOVER`, `INTERVIEW`, `RESEARCH`, `RESEARCH_REVIEW` for brownfield and research workflows
+- TaskModelsConfig fields for new workflow phases with sensible defaults (generative → claude, review → codex)
 - Multi-category checks configuration with separate `lint`, `test`, `typecheck` commands
 - Run locking to prevent concurrent modifications to the same weld project
 - PID-based lock files with stale lock detection and automatic cleanup

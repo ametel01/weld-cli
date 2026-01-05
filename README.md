@@ -355,6 +355,10 @@ fail_on_blockers_only = true  # Pass if no blockers (ignore major/minor)
 
 # Per-task model selection (see next section)
 [task_models]
+discover = { provider = "claude" }
+interview = { provider = "claude" }
+research = { provider = "claude" }
+research_review = { provider = "codex" }
 plan_generation = { provider = "claude" }
 plan_review = { provider = "codex" }
 implementation = { provider = "claude" }
@@ -370,6 +374,10 @@ Weld supports configuring different AI providers for each task type. Both Claude
 
 | Task | Description |
 |------|-------------|
+| `discover` | Codebase discovery for brownfield projects |
+| `interview` | User interview for requirements gathering |
+| `research` | Deep research on implementation approach |
+| `research_review` | Review research findings |
 | `plan_generation` | Create implementation plan from spec |
 | `plan_review` | Review and improve the plan |
 | `implementation` | Generate implementation prompts |
@@ -381,6 +389,10 @@ Weld supports configuring different AI providers for each task type. Both Claude
 **Use Claude for everything:**
 ```toml
 [task_models]
+discover = { provider = "claude" }
+interview = { provider = "claude" }
+research = { provider = "claude" }
+research_review = { provider = "claude" }
 plan_generation = { provider = "claude", model = "claude-3-opus" }
 plan_review = { provider = "claude", model = "claude-3-opus" }
 implementation = { provider = "claude" }
@@ -391,6 +403,10 @@ fix_generation = { provider = "claude" }
 **Use specific models per task:**
 ```toml
 [task_models]
+discover = { provider = "claude" }
+interview = { provider = "claude" }
+research = { provider = "claude", model = "claude-3-opus" }
+research_review = { provider = "codex", model = "o3" }
 plan_generation = { provider = "claude", model = "claude-3-opus" }
 plan_review = { provider = "codex", model = "o3" }
 implementation = { provider = "claude", model = "claude-3-sonnet" }

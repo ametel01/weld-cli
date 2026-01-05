@@ -11,8 +11,19 @@ from pydantic import BaseModel, Field
 class TaskType(str, Enum):
     """Types of tasks that can be assigned to different models."""
 
+    # Discovery and interview (brownfield)
+    DISCOVER = "discover"
+    INTERVIEW = "interview"
+
+    # Research phase
+    RESEARCH = "research"
+    RESEARCH_REVIEW = "research_review"
+
+    # Plan phase
     PLAN_GENERATION = "plan_generation"
     PLAN_REVIEW = "plan_review"
+
+    # Implementation phase
     IMPLEMENTATION = "implementation"
     IMPLEMENTATION_REVIEW = "implementation_review"
     FIX_GENERATION = "fix_generation"
@@ -29,6 +40,10 @@ class ModelConfig(BaseModel):
 class TaskModelsConfig(BaseModel):
     """Per-task model assignments."""
 
+    discover: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
+    interview: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
+    research: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
+    research_review: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="codex"))
     plan_generation: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
     plan_review: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="codex"))
     implementation: ModelConfig = Field(default_factory=lambda: ModelConfig(provider="claude"))
@@ -202,6 +217,10 @@ def write_config_template(weld_dir: Path) -> Path:
         # Provider can be "codex", "claude", or any other supported provider
         # Model is optional and overrides the provider default
         "task_models": {
+            "discover": {"provider": "claude"},
+            "interview": {"provider": "claude"},
+            "research": {"provider": "claude"},
+            "research_review": {"provider": "codex"},
             "plan_generation": {"provider": "claude"},
             "plan_review": {"provider": "codex"},
             "implementation": {"provider": "claude"},
