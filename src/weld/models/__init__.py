@@ -18,6 +18,7 @@ Example:
 """
 
 from .issues import Issue, Issues
+from .lock import Lock
 from .meta import Meta, SpecRef
 from .status import CategoryResult, ChecksSummary, Status
 from .step import Step
@@ -27,6 +28,7 @@ __all__ = [
     "ChecksSummary",
     "Issue",
     "Issues",
+    "Lock",
     "Meta",
     "SpecRef",
     "Status",
