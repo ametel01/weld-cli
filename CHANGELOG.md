@@ -74,6 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaces `weld plan review` and `weld step review` subcommands
 
 ### Changed
+- `weld interview` now outputs a prompt for Claude Code instead of stdin/stdout Q&A loop
+  - AI uses `AskUserQuestion` tool for in-depth questioning
+  - Covers implementation, UI/UX, edge cases, tradeoffs, security
+  - Rewrites the specification in place when interview is complete
 - `OutputContext` now includes `dry_run` field for command dry-run support
 - `configure_logging` accepts `debug` parameter for per-invocation debug mode
 - `weld run` is now a subcommand group with `start`, `abandon`, `continue` subcommands

@@ -553,7 +553,7 @@ weld interview specs/feature.md --focus "edge cases"
 Options:
 - `--focus`, `-f` - Topic to focus questions on
 
-Uses stdin/stdout for interactive Q&A session.
+Outputs a prompt for Claude Code to conduct the interview and rewrite the spec.
 
 ---
 
@@ -832,10 +832,10 @@ Use `weld interview` to refine specifications through Q&A:
 weld interview specs/feature.md --focus "edge cases"
 ```
 
-The interview uses stdin/stdout for interactive sessions. Type:
-- `quit` - Exit the interview
-- `save` - Save current changes
-- Paste AI responses to continue the conversation
+The command outputs a prompt designed for use with Claude Code. The AI will:
+1. Ask in-depth questions using the `AskUserQuestion` tool
+2. Cover implementation details, UI/UX, edge cases, tradeoffs, and more
+3. Rewrite the specification in place when the interview is complete
 
 ---
 

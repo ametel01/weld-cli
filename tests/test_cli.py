@@ -728,22 +728,22 @@ class TestInterviewCommand:
         # File should be unchanged
         assert spec_file.read_text() == original_content
 
-    def test_interview_records_answers(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """interview should record answers and modify document."""
+    def test_interview_prints_prompt(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """interview should print prompt with document content and rewrite instruction."""
         spec_file = initialized_weld / "spec.md"
-        spec_file.write_text("# My Spec")
+        spec_file.write_text("# My Spec\n\nImplement user login.")
 
-        # Provide an answer then quit with save
-        result = runner.invoke(
-            app,
-            ["interview", str(spec_file)],
-            input="This is my answer\nquit\ny\n",
-        )
+        result = runner.invoke(app, ["interview", str(spec_file)])
         assert result.exit_code == 0
 
-        content = spec_file.read_text()
-        assert "This is my answer" in content
-        assert "## Interview Notes" in content
+        # Prompt should include document content
+        assert "# My Spec" in result.stdout
+        assert "Implement user login" in result.stdout
+        # Prompt should include AskUserQuestion instruction
+        assert "AskUserQuestion" in result.stdout
+        # Prompt should include rewrite instruction with file path
+        assert "rewrite" in result.stdout.lower()
+        assert str(spec_file) in result.stdout
 
 
 class TestStatusCommand:
