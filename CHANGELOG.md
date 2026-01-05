@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Global `--dry-run` option for previewing effects without applying changes
+- Global `--debug` option for enabling debug logging on a per-invocation basis
 - New TaskType values: `DISCOVER`, `INTERVIEW`, `RESEARCH`, `RESEARCH_REVIEW` for brownfield and research workflows
 - TaskModelsConfig fields for new workflow phases with sensible defaults (generative → claude, review → codex)
 - Multi-category checks configuration with separate `lint`, `test`, `typecheck` commands
@@ -20,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CategoryResult` and `ChecksSummary` Pydantic models for structured check results
 
 ### Changed
+- `OutputContext` now includes `dry_run` field for command dry-run support
+- `configure_logging` accepts `debug` parameter for per-invocation debug mode
 - Checks now run with fail-fast in iteration loop, full run for review context
 - Implementation prompt displays all configured check commands
 - Status model enriched with `checks_summary` field

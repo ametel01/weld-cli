@@ -129,6 +129,28 @@ Weld implements a deterministic, auditable development pipeline:
 
 ## User Guide
 
+### Global Options
+
+All commands support these global options:
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--version` | `-V` | Show version and exit |
+| `--verbose` | `-v` | Increase verbosity (`-v` for verbose, `-vv` for debug) |
+| `--quiet` | `-q` | Suppress non-error output |
+| `--json` | | Output in JSON format for automation |
+| `--no-color` | | Disable colored output |
+| `--dry-run` | | Preview effects without applying changes |
+| `--debug` | | Enable debug logging for this invocation |
+
+**Flag precedence:** `--quiet` > `--debug` > `--verbose`
+
+- If `--quiet` is set, log level is WARNING regardless of other flags
+- If `--debug` is set (and not quiet), log level is DEBUG
+- Otherwise verbosity determines level: 0=INFO, 1=DEBUG, 2+=DEBUG
+
+---
+
 ### Commands Reference
 
 #### `weld init`
