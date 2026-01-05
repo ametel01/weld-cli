@@ -18,7 +18,8 @@ from ..core import (
     run_step_review,
 )
 from ..models import Status, Step
-from ..services import GitError, capture_diff, get_repo_root, run_checks, write_checks, write_diff
+from ..services import GitError, capture_diff, get_repo_root, write_diff
+from ..services.checks import run_checks, write_checks_results
 
 console = Console()
 
@@ -63,7 +64,7 @@ def step_select(
     (step_dir / "step.json").write_text(step.model_dump_json(indent=2))
 
     # Generate implementation prompt
-    impl_prompt = generate_impl_prompt(step, config.checks.command)
+    impl_prompt = generate_impl_prompt(step, config.checks)
     prompt_path = step_dir / "prompt" / "impl.prompt.md"
     prompt_path.write_text(impl_prompt)
 
@@ -128,12 +129,14 @@ def step_snapshot(
 
     # Run checks
     console.print("[cyan]Running checks...[/cyan]")
-    checks_output, exit_code = run_checks(config.checks.command, repo_root)
-    write_checks(iter_dir / "checks.txt", checks_output)
+    checks_summary = run_checks(config.checks, repo_root, fail_fast=True)
+
+    # Write per-category output files and summary
+    write_checks_results(iter_dir, checks_summary)
 
     console.print(f"[green]Snapshot captured for iteration {iter}[/green]")
     console.print(f"  Diff: {len(diff)} bytes")
-    console.print(f"  Checks exit code: {exit_code}")
+    console.print(f"  Checks exit code: {checks_summary.get_exit_code()}")
 
 
 def step_review_cmd(

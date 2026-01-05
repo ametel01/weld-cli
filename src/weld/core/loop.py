@@ -14,7 +14,8 @@ from rich.console import Console
 
 from ..config import WeldConfig
 from ..models import Status, Step
-from ..services import capture_diff, run_checks, write_checks, write_diff
+from ..services import capture_diff, write_diff
+from ..services.checks import run_checks, write_checks_results
 from .review_engine import run_step_review
 from .step_processor import create_iter_directory, generate_fix_prompt, get_step_dir
 
@@ -109,9 +110,25 @@ def run_step_loop(
             (iter_dir / "status.json").write_text(status.model_dump_json(by_alias=True, indent=2))
             continue
 
-        # Run checks
-        checks_output, checks_exit = run_checks(config.checks.command, repo_root)
-        write_checks(iter_dir / "checks.txt", checks_output)
+        # Run checks (fail-fast for iteration, full run for review input)
+        checks_summary = run_checks(config.checks, repo_root, fail_fast=True)
+
+        # Run remaining checks for review context (if fail-fast stopped early)
+        if checks_summary.first_failure:
+            checks_summary = run_checks(config.checks, repo_root, fail_fast=False)
+
+        # Write per-category output files and summary
+        write_checks_results(iter_dir, checks_summary)
+
+        # Build combined output for review prompt (use configured order)
+        category_order = config.checks.order or list(checks_summary.categories.keys())
+        checks_output = "\n\n".join(
+            f"=== {name} (exit {checks_summary.categories[name].exit_code}) ===\n"
+            f"{checks_summary.categories[name].output}"
+            for name in category_order
+            if name in checks_summary.categories
+        )
+        checks_exit = checks_summary.get_exit_code()
 
         # Run review
         console.print("[cyan]Running review...[/cyan]")
@@ -123,6 +140,8 @@ def run_step_loop(
             config=config,
             cwd=repo_root,
         )
+        # Enrich status with checks summary
+        status.checks_summary = checks_summary
 
         # Write results
         (iter_dir / "review.md").write_text(review_md)

@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+from ..config import ChecksConfig
 from ..models import Step
 
 
@@ -63,17 +64,26 @@ def create_iter_directory(step_dir: Path, iteration: int) -> Path:
     return iter_dir
 
 
-def generate_impl_prompt(step: Step, checks_command: str) -> str:
+def generate_impl_prompt(step: Step, checks_config: ChecksConfig) -> str:
     """Generate Claude implementation prompt.
 
     Args:
         step: Step to implement
-        checks_command: Command to run for validation
+        checks_config: Checks configuration
 
     Returns:
         Formatted implementation prompt
     """
     ac_list = "\n".join(f"- [ ] {ac}" for ac in step.acceptance_criteria)
+
+    # Format checks commands for display
+    categories = checks_config.get_categories()
+    if categories:
+        checks_cmds = "\n".join(f"{name}: {cmd}" for name, cmd in categories.items())
+    elif checks_config.command:
+        checks_cmds = checks_config.command
+    else:
+        checks_cmds = "# No checks configured"
 
     return f"""# Implementation Task: Step {step.n}
 
@@ -93,7 +103,7 @@ def generate_impl_prompt(step: Step, checks_command: str) -> str:
 
 After implementing, run:
 ```bash
-{checks_command}
+{checks_cmds}
 ```
 
 ---
