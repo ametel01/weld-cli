@@ -72,6 +72,16 @@ class TestGlobalOptions:
         result = runner.invoke(app, ["--no-color", "--help"])
         assert result.exit_code == 0
 
+    def test_dry_run_flag_accepted(self, runner: CliRunner) -> None:
+        """--dry-run flag should be accepted."""
+        result = runner.invoke(app, ["--dry-run", "--help"])
+        assert result.exit_code == 0
+
+    def test_debug_flag_accepted(self, runner: CliRunner) -> None:
+        """--debug flag should be accepted."""
+        result = runner.invoke(app, ["--debug", "--help"])
+        assert result.exit_code == 0
+
 
 class TestInitCommand:
     """Tests for weld init command."""
@@ -133,6 +143,18 @@ class TestInitCommand:
 
         assert result.exit_code == 0
         assert "already exists" in result.stdout.lower()
+
+    def test_init_dry_run_no_side_effects(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """init --dry-run should not create any directories or files."""
+        weld_dir = temp_git_repo / ".weld"
+        assert not weld_dir.exists()
+
+        result = runner.invoke(app, ["--dry-run", "init"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        # Verify no directories were created
+        assert not weld_dir.exists()
 
 
 class TestListCommand:
@@ -199,6 +221,22 @@ class TestRunCommand:
         runs_dir = initialized_weld / ".weld" / "runs"
         runs = list(runs_dir.iterdir())
         assert len(runs) == 1
+
+    def test_run_dry_run_no_side_effects(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """run --dry-run should not create run directory."""
+        spec_path = initialized_weld / "spec.md"
+        spec_path.write_text("# Test Spec\n\nDo something useful.")
+
+        runs_dir = initialized_weld / ".weld" / "runs"
+        runs_before = list(runs_dir.iterdir()) if runs_dir.exists() else []
+
+        result = runner.invoke(app, ["--dry-run", "run", "--spec", str(spec_path)])
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+
+        # Verify no new run directories were created
+        runs_after = list(runs_dir.iterdir()) if runs_dir.exists() else []
+        assert len(runs_after) == len(runs_before)
 
 
 class TestPlanCommands:
