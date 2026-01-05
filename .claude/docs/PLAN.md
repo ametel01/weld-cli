@@ -1724,7 +1724,7 @@ def plan_review(
     run: str = typer.Option(..., "--run", "-r", help="Run ID"),
     apply: bool = typer.Option(False, "--apply", help="Apply revised plan"),
 ):
-    """Run Codex review on the plan."""
+    """Run review on the plan."""
     try:
         repo_root = get_repo_root()
     except GitError:
