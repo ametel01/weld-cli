@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Research processor module (`core/research_processor.py`) for research artifact management
 - `weld plan prompt` command to generate plan prompt incorporating research findings
 - `generate_plan_prompt()` now accepts optional `research_content` parameter
+- Artifact versioning with history tracking for research and plan documents
+- `VersionInfo`, `StaleOverride`, `CommandEvent` models for version metadata
+- `create_version_snapshot()`, `get_version_history()`, `restore_version()` functions
+- Automatic version pruning (keeps last 5 versions per artifact)
+- Version snapshots stored in `history/v<N>/` with content.md and meta.json
+- Research and plan import commands now create version snapshots before overwriting
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
@@ -36,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status model enriched with `checks_summary` field
 - `weld run` now defaults to research-first mode, generating research prompt instead of plan prompt
 - `create_run_directory()` accepts optional `skip_research` parameter
+- `Meta` model extended with version tracking fields (`research_version`, `plan_version`, `stale_artifacts`, etc.)
 
 ### Deprecated
 - Single-command `checks.command` field (use category fields instead)
