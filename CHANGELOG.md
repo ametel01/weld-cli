@@ -66,6 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Discover runs now tracked in `weld status`
 - Comprehensive discover prompt template (12 sections including security, performance, APIs)
 - Makefile `bin-install` and `bin-uninstall` targets for global CLI installation via `uv tool`
+- Unified `weld review` command for document validation against codebase
+  - Reviews markdown docs for errors, missing implementations, gaps, wrong evaluations
+  - `--apply` mode corrects documents in place (saves original to .weld/reviews/)
+  - `--prompt-only` generates prompt for manual Claude invocation
+  - `--quiet` suppresses streaming output
+  - Replaces `weld plan review` and `weld step review` subcommands
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
@@ -82,6 +88,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 - Single-command `checks.command` field (use category fields instead)
 - Flat `checks_exit_code` in Status (use `checks_summary.get_exit_code()`)
+- `weld plan review` subcommand (use `weld review` instead)
+- `weld step review` subcommand (use `weld review` instead)
+
+### Fixed
+- AI preamble no longer included in generated documents
+  - Added `strip_preamble()` utility to remove AI thinking/analysis before markdown content
+  - Applied to `weld discover` and `weld review --apply` commands
+  - Documents now start cleanly with their first markdown element (heading, frontmatter, etc.)
 
 ## [0.1.0] - 2026-01-04
 
