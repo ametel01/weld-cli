@@ -6,16 +6,34 @@ from pathlib import Path
 from ..models import Step
 
 
-def generate_plan_prompt(spec_content: str, spec_path: Path) -> str:
+def generate_plan_prompt(
+    spec_content: str,
+    spec_path: Path,
+    *,
+    research_content: str | None = None,
+) -> str:
     """Generate Claude prompt for plan creation.
 
     Args:
         spec_content: Content of the specification file
         spec_path: Path to the specification file
+        research_content: Optional research findings to incorporate
 
     Returns:
         Formatted prompt for Claude to create an implementation plan
     """
+    research_section = ""
+    if research_content:
+        research_section = f"""
+## Research Findings
+
+The following research has been conducted to inform this plan:
+
+{research_content}
+
+---
+"""
+
     return f"""# Implementation Plan Request
 
 You are creating an implementation plan for the following specification.
@@ -25,7 +43,7 @@ You are creating an implementation plan for the following specification.
 {spec_content}
 
 ---
-
+{research_section}
 ## Instructions
 
 Create a detailed, step-by-step implementation plan. Each step must follow this format:
@@ -52,7 +70,12 @@ Guidelines:
 - Each step should be independently verifiable
 - Steps should be atomic and focused
 - Order steps by dependency (do prerequisites first)
-- Include validation commands for each step
+- Include validation commands for each step{
+        '''
+- Incorporate insights from the research findings above'''
+        if research_content
+        else ""
+    }
 """
 
 
