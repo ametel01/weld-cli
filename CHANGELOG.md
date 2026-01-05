@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-category output files in `checks/` subdirectory
 - `checks.summary.json` with aggregated results and first-failure tracking
 - `CategoryResult` and `ChecksSummary` Pydantic models for structured check results
+- Research phase: new `research/` directory in run structure for research-first workflow
+- `weld run --skip-research` flag to bypass research phase and generate plan directly
+- `weld research` command group with `prompt`, `import`, and `show` subcommands
+- `generate_research_prompt()` for creating AI research prompts from specifications
+- Research processor module (`core/research_processor.py`) for research artifact management
+- `weld plan prompt` command to generate plan prompt incorporating research findings
+- `generate_plan_prompt()` now accepts optional `research_content` parameter
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
@@ -27,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Checks now run with fail-fast in iteration loop, full run for review context
 - Implementation prompt displays all configured check commands
 - Status model enriched with `checks_summary` field
+- `weld run` now defaults to research-first mode, generating research prompt instead of plan prompt
+- `create_run_directory()` accepts optional `skip_research` parameter
 
 ### Deprecated
 - Single-command `checks.command` field (use category fields instead)
