@@ -54,6 +54,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Timing` model for per-phase performance tracking (ai_invocation_ms, checks_ms, review_ms, total_ms)
 - `HEARTBEAT_INTERVAL_SECONDS` constant (60s) for heartbeat update frequency in long operations
 - `OutputContext.error()` now accepts optional `next_action` parameter for recovery hints
+- Streaming output support for AI service invocations
+  - Shared `run_streaming_subprocess()` utility for line-buffered output with timeout handling
+  - Claude service: `stream` parameter with `--output-format stream-json` support
+  - Codex service: `stream` parameter with `--json` JSONL output support
+  - Review loop: streaming enabled by default for real-time feedback
+  - CLI `--quiet` flag on `step review`, `step loop`, `plan review`, and `discover` commands
+- Direct Claude execution in discover command
+  - `weld discover --output <path>` runs Claude directly with streaming output
+  - `--prompt-only` flag for manual prompt-copy workflow
+  - Discover runs now tracked in `weld status`
+- Comprehensive discover prompt template (12 sections including security, performance, APIs)
+- Makefile `bin-install` and `bin-uninstall` targets for global CLI installation via `uv tool`
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
