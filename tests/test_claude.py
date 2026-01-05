@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from weld.services.claude import ClaudeError, parse_review_json, run_claude
+from weld.services.claude import (
+    ClaudeError,
+    _extract_text_from_stream_json,
+    parse_review_json,
+    run_claude,
+)
 
 
 class TestRunClaude:
@@ -167,3 +172,152 @@ No JSON here"""
 
         with pytest.raises(ClaudeError, match="Invalid JSON"):
             parse_review_json(review)
+
+
+class TestRunClaudeStreaming:
+    """Tests for run_claude streaming mode."""
+
+    def test_streaming_successful_execution(self) -> None:
+        """Streaming mode captures output correctly."""
+        # Create mock process with streaming JSONL output
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0  # Process has exited
+
+        # Simulate streaming output line by line
+        stream_lines = [
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":" World!"}]}}',
+            "",  # Empty line signals EOF
+        ]
+        mock_process.stdout.readline.side_effect = [*stream_lines, ""]
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            patch("weld.services.streaming.sys.stdout.write"),
+            patch("weld.services.streaming.sys.stdout.flush"),
+        ):
+            result = run_claude("test prompt", stream=True)
+
+        # Verify output was captured
+        assert "Hello" in result
+        assert "World!" in result
+
+    def test_streaming_timeout_raises_error(self) -> None:
+        """Streaming mode times out and raises ClaudeError."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process still running
+
+        # Make readline block forever (simulated via side_effect that always returns data)
+        def slow_readline() -> str:
+            import time
+
+            time.sleep(0.1)  # Small delay to ensure timeout check runs
+            return '{"type":"system","message":"waiting..."}'
+
+        mock_process.stdout.readline.side_effect = slow_readline
+        mock_process.stderr = MagicMock()
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            patch("weld.services.streaming.sys.stdout.write"),
+            patch("weld.services.streaming.sys.stdout.flush"),
+            pytest.raises(ClaudeError, match="timed out after 1 seconds"),
+        ):
+            run_claude("test prompt", stream=True, timeout=1)
+
+        # Verify process was terminated (called by timeout logic and cleanup)
+        assert mock_process.terminate.call_count >= 1
+
+    def test_streaming_process_cleanup_on_error(self) -> None:
+        """Streaming mode cleans up process on error."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process still running
+        mock_process.stdout.readline.side_effect = Exception("Unexpected error")
+        mock_process.stderr = MagicMock()
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            pytest.raises(Exception, match="Unexpected error"),
+        ):
+            run_claude("test prompt", stream=True)
+
+        # Verify cleanup was attempted
+        mock_process.terminate.assert_called_once()
+
+    def test_streaming_nonzero_exit_code(self) -> None:
+        """Streaming mode raises error on non-zero exit code."""
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.poll.return_value = 1
+
+        mock_process.stdout.readline.side_effect = [""]  # EOF immediately
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = "Claude error occurred"
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            pytest.raises(ClaudeError, match="Claude failed"),
+        ):
+            run_claude("test prompt", stream=True)
+
+    def test_streaming_uses_stream_json_format(self) -> None:
+        """Streaming mode uses --output-format stream-json."""
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0
+        mock_process.stdout.readline.side_effect = [""]
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+
+        with patch(
+            "weld.services.streaming.subprocess.Popen", return_value=mock_process
+        ) as mock_popen:
+            run_claude("test prompt", stream=True)
+
+        # Verify command includes stream-json format
+        call_args = mock_popen.call_args[0][0]
+        assert "--output-format" in call_args
+        assert "stream-json" in call_args
+        assert "--verbose" in call_args
+
+
+class TestExtractTextFromStreamJson:
+    """Tests for _extract_text_from_stream_json function."""
+
+    def test_assistant_message_format(self) -> None:
+        """Extracts text from assistant message format."""
+        line = '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello!"}]}}'
+        assert _extract_text_from_stream_json(line) == "Hello!"
+
+    def test_direct_content_format(self) -> None:
+        """Extracts text from direct content format."""
+        line = '{"content":[{"type":"text","text":"World!"}]}'
+        assert _extract_text_from_stream_json(line) == "World!"
+
+    def test_multiple_text_blocks(self) -> None:
+        """Joins multiple text blocks."""
+        line = '{"content":[{"type":"text","text":"Hello "},{"type":"text","text":"World!"}]}'
+        assert _extract_text_from_stream_json(line) == "Hello World!"
+
+    def test_ignores_non_text_content(self) -> None:
+        """Ignores non-text content types."""
+        line = '{"content":[{"type":"tool_use","name":"read"},{"type":"text","text":"Done"}]}'
+        assert _extract_text_from_stream_json(line) == "Done"
+
+    def test_returns_none_for_no_text(self) -> None:
+        """Returns None when no text content."""
+        line = '{"type":"system","message":"Starting..."}'
+        assert _extract_text_from_stream_json(line) is None
+
+    def test_returns_none_for_invalid_json(self) -> None:
+        """Returns None for invalid JSON."""
+        assert _extract_text_from_stream_json("not json") is None
+        assert _extract_text_from_stream_json("{invalid}") is None
+
+    def test_returns_none_for_empty_content(self) -> None:
+        """Returns None when content array is empty."""
+        line = '{"content":[]}'
+        assert _extract_text_from_stream_json(line) is None
