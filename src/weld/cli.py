@@ -31,7 +31,7 @@ from .commands.next import next_action
 from .commands.research import research_app
 from .commands.run import run_app
 from .commands.status import status
-from .logging import configure_logging
+from .logging import configure_logging, setup_debug_logging
 from .output import OutputContext, set_output_context
 
 
@@ -117,6 +117,20 @@ def main(
         no_color=no_color,
         debug=debug,
     )
+    # Setup debug file logging if in a git repo
+    if debug:
+        from .core.run_manager import get_weld_dir
+        from .services.git import GitError
+
+        try:
+            weld_dir = get_weld_dir()
+            setup_debug_logging(weld_dir, enabled=True)
+        except GitError:
+            # Not in a git repository - skip file logging
+            pass
+        except OSError:
+            # File system error (permissions, disk full, etc.) - skip file logging
+            pass
     # Create output console for user-facing messages (uses stdout)
     # Don't force terminal mode - let Rich auto-detect (tests won't have TTY)
     output_console = Console(no_color=no_color)

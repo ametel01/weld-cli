@@ -3,10 +3,17 @@
 import logging
 import sys
 from enum import IntEnum
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import TextIO
 
 from rich.console import Console
 from rich.logging import RichHandler
+
+# Debug file logging constants
+DEBUG_LOG_FILE = "debug.log"
+MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
+BACKUP_COUNT = 3
 
 
 class LogLevel(IntEnum):
@@ -70,3 +77,40 @@ def configure_logging(
     )
 
     return console
+
+
+def setup_debug_logging(weld_dir: Path, enabled: bool = False) -> None:
+    """Configure file-based debug logging.
+
+    When enabled, writes detailed debug logs to .weld/debug.log with
+    automatic rotation to prevent unbounded growth.
+
+    Args:
+        weld_dir: Path to .weld directory
+        enabled: Whether debug logging is enabled
+    """
+    if not enabled:
+        return
+
+    weld_logger = logging.getLogger("weld")
+
+    # Prevent duplicate handlers if called multiple times
+    if any(isinstance(h, RotatingFileHandler) for h in weld_logger.handlers):
+        return
+
+    # Ensure weld_dir exists before creating log file
+    weld_dir.mkdir(parents=True, exist_ok=True)
+
+    log_path = weld_dir / DEBUG_LOG_FILE
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=MAX_LOG_SIZE,
+        backupCount=BACKUP_COUNT,
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    handler.setLevel(logging.DEBUG)
+
+    weld_logger.addHandler(handler)
+    # Only lower the logger level if needed (don't override higher verbosity)
+    if weld_logger.level == logging.NOTSET or weld_logger.level > logging.DEBUG:
+        weld_logger.setLevel(logging.DEBUG)
