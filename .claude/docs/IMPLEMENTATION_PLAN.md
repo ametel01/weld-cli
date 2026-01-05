@@ -1092,7 +1092,7 @@ python -c "from weld.config import TaskType; print(TaskType.RESEARCH)"
 
 ---
 
-### 1.4 Global CLI Options
+### 1.4 Global CLI Options **COMPLETE**
 
 **File:** `src/weld/cli.py:66-108`
 
