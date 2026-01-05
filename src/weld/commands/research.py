@@ -5,10 +5,12 @@ from pathlib import Path
 import typer
 
 from ..core import (
+    create_version_snapshot,
     get_research_content,
     get_run_dir,
     get_weld_dir,
     import_research,
+    update_run_meta_version,
 )
 from ..output import get_output_context
 from ..services import GitError, get_repo_root
@@ -81,13 +83,30 @@ def research_import_cmd(
         ctx.console.print("[red]Error: Run was created with --skip-research[/red]")
         raise typer.Exit(1)
 
+    # Check if research already exists - create version snapshot
+    existing_research = research_dir / "research.md"
+    has_existing = existing_research.exists()
+
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would import research:")
         ctx.console.print(f"  Run: {run}")
         ctx.console.print(f"  File: {file}")
+        if has_existing:
+            ctx.console.print("  Previous research: would be versioned")
         ctx.console.print("\n[cyan][DRY RUN][/cyan] Would write:")
         ctx.console.print("  research/research.md")
         return
+
+    # Create version snapshot before overwriting
+    if has_existing:
+        version = create_version_snapshot(
+            research_dir,
+            "research.md",
+            trigger_reason="import",
+        )
+        ctx.console.print(f"Previous research saved as v{version}")
+        # Update run meta with new version number (next version after import)
+        update_run_meta_version(run_dir, "research", version + 1)
 
     content = file.read_text()
     import_research(research_dir, content)

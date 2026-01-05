@@ -9,6 +9,7 @@ from ..config import TaskType, load_config
 from ..core import (
     LockError,
     acquire_lock,
+    create_version_snapshot,
     generate_codex_review_prompt,
     generate_plan_prompt,
     get_research_content,
@@ -16,6 +17,7 @@ from ..core import (
     get_weld_dir,
     parse_steps,
     release_lock,
+    update_run_meta_version,
 )
 from ..models import SpecRef
 from ..output import get_output_context
@@ -130,11 +132,18 @@ def plan_import(
     plan_content = file.read_text()
     steps, warnings = parse_steps(plan_content)
 
+    # Check if plan already exists for versioning
+    plan_dir = run_dir / "plan"
+    existing_plan = plan_dir / "plan.raw.md"
+    has_existing = existing_plan.exists()
+
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would import plan:")
         ctx.console.print(f"  Run: {run}")
         ctx.console.print(f"  File: {file}")
         ctx.console.print(f"  Steps found: {len(steps)}")
+        if has_existing:
+            ctx.console.print("  Previous plan: would be versioned")
         if warnings:
             for w in warnings:
                 ctx.console.print(f"  [yellow]Warning: {w}[/yellow]")
@@ -150,6 +159,17 @@ def plan_import(
         raise typer.Exit(1) from None
 
     try:
+        # Create version snapshot before overwriting
+        if has_existing:
+            version = create_version_snapshot(
+                plan_dir,
+                "plan.raw.md",
+                trigger_reason="import",
+            )
+            ctx.console.print(f"Previous plan saved as v{version}")
+            # Update run meta with new version number (next version after import)
+            update_run_meta_version(run_dir, "plan", version + 1)
+
         # Write verbatim output
         (run_dir / "plan" / "output.md").write_text(plan_content)
 
