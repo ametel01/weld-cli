@@ -43,9 +43,38 @@ class TaskModelsConfig(BaseModel):
 
 
 class ChecksConfig(BaseModel):
-    """Configuration for checks command."""
+    """Configuration for checks command.
 
-    command: str = "echo 'No checks configured'"
+    Supports two modes:
+    1. Multi-category (preferred): Define lint/test/typecheck with order
+    2. Legacy single command: Use 'command' field (deprecated)
+    """
+
+    # Multi-category checks (preferred)
+    lint: str | None = Field(default=None, description="Lint command (e.g., 'ruff check .')")
+    test: str | None = Field(default=None, description="Test command (e.g., 'pytest tests/')")
+    typecheck: str | None = Field(default=None, description="Typecheck command (e.g., 'pyright')")
+    order: list[str] = Field(
+        default=["lint", "typecheck", "test"], description="Execution order for categories"
+    )
+
+    # Legacy single command (deprecated, for backward compatibility)
+    command: str | None = Field(
+        default=None, description="Single check command. Deprecated: use category fields instead."
+    )
+
+    def get_categories(self) -> dict[str, str]:
+        """Get enabled category commands as {name: command} dict."""
+        categories = {}
+        for name in self.order:
+            cmd = getattr(self, name, None)
+            if cmd:
+                categories[name] = cmd
+        return categories
+
+    def is_legacy_mode(self) -> bool:
+        """Return True if using deprecated single-command mode."""
+        return self.command is not None and not self.get_categories()
 
 
 class CodexConfig(BaseModel):
@@ -156,7 +185,12 @@ def write_config_template(weld_dir: Path) -> Path:
     config_path = weld_dir / "config.toml"
     template = {
         "project": {"name": "your-project"},
-        "checks": {"command": "echo 'Configure your checks command'"},
+        "checks": {
+            "lint": "ruff check .",
+            "test": "pytest tests/ -q",
+            "typecheck": "pyright",
+            "order": ["lint", "typecheck", "test"],
+        },
         "codex": {"exec": "codex", "sandbox": "read-only"},
         "claude": {
             "exec": "claude",
