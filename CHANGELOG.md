@@ -41,10 +41,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interview workflow for specification refinement
   - `weld interview` command for interactive Q&A-based spec refinement
   - `generate_interview_prompt()` for creating AI interview prompts
+- CLI Completion commands (Phase 5)
+  - `weld status` command to show current run status and next action
+  - `weld doctor` command to check environment and dependencies
+  - `weld next` command as shortcut to continue with next action
+  - `weld run abandon` subcommand to mark a run as abandoned
+  - `weld run continue` subcommand to continue a paused run
+  - `weld step skip` subcommand to mark a step as skipped
+- `OutputContext.success()` method for consistent success message formatting
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
 - `configure_logging` accepts `debug` parameter for per-invocation debug mode
+- `weld run` is now a subcommand group with `start`, `abandon`, `continue` subcommands
+- Backwards compatibility maintained: `weld run --spec` still works (routes to `run start`)
 - Checks now run with fail-fast in iteration loop, full run for review context
 - Implementation prompt displays all configured check commands
 - Status model enriched with `checks_summary` field
