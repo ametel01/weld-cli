@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import typer
-from rich.console import Console
 
 from ..config import TaskType, load_config
 from ..core import (
@@ -16,9 +15,8 @@ from ..core import (
     parse_steps,
     release_lock,
 )
+from ..output import get_output_context
 from ..services import CodexError, GitError, extract_revised_plan, get_repo_root, run_codex
-
-console = Console()
 
 
 def plan_import(
@@ -26,38 +24,51 @@ def plan_import(
     file: Path = typer.Option(..., "--file", "-f", help="Plan file from Claude"),
 ) -> None:
     """Import Claude's plan output."""
+    ctx = get_output_context()
+
     try:
         repo_root = get_repo_root()
     except GitError:
-        console.print("[red]Error: Not a git repository[/red]")
+        ctx.console.print("[red]Error: Not a git repository[/red]")
         raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
     run_dir = get_run_dir(weld_dir, run)
 
     if not run_dir.exists():
-        console.print(f"[red]Error: Run not found: {run}[/red]")
+        ctx.console.print(f"[red]Error: Run not found: {run}[/red]")
         raise typer.Exit(1)
 
     if not file.exists():
-        console.print(f"[red]Error: Plan file not found: {file}[/red]")
+        ctx.console.print(f"[red]Error: Plan file not found: {file}[/red]")
         raise typer.Exit(1)
+
+    # Parse plan to show info in dry-run mode
+    plan_content = file.read_text()
+    steps, warnings = parse_steps(plan_content)
+
+    if ctx.dry_run:
+        ctx.console.print("[cyan][DRY RUN][/cyan] Would import plan:")
+        ctx.console.print(f"  Run: {run}")
+        ctx.console.print(f"  File: {file}")
+        ctx.console.print(f"  Steps found: {len(steps)}")
+        if warnings:
+            for w in warnings:
+                ctx.console.print(f"  [yellow]Warning: {w}[/yellow]")
+        ctx.console.print("\n[cyan][DRY RUN][/cyan] Would write files:")
+        ctx.console.print("  output.md, plan.raw.md, meta.json")
+        return
 
     # Acquire lock for plan import
     try:
         acquire_lock(weld_dir, run, f"plan import --file {file}")
     except LockError as e:
-        console.print(f"[red]Error: {e}[/red]")
+        ctx.console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1) from None
 
     try:
-        plan_content = file.read_text()
-
         # Write verbatim output
         (run_dir / "plan" / "output.md").write_text(plan_content)
-
-        # Parse and validate
-        steps, warnings = parse_steps(plan_content)
 
         # Update meta with warnings
         meta_path = run_dir / "meta.json"
@@ -68,13 +79,13 @@ def plan_import(
         # Write normalized plan
         (run_dir / "plan" / "plan.raw.md").write_text(plan_content)
 
-        console.print(f"[green]Imported plan with {len(steps)} steps[/green]")
+        ctx.console.print(f"[green]Imported plan with {len(steps)} steps[/green]")
         if warnings:
             for w in warnings:
-                console.print(f"[yellow]Warning: {w}[/yellow]")
+                ctx.console.print(f"[yellow]Warning: {w}[/yellow]")
 
-        console.print("\n[bold]Next step:[/bold] Review plan with Codex:")
-        console.print(f"  weld plan review --run {run} --apply")
+        ctx.console.print("\n[bold]Next step:[/bold] Review plan with Codex:")
+        ctx.console.print(f"  weld plan review --run {run} --apply")
     finally:
         release_lock(weld_dir)
 
@@ -84,10 +95,12 @@ def plan_review(
     apply: bool = typer.Option(False, "--apply", help="Apply revised plan"),
 ) -> None:
     """Run Codex review on the plan."""
+    ctx = get_output_context()
+
     try:
         repo_root = get_repo_root()
     except GitError:
-        console.print("[red]Error: Not a git repository[/red]")
+        ctx.console.print("[red]Error: Not a git repository[/red]")
         raise typer.Exit(3) from None
 
     weld_dir = get_weld_dir(repo_root)
@@ -95,20 +108,37 @@ def plan_review(
     config = load_config(weld_dir)
 
     if not run_dir.exists():
-        console.print(f"[red]Error: Run not found: {run}[/red]")
+        ctx.console.print(f"[red]Error: Run not found: {run}[/red]")
         raise typer.Exit(1)
 
     # Load plan
     plan_raw = run_dir / "plan" / "plan.raw.md"
     if not plan_raw.exists():
-        console.print("[red]Error: No plan imported yet. Run 'weld plan import' first.[/red]")
+        ctx.console.print("[red]Error: No plan imported yet. Run 'weld plan import' first.[/red]")
         raise typer.Exit(1)
+
+    # Get model config for plan review task
+    model_cfg = config.get_task_model(TaskType.PLAN_REVIEW)
+    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+
+    if ctx.dry_run:
+        ctx.console.print("[cyan][DRY RUN][/cyan] Would run plan review:")
+        ctx.console.print(f"  Run: {run}")
+        ctx.console.print(f"  Model: {model_cfg.provider}{model_info}")
+        ctx.console.print(f"  Apply revised plan: {apply}")
+        ctx.console.print("\n[cyan][DRY RUN][/cyan] Would:")
+        ctx.console.print("  1. Generate Codex prompt")
+        ctx.console.print("  2. Run Codex review")
+        ctx.console.print("  3. Write codex.prompt.md, codex.output.md")
+        if apply:
+            ctx.console.print("  4. Extract and write plan.final.md")
+        return
 
     # Acquire lock for plan review
     try:
         acquire_lock(weld_dir, run, "plan review")
     except LockError as e:
-        console.print(f"[red]Error: {e}[/red]")
+        ctx.console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1) from None
 
     try:
@@ -118,10 +148,7 @@ def plan_review(
         codex_prompt = generate_codex_review_prompt(plan_content)
         (run_dir / "plan" / "codex.prompt.md").write_text(codex_prompt)
 
-        # Get model config for plan review task
-        model_cfg = config.get_task_model(TaskType.PLAN_REVIEW)
-        model_info = f" ({model_cfg.model})" if model_cfg.model else ""
-        console.print(f"[cyan]Running {model_cfg.provider} plan review{model_info}...[/cyan]")
+        ctx.console.print(f"[cyan]Running {model_cfg.provider} plan review{model_info}...[/cyan]")
 
         try:
             codex_output = run_codex(
@@ -136,14 +163,14 @@ def plan_review(
             if apply:
                 revised = extract_revised_plan(codex_output)
                 (run_dir / "plan" / "plan.final.md").write_text(revised)
-                console.print("[green]Revised plan saved to plan.final.md[/green]")
+                ctx.console.print("[green]Revised plan saved to plan.final.md[/green]")
 
-            console.print("[green]Plan review complete[/green]")
-            console.print("\n[bold]Next step:[/bold] Select a step to implement:")
-            console.print(f"  weld step select --run {run} --n 1")
+            ctx.console.print("[green]Plan review complete[/green]")
+            ctx.console.print("\n[bold]Next step:[/bold] Select a step to implement:")
+            ctx.console.print(f"  weld step select --run {run} --n 1")
 
         except CodexError as e:
-            console.print(f"[red]Codex error: {e}[/red]")
+            ctx.console.print(f"[red]Codex error: {e}[/red]")
             raise typer.Exit(12) from None
     finally:
         release_lock(weld_dir)

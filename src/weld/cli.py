@@ -24,7 +24,7 @@ from .commands import (
     transcript_gist,
 )
 from .logging import configure_logging
-from .output import OutputContext
+from .output import OutputContext, set_output_context
 
 
 def _version_callback(value: bool) -> None:
@@ -49,17 +49,8 @@ app.add_typer(plan_app, name="plan")
 app.add_typer(step_app, name="step")
 app.add_typer(transcript_app, name="transcript")
 
-console = Console()
-
-# Global output context
-_ctx: OutputContext | None = None
-
-
-def get_output_context() -> OutputContext:
-    """Get the current output context."""
-    if _ctx is None:
-        return OutputContext(Console())
-    return _ctx
+# Global console (initialized in main callback)
+_console: Console | None = None
 
 
 @app.callback()
@@ -95,16 +86,31 @@ def main(
         "--no-color",
         help="Disable colored output",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview effects without applying changes",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug logging for this invocation",
+    ),
 ) -> None:
     """Weld CLI - Human-in-the-loop coding harness."""
-    global _ctx
-    global console
-    console = configure_logging(
+    global _console
+    # Configure logging (uses stderr)
+    _console = configure_logging(
         verbosity=verbose,
         quiet=quiet,
         no_color=no_color,
+        debug=debug,
     )
-    _ctx = OutputContext(console=console, json_mode=json_output)
+    # Create output console for user-facing messages (uses stdout)
+    # Don't force terminal mode - let Rich auto-detect (tests won't have TTY)
+    output_console = Console(no_color=no_color)
+    ctx = OutputContext(console=output_console, json_mode=json_output, dry_run=dry_run)
+    set_output_context(ctx)
 
 
 # ============================================================================
