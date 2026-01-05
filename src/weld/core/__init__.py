@@ -7,8 +7,16 @@ This package contains pure business logic with no external I/O:
 - loop: Implement-review-fix loop runner
 - commit_handler: Commit message building and execution
 - run_manager: Run directory and metadata utilities
+- artifact_versioning: Version history for research and plan artifacts
 """
 
+from .artifact_versioning import (
+    create_version_snapshot,
+    get_current_version,
+    get_version_history,
+    restore_version,
+    update_run_meta_version,
+)
 from .commit_handler import CommitError, build_commit_message, do_commit, ensure_transcript_gist
 from .lock_manager import LockError, acquire_lock, release_lock, update_heartbeat
 from .loop import LoopResult, run_step_loop
@@ -60,6 +68,7 @@ __all__ = [
     "create_run_directory",
     "create_spec_ref",
     "create_step_directory",
+    "create_version_snapshot",
     "do_commit",
     "ensure_transcript_gist",
     "generate_codex_review_prompt",
@@ -69,10 +78,12 @@ __all__ = [
     "generate_research_prompt",
     "generate_review_prompt",
     "generate_run_id",
+    "get_current_version",
     "get_iter_dir",
     "get_research_content",
     "get_run_dir",
     "get_step_dir",
+    "get_version_history",
     "get_weld_dir",
     "hash_config",
     "hash_file",
@@ -82,9 +93,11 @@ __all__ = [
     "parse_steps_lenient",
     "parse_steps_strict",
     "release_lock",
+    "restore_version",
     "run_step_loop",
     "run_step_review",
     "sanitize_slug",
     "update_heartbeat",
+    "update_run_meta_version",
     "write_research_prompt",
 ]
