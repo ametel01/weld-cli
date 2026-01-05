@@ -159,3 +159,41 @@ def run_with_plan(initialized_weld: Path, sample_plan: str) -> tuple[Path, str]:
     (run_dir / "plan" / "plan.final.md").write_text(sample_plan)
 
     return initialized_weld, run_id
+
+
+@pytest.fixture
+def run_with_research(initialized_weld: Path) -> tuple[Path, str]:
+    """Create an initialized weld with a run and research document.
+
+    Returns tuple of (repo_root, run_id).
+    """
+    from datetime import datetime
+
+    from weld.models import Meta
+
+    weld_dir = initialized_weld / ".weld"
+    run_id = "20260104-120000-research-run"
+
+    run_dir = weld_dir / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "research").mkdir()
+    (run_dir / "plan").mkdir()
+    (run_dir / "steps").mkdir()
+    (run_dir / "inputs").mkdir()
+
+    # Create meta.json using the actual Meta model for proper format
+    meta = Meta(
+        run_id=run_id,
+        repo_root=initialized_weld,
+        branch="master",
+        head_sha="abc123",
+        config_hash="hash123",
+        created_at=datetime(2026, 1, 4, 12, 0, 0),
+    )
+    (run_dir / "meta.json").write_text(meta.model_dump_json(indent=2))
+
+    # Create research files
+    (run_dir / "research" / "research.md").write_text("# Initial Research\n\nFirst findings.")
+    (run_dir / "research" / "prompt.md").write_text("# Research Prompt\n")
+
+    return initialized_weld, run_id

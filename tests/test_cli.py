@@ -435,3 +435,147 @@ class TestErrorHandling:
         """Invalid subcommand should show error."""
         result = runner.invoke(app, ["invalid-command"])
         assert result.exit_code != 0
+
+
+class TestResearchVersioning:
+    """Tests for research import versioning."""
+
+    def test_research_import_creates_version_on_reimport(
+        self, runner: CliRunner, run_with_research: tuple[Path, str]
+    ) -> None:
+        """Re-importing research should create a version snapshot."""
+        repo_root, run_id = run_with_research
+        weld_dir = repo_root / ".weld"
+        run_dir = weld_dir / "runs" / run_id
+
+        # Create new research file to import
+        new_research = repo_root / "new_research.md"
+        new_research.write_text("# Updated Research\n\nNew findings.")
+
+        # Import new research (should version the old one)
+        result = runner.invoke(
+            app, ["research", "import", "--run", run_id, "--file", str(new_research)]
+        )
+
+        assert result.exit_code == 0
+        assert "Previous research saved as v1" in result.stdout
+
+        # Verify version was created
+        history_dir = run_dir / "research" / "history"
+        assert history_dir.exists()
+        assert (history_dir / "v1").exists()
+        assert (history_dir / "v1" / "content.md").exists()
+
+        # Verify old content was preserved
+        old_content = (history_dir / "v1" / "content.md").read_text()
+        assert "Initial Research" in old_content
+
+        # Verify new content is current
+        current = (run_dir / "research" / "research.md").read_text()
+        assert "Updated Research" in current
+
+    def test_research_import_updates_meta_version(
+        self, runner: CliRunner, run_with_research: tuple[Path, str]
+    ) -> None:
+        """Re-importing research should update research_version in meta.json."""
+        repo_root, run_id = run_with_research
+        weld_dir = repo_root / ".weld"
+        run_dir = weld_dir / "runs" / run_id
+
+        from weld.models import Meta
+
+        # Check initial version
+        meta_before = Meta.model_validate_json((run_dir / "meta.json").read_text())
+        assert meta_before.research_version == 1
+
+        # Create and import new research
+        new_research = repo_root / "new_research.md"
+        new_research.write_text("# Updated Research")
+
+        result = runner.invoke(
+            app, ["research", "import", "--run", run_id, "--file", str(new_research)]
+        )
+        assert result.exit_code == 0
+
+        # Check version was incremented
+        meta_after = Meta.model_validate_json((run_dir / "meta.json").read_text())
+        assert meta_after.research_version == 2
+
+    def test_research_import_dry_run_no_versioning(
+        self, runner: CliRunner, run_with_research: tuple[Path, str]
+    ) -> None:
+        """Dry-run research import should not create version snapshots."""
+        repo_root, run_id = run_with_research
+        weld_dir = repo_root / ".weld"
+        run_dir = weld_dir / "runs" / run_id
+
+        new_research = repo_root / "new_research.md"
+        new_research.write_text("# Updated Research")
+
+        result = runner.invoke(
+            app,
+            ["--dry-run", "research", "import", "--run", run_id, "--file", str(new_research)],
+        )
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "would be versioned" in result.stdout
+
+        # Verify no version was created
+        history_dir = run_dir / "research" / "history"
+        assert not history_dir.exists()
+
+
+class TestPlanVersioning:
+    """Tests for plan import versioning."""
+
+    def test_plan_import_creates_version_on_reimport(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str], sample_plan: str
+    ) -> None:
+        """Re-importing plan should create a version snapshot."""
+        repo_root, run_id = run_with_plan
+        weld_dir = repo_root / ".weld"
+        run_dir = weld_dir / "runs" / run_id
+
+        # Create new plan file to import
+        new_plan = repo_root / "new_plan.md"
+        new_plan.write_text("## Step 1: New Implementation\n\n### Goal\nDo new thing.\n")
+
+        # Import new plan (should version the old one)
+        result = runner.invoke(app, ["plan", "import", "--run", run_id, "--file", str(new_plan)])
+
+        assert result.exit_code == 0
+        assert "Previous plan saved as v1" in result.stdout
+
+        # Verify version was created
+        history_dir = run_dir / "plan" / "history"
+        assert history_dir.exists()
+        assert (history_dir / "v1").exists()
+        assert (history_dir / "v1" / "content.md").exists()
+
+        # Verify old content was preserved
+        old_content = (history_dir / "v1" / "content.md").read_text()
+        assert "Create hello module" in old_content  # from sample_plan
+
+    def test_plan_import_dry_run_no_versioning(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """Dry-run plan import should not create version snapshots."""
+        repo_root, run_id = run_with_plan
+        weld_dir = repo_root / ".weld"
+        run_dir = weld_dir / "runs" / run_id
+
+        new_plan = repo_root / "new_plan.md"
+        new_plan.write_text("## Step 1: New\n\n### Goal\nNew thing.\n")
+
+        result = runner.invoke(
+            app, ["--dry-run", "plan", "import", "--run", run_id, "--file", str(new_plan)]
+        )
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "would be versioned" in result.stdout
+
+        # Verify no version was created
+        history_dir = run_dir / "plan" / "history"
+        assert not history_dir.exists()
