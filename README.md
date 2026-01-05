@@ -200,6 +200,58 @@ The command:
 3. Runs Claude to create the plan
 4. Writes the result to the output file
 
+#### Plan Format
+
+Plans follow a hierarchical **Phase → Step** structure:
+
+```markdown
+## Phase 1: <Title>
+
+Brief description of what this phase accomplishes.
+
+### Phase Validation
+\`\`\`bash
+# Command(s) to verify the entire phase is complete
+\`\`\`
+
+### Step 1: <Title>
+
+#### Goal
+What this step accomplishes.
+
+#### Files
+- `path/to/file.py` - What changes to make
+
+#### Validation
+\`\`\`bash
+# Command to verify this step works
+\`\`\`
+
+#### Failure modes
+- What could go wrong and how to detect it
+
+---
+
+### Step 2: <Title>
+...
+
+## Phase 2: <Title>
+
+### Step 1: <Title>
+(Step numbers restart at 1 for each phase)
+...
+```
+
+**Phase guidelines:**
+- Each phase is a logical milestone (e.g., "Data Models", "Core Logic", "CLI Integration")
+- Phases are incremental - each builds on the foundation of previous phases
+- Include Phase Validation to verify the entire phase works before moving on
+
+**Step guidelines:**
+- Step numbers restart at 1 within each phase
+- Each step should be atomic and independently verifiable
+- Include specific file paths and validation commands
+
 ---
 
 ### `weld research <input> --output <path>`

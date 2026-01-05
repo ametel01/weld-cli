@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `weld plan` now generates plans with hierarchical Phase → Step structure
+  - Plans divided into discrete incremental phases (`## Phase N: <Title>`)
+  - Each phase contains discrete steps (`### Step N: <Title>`)
+  - Step numbers restart at 1 within each phase
+  - Added Phase Validation section for verifying entire phases
+
 ### Added
 - `--edit/-e` flag for `weld commit` to review/edit generated commit message in `$EDITOR`
 - `is_file_staged()` helper in git service for checking if specific file is staged
