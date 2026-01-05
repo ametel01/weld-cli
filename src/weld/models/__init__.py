@@ -22,15 +22,20 @@ from .lock import Lock
 from .meta import Meta, SpecRef
 from .status import CategoryResult, ChecksSummary, Status
 from .step import Step
+from .version_info import MAX_VERSIONS, CommandEvent, StaleOverride, VersionInfo
 
 __all__ = [
+    "MAX_VERSIONS",
     "CategoryResult",
     "ChecksSummary",
+    "CommandEvent",
     "Issue",
     "Issues",
     "Lock",
     "Meta",
     "SpecRef",
+    "StaleOverride",
     "Status",
     "Step",
+    "VersionInfo",
 ]

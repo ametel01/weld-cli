@@ -9,6 +9,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from .version_info import CommandEvent, StaleOverride
+
 
 class SpecRef(BaseModel):
     """Reference to the input specification file.
@@ -46,6 +48,14 @@ class Meta(BaseModel):
         config_hash: Hash of weld config for change detection.
         tool_versions: Version info for external tools (codex, claude, etc.).
         plan_parse_warnings: Warnings generated during plan parsing.
+        research_version: Current version number for research artifact.
+        plan_version: Current version number for plan artifact.
+        stale_artifacts: List of artifacts marked as stale.
+        stale_overrides: Records of user overrides of stale warnings.
+        last_used_at: Timestamp of last command execution.
+        command_history: Audit trail of command executions.
+        abandoned: Whether the run has been abandoned.
+        abandoned_at: When the run was abandoned.
     """
 
     run_id: str = Field(description="Unique run identifier")
@@ -61,3 +71,23 @@ class Meta(BaseModel):
     plan_parse_warnings: list[str] = Field(
         default_factory=list, description="Warnings from plan parsing"
     )
+
+    # Version tracking
+    research_version: int = Field(default=1, description="Current research version")
+    plan_version: int = Field(default=1, description="Current plan version")
+
+    # Staleness tracking
+    stale_artifacts: list[str] = Field(
+        default_factory=list, description="Artifacts marked as stale"
+    )
+    stale_overrides: list[StaleOverride] = Field(
+        default_factory=list, description="User overrides of stale warnings"
+    )
+
+    # Run state
+    last_used_at: datetime | None = Field(default=None, description="Last command execution")
+    command_history: list[CommandEvent] = Field(
+        default_factory=list, description="Command execution history"
+    )
+    abandoned: bool = Field(default=False, description="Whether run is abandoned")
+    abandoned_at: datetime | None = Field(default=None, description="When run was abandoned")
