@@ -7,99 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Global `--dry-run` option for previewing effects without applying changes
-- Global `--debug` option for enabling debug logging on a per-invocation basis
-- New TaskType values: `DISCOVER`, `INTERVIEW`, `RESEARCH`, `RESEARCH_REVIEW` for brownfield and research workflows
-- TaskModelsConfig fields for new workflow phases with sensible defaults (generative → claude, review → codex)
-- Multi-category checks configuration with separate `lint`, `test`, `typecheck` commands
-- Run locking to prevent concurrent modifications to the same weld project
-- PID-based lock files with stale lock detection and automatic cleanup
-- Heartbeat updates during long-running operations to prevent false stale detection
-- Configurable execution order for check categories
-- Per-category output files in `checks/` subdirectory
-- `checks.summary.json` with aggregated results and first-failure tracking
-- `CategoryResult` and `ChecksSummary` Pydantic models for structured check results
-- Research phase: new `research/` directory in run structure for research-first workflow
-- `weld run --skip-research` flag to bypass research phase and generate plan directly
-- `weld research` command group with `prompt`, `import`, and `show` subcommands
-- `generate_research_prompt()` for creating AI research prompts from specifications
-- Research processor module (`core/research_processor.py`) for research artifact management
-- `weld plan prompt` command to generate plan prompt incorporating research findings
-- `generate_plan_prompt()` now accepts optional `research_content` parameter
-- Artifact versioning with history tracking for research and plan documents
-- `VersionInfo`, `StaleOverride`, `CommandEvent` models for version metadata
-- `create_version_snapshot()`, `get_version_history()`, `restore_version()` functions
-- Automatic version pruning (keeps last 5 versions per artifact)
-- Version snapshots stored in `history/v<N>/` with content.md and meta.json
-- Research and plan import commands now create version snapshots before overwriting
-- Discover workflow for brownfield codebase analysis
-  - `weld discover prompt` generates architecture analysis prompts
-  - `weld discover show` displays generated prompts
-  - `weld discover list` lists all discover artifacts
-  - `DiscoverMeta` model for tracking discover artifact lineage
-- Interview workflow for specification refinement
-  - `weld interview` command for interactive Q&A-based spec refinement
-  - `generate_interview_prompt()` for creating AI interview prompts
-- CLI Completion commands (Phase 5)
-  - `weld status` command to show current run status and next action
-  - `weld doctor` command to check environment and dependencies
-  - `weld next` command as shortcut to continue with next action
-  - `weld run abandon` subcommand to mark a run as abandoned
-  - `weld run continue` subcommand to continue a paused run
-  - `weld step skip` subcommand to mark a step as skipped
-- `OutputContext.success()` method for consistent success message formatting
-- File-based debug logging with rotation (writes to `.weld/debug.log` when `--debug` flag is used)
-- JSON schema versioning: all JSON output now wrapped with `{"schema_version": 1, "data": {...}}`
-- `Timing` model for per-phase performance tracking (ai_invocation_ms, checks_ms, review_ms, total_ms)
-- `HEARTBEAT_INTERVAL_SECONDS` constant (60s) for heartbeat update frequency in long operations
-- `OutputContext.error()` now accepts optional `next_action` parameter for recovery hints
-- Streaming output support for AI service invocations
-  - Shared `run_streaming_subprocess()` utility for line-buffered output with timeout handling
-  - Claude service: `stream` parameter with `--output-format stream-json` support
-  - Codex service: `stream` parameter with `--json` JSONL output support
-  - Review loop: streaming enabled by default for real-time feedback
-  - CLI `--quiet` flag on `step review`, `step loop`, `plan review`, and `discover` commands
-- Direct Claude execution in discover command
-  - `weld discover --output <path>` runs Claude directly with streaming output
-  - `--prompt-only` flag for manual prompt-copy workflow
-  - Discover runs now tracked in `weld status`
-- Comprehensive discover prompt template (12 sections including security, performance, APIs)
-- Makefile `bin-install` and `bin-uninstall` targets for global CLI installation via `uv tool`
-- Unified `weld review` command for document validation against codebase
-  - Reviews markdown docs for errors, missing implementations, gaps, wrong evaluations
-  - `--apply` mode corrects documents in place (saves original to .weld/reviews/)
-  - `--prompt-only` generates prompt for manual Claude invocation
-  - `--quiet` suppresses streaming output
-  - Replaces `weld plan review` and `weld step review` subcommands
-
 ### Changed
-- `weld interview` now outputs a prompt for Claude Code instead of stdin/stdout Q&A loop
-  - AI uses `AskUserQuestion` tool for in-depth questioning
-  - Covers implementation, UI/UX, edge cases, tradeoffs, security
-  - Rewrites the specification in place when interview is complete
-- `OutputContext` now includes `dry_run` field for command dry-run support
-- `configure_logging` accepts `debug` parameter for per-invocation debug mode
-- `weld run` is now a subcommand group with `start`, `abandon`, `continue` subcommands
-- Backwards compatibility maintained: `weld run --spec` still works (routes to `run start`)
-- Checks now run with fail-fast in iteration loop, full run for review context
-- Implementation prompt displays all configured check commands
-- Status model enriched with `checks_summary` field
-- `weld run` now defaults to research-first mode, generating research prompt instead of plan prompt
-- `create_run_directory()` accepts optional `skip_research` parameter
-- `Meta` model extended with version tracking fields (`research_version`, `plan_version`, `stale_artifacts`, etc.)
+- **Major simplification**: Removed run-centric architecture in favor of lightweight prompt-based workflow
+  - Weld now focuses on generating prompts for Claude Code rather than managing runs/steps
+  - Commands generate prompts that users paste into Claude Code for execution
+  - History tracking via simple JSONL files per command type
+- Simplified CLI to 8 focused commands: `init`, `commit`, `plan`, `research`, `discover`, `interview`, `review`, `doctor`
+- `weld plan` now generates a plan prompt directly (no subcommands)
+- `weld research` now generates a research prompt directly (no subcommands)
+- `weld discover` now a command group with `prompt` and `show` subcommands
+- Claude service rewritten with proper `select()`-based streaming and timeout handling
+- Reduced models to just `DiscoverMeta`, `Issue`, and `Issues`
 
-### Deprecated
-- Single-command `checks.command` field (use category fields instead)
-- Flat `checks_exit_code` in Status (use `checks_summary.get_exit_code()`)
-- `weld plan review` subcommand (use `weld review` instead)
-- `weld step review` subcommand (use `weld review` instead)
+### Added
+- `core/history.py`: Lightweight JSONL-based command history tracking
+  - `HistoryEntry` model with timestamp, input, and output paths
+  - `log_command()`, `read_history()`, `prune_history()` functions
+  - Per-command history files in `.weld/<command>/history.jsonl`
+- `core/weld_dir.py`: Simple `.weld` directory path resolution
+- Proper error handling in commit command for git failures
+- Weld initialization checks in plan, research, and discover commands
+- Comprehensive test coverage for new history and weld_dir modules
+
+### Removed
+- Run-centric workflow and all associated infrastructure:
+  - Commands: `run`, `step`, `status`, `next`, `list`
+  - Core modules: `run_manager`, `step_processor`, `loop`, `review_engine`, `plan_parser`, `commit_handler`, `lock_manager`, `artifact_versioning`, `research_processor`
+  - Models: `Meta`, `Step`, `Status`, `Lock`, `Timing`, `VersionInfo`, `StaleOverride`, `CommandEvent`, `CategoryResult`, `ChecksSummary`
+  - Services: `codex`, `checks`, `diff`, `streaming`
+- Plan subcommands (`import`, `export`, `show`, `prompt`, `review`)
+- Research subcommands (`prompt`, `import`, `show`)
+- Step subcommands (`select`, `loop`, `review`, `skip`)
+- Run subcommands (`start`, `abandon`, `continue`)
+- Multi-category checks configuration
+- Run locking and heartbeat tracking
+- Artifact versioning with history snapshots
+- Codex CLI integration (now Claude-only)
+- TaskType enum and per-task model selection
 
 ### Fixed
-- AI preamble no longer included in generated documents
-  - Added `strip_preamble()` utility to remove AI thinking/analysis before markdown content
-  - Applied to `weld discover` and `weld review --apply` commands
-  - Documents now start cleanly with their first markdown element (heading, frontmatter, etc.)
+- Claude streaming now properly handles timeouts using `select()` instead of blocking reads
+- Commit command catches `GitError` and reports failures gracefully
+- Discover command no longer silently swallows exceptions
+- History reading handles empty files and whitespace-only content
+- Commands verify weld is initialized before accessing `.weld` directory
 
 ## [0.1.0] - 2026-01-04
 
