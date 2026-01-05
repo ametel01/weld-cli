@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `weld run continue` subcommand to continue a paused run
   - `weld step skip` subcommand to mark a step as skipped
 - `OutputContext.success()` method for consistent success message formatting
+- File-based debug logging with rotation (writes to `.weld/debug.log` when `--debug` flag is used)
+- JSON schema versioning: all JSON output now wrapped with `{"schema_version": 1, "data": {...}}`
+- `Timing` model for per-phase performance tracking (ai_invocation_ms, checks_ms, review_ms, total_ms)
+- `HEARTBEAT_INTERVAL_SECONDS` constant (60s) for heartbeat update frequency in long operations
+- `OutputContext.error()` now accepts optional `next_action` parameter for recovery hints
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
