@@ -23,6 +23,7 @@ from .lock import Lock
 from .meta import Meta, SpecRef
 from .status import CategoryResult, ChecksSummary, Status
 from .step import Step
+from .timing import Timing
 from .version_info import MAX_VERSIONS, CommandEvent, StaleOverride, VersionInfo
 
 __all__ = [
@@ -39,5 +40,6 @@ __all__ = [
     "StaleOverride",
     "Status",
     "Step",
+    "Timing",
     "VersionInfo",
 ]
