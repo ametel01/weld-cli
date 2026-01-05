@@ -38,6 +38,8 @@ class TestHelpCommand:
         assert "run" in result.stdout
         assert "plan" in result.stdout
         assert "research" in result.stdout
+        assert "discover" in result.stdout
+        assert "interview" in result.stdout
         assert "step" in result.stdout
         assert "commit" in result.stdout
         assert "list" in result.stdout
@@ -579,3 +581,174 @@ class TestPlanVersioning:
         # Verify no version was created
         history_dir = run_dir / "plan" / "history"
         assert not history_dir.exists()
+
+
+class TestDiscoverCommands:
+    """Tests for weld discover subcommands."""
+
+    def test_discover_help(self, runner: CliRunner) -> None:
+        """discover --help should list subcommands."""
+        result = runner.invoke(app, ["discover", "--help"])
+        assert result.exit_code == 0
+        assert "prompt" in result.stdout
+        assert "list" in result.stdout
+        assert "show" in result.stdout
+
+    def test_discover_prompt_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """discover prompt should fail when not in a git repository."""
+        original = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(app, ["discover", "prompt", "--output", "out.md"])
+            assert result.exit_code == 3
+            assert "Not a git repository" in result.stdout
+        finally:
+            os.chdir(original)
+
+    def test_discover_prompt_creates_artifact(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """discover prompt should create discover artifact with prompt.md and meta.json."""
+        result = runner.invoke(app, ["discover", "prompt", "--output", "arch.md"])
+        assert result.exit_code == 0
+        assert "Discover prompt written to" in result.stdout
+        assert "prompt.md" in result.stdout
+
+        # Verify discover directory was created
+        discover_dir = initialized_weld / ".weld" / "discover"
+        assert discover_dir.exists()
+        artifacts = list(discover_dir.iterdir())
+        assert len(artifacts) == 1
+
+        artifact_dir = artifacts[0]
+        # Verify both prompt.md and meta.json exist
+        assert (artifact_dir / "prompt.md").exists()
+        assert (artifact_dir / "meta.json").exists()
+
+        # Verify meta.json has expected structure
+        import json
+
+        meta = json.loads((artifact_dir / "meta.json").read_text())
+        assert "discover_id" in meta
+        assert "config_hash" in meta
+        assert meta["output_path"] == "arch.md"
+        assert meta["partial"] is False
+
+    def test_discover_prompt_with_focus(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover prompt --focus should include focus in prompt."""
+        result = runner.invoke(
+            app, ["discover", "prompt", "--output", "arch.md", "--focus", "API layer"]
+        )
+        assert result.exit_code == 0
+
+        # Check prompt content
+        discover_dir = initialized_weld / ".weld" / "discover"
+        artifacts = list(discover_dir.iterdir())
+        prompt_content = (artifacts[0] / "prompt.md").read_text()
+        assert "API layer" in prompt_content
+
+    def test_discover_prompt_dry_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover prompt --dry-run should not create artifacts."""
+        result = runner.invoke(app, ["--dry-run", "discover", "prompt", "--output", "arch.md"])
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+
+        # Verify no discover directory was created
+        discover_dir = initialized_weld / ".weld" / "discover"
+        assert not discover_dir.exists()
+
+    def test_discover_list_empty(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover list should show message when no artifacts exist."""
+        result = runner.invoke(app, ["discover", "list"])
+        assert result.exit_code == 0
+        assert "No discover artifacts found" in result.stdout
+
+    def test_discover_list_with_artifacts(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover list should show existing artifacts with their IDs."""
+        # Create a discover artifact
+        runner.invoke(app, ["discover", "prompt", "--output", "out.md"])
+
+        result = runner.invoke(app, ["discover", "list"])
+        assert result.exit_code == 0
+        assert "Discover artifacts:" in result.stdout
+
+        # Verify the artifact ID format is shown (YYYYMMDD-HHMMSS-discover)
+        import re
+
+        assert re.search(r"\d{8}-\d{6}-discover", result.stdout) is not None
+        # Verify status indicator is shown
+        assert "ready" in result.stdout.lower()
+
+    def test_discover_show_missing(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover show should fail when no artifacts exist."""
+        result = runner.invoke(app, ["discover", "show"])
+        assert result.exit_code == 1
+        assert "No discover artifacts found" in result.stdout
+
+    def test_discover_show_displays_prompt(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover show should display prompt content."""
+        # Create a discover artifact
+        runner.invoke(app, ["discover", "prompt", "--output", "out.md"])
+
+        result = runner.invoke(app, ["discover", "show"])
+        assert result.exit_code == 0
+        assert "High-Level Architecture" in result.stdout
+
+
+class TestInterviewCommand:
+    """Tests for weld interview command."""
+
+    def test_interview_help(self, runner: CliRunner) -> None:
+        """interview --help should show usage."""
+        result = runner.invoke(app, ["interview", "--help"])
+        assert result.exit_code == 0
+        assert "file" in result.stdout.lower()
+        assert "focus" in result.stdout.lower()
+
+    def test_interview_file_not_found(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """interview should fail when file doesn't exist."""
+        result = runner.invoke(app, ["interview", "nonexistent.md"])
+        assert result.exit_code == 1
+        assert "File not found" in result.stdout
+
+    def test_interview_non_markdown_warning(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """interview should warn for non-markdown files."""
+        # Create a non-markdown file
+        txt_file = initialized_weld / "spec.txt"
+        txt_file.write_text("Some content")
+
+        # Run with input that immediately quits
+        result = runner.invoke(app, ["interview", str(txt_file)], input="quit\n")
+        assert result.exit_code == 0
+        assert "not markdown" in result.stdout.lower()
+
+    def test_interview_dry_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """interview --dry-run should not modify file."""
+        spec_file = initialized_weld / "spec.md"
+        original_content = "# My Spec\n\nOriginal content."
+        spec_file.write_text(original_content)
+
+        result = runner.invoke(app, ["--dry-run", "interview", str(spec_file)])
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        # File should be unchanged
+        assert spec_file.read_text() == original_content
+
+    def test_interview_records_answers(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """interview should record answers and modify document."""
+        spec_file = initialized_weld / "spec.md"
+        spec_file.write_text("# My Spec")
+
+        # Provide an answer then quit with save
+        result = runner.invoke(
+            app,
+            ["interview", str(spec_file)],
+            input="This is my answer\nquit\ny\n",
+        )
+        assert result.exit_code == 0
+
+        content = spec_file.read_text()
+        assert "This is my answer" in content
+        assert "## Interview Notes" in content

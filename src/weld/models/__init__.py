@@ -17,6 +17,7 @@ Example:
     >>> step.model_dump_json()
 """
 
+from .discover import DiscoverMeta
 from .issues import Issue, Issues
 from .lock import Lock
 from .meta import Meta, SpecRef
@@ -29,6 +30,7 @@ __all__ = [
     "CategoryResult",
     "ChecksSummary",
     "CommandEvent",
+    "DiscoverMeta",
     "Issue",
     "Issues",
     "Lock",

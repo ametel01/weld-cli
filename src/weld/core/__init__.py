@@ -8,6 +8,8 @@ This package contains pure business logic with no external I/O:
 - commit_handler: Commit message building and execution
 - run_manager: Run directory and metadata utilities
 - artifact_versioning: Version history for research and plan artifacts
+- discover_engine: Codebase discovery prompt generation
+- interview_engine: Interactive specification refinement
 """
 
 from .artifact_versioning import (
@@ -18,6 +20,8 @@ from .artifact_versioning import (
     update_run_meta_version,
 )
 from .commit_handler import CommitError, build_commit_message, do_commit, ensure_transcript_gist
+from .discover_engine import generate_discover_prompt, get_discover_dir
+from .interview_engine import generate_interview_prompt, run_interview_loop
 from .lock_manager import LockError, acquire_lock, release_lock, update_heartbeat
 from .loop import LoopResult, run_step_loop
 from .plan_parser import (
@@ -72,13 +76,16 @@ __all__ = [
     "do_commit",
     "ensure_transcript_gist",
     "generate_codex_review_prompt",
+    "generate_discover_prompt",
     "generate_fix_prompt",
     "generate_impl_prompt",
+    "generate_interview_prompt",
     "generate_plan_prompt",
     "generate_research_prompt",
     "generate_review_prompt",
     "generate_run_id",
     "get_current_version",
+    "get_discover_dir",
     "get_iter_dir",
     "get_research_content",
     "get_run_dir",
@@ -94,6 +101,7 @@ __all__ = [
     "parse_steps_strict",
     "release_lock",
     "restore_version",
+    "run_interview_loop",
     "run_step_loop",
     "run_step_review",
     "sanitize_slug",
