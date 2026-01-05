@@ -16,17 +16,21 @@ from .commands import (
     plan_import,
     plan_prompt,
     plan_review,
-    run_start,
     step_fix_prompt,
     step_loop,
     step_review_cmd,
     step_select,
+    step_skip,
     step_snapshot,
     transcript_gist,
 )
 from .commands.discover import discover_app
+from .commands.doctor import doctor
 from .commands.interview import interview
+from .commands.next import next_action
 from .commands.research import research_app
+from .commands.run import run_app
+from .commands.status import status
 from .logging import configure_logging
 from .output import OutputContext, set_output_context
 
@@ -52,6 +56,7 @@ transcript_app = typer.Typer(help="Transcript management commands")
 app.add_typer(discover_app, name="discover")
 app.add_typer(plan_app, name="plan")
 app.add_typer(research_app, name="research")
+app.add_typer(run_app, name="run")
 app.add_typer(step_app, name="step")
 app.add_typer(transcript_app, name="transcript")
 
@@ -125,10 +130,12 @@ def main(
 
 # Top-level commands
 app.command()(init)
-app.command("run")(run_start)
 app.command()(commit)
 app.command()(interview)
 app.command("list")(list_runs_cmd)
+app.command()(status)
+app.command()(doctor)
+app.command("next")(next_action)
 
 # Plan subcommands
 plan_app.command("prompt")(plan_prompt)
@@ -141,6 +148,7 @@ step_app.command("snapshot")(step_snapshot)
 step_app.command("review")(step_review_cmd)
 step_app.command("fix-prompt")(step_fix_prompt)
 step_app.command("loop")(step_loop)
+step_app.command("skip")(step_skip)
 
 # Transcript subcommands
 transcript_app.command("gist")(transcript_gist)

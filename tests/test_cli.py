@@ -752,3 +752,338 @@ class TestInterviewCommand:
         content = spec_file.read_text()
         assert "This is my answer" in content
         assert "## Interview Notes" in content
+
+
+class TestStatusCommand:
+    """Tests for weld status command."""
+
+    def test_status_help(self, runner: CliRunner) -> None:
+        """status --help should show usage."""
+        result = runner.invoke(app, ["status", "--help"])
+        assert result.exit_code == 0
+        assert "--run" in result.stdout
+
+    def test_status_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """status should fail when not in a git repository."""
+        original = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(app, ["status"])
+            assert result.exit_code == 3
+            assert "Not a git repository" in result.stdout
+        finally:
+            os.chdir(original)
+
+    def test_status_no_runs(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """status should show error when no runs exist."""
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 1
+        assert "No runs found" in result.stdout
+
+    def test_status_nonexistent_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """status should show error for nonexistent run."""
+        result = runner.invoke(app, ["status", "--run", "nonexistent"])
+        assert result.exit_code == 1
+        assert "Run not found" in result.stdout
+
+    def test_status_shows_run_info(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """status should show run information."""
+        _repo_root, run_id = run_with_plan
+        result = runner.invoke(app, ["status", "--run", run_id])
+        assert result.exit_code == 0
+        assert run_id in result.stdout
+        assert "Branch:" in result.stdout
+
+    def test_status_shows_next_step_with_correct_syntax(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """status should show correct next command with --n parameter."""
+        repo_root, run_id = run_with_plan
+        # Set up steps directory with an incomplete step
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        steps_dir.mkdir(exist_ok=True)
+        (steps_dir / "01-create-hello-module").mkdir()
+
+        result = runner.invoke(app, ["status", "--run", run_id])
+        assert result.exit_code == 0
+        # Verify correct syntax: --n 1, not --step 01-create-hello-module
+        assert "--n 1" in result.stdout
+        assert "--step" not in result.stdout
+
+
+class TestDoctorCommand:
+    """Tests for weld doctor command."""
+
+    def test_doctor_help(self, runner: CliRunner) -> None:
+        """doctor --help should show usage."""
+        result = runner.invoke(app, ["doctor", "--help"])
+        assert result.exit_code == 0
+
+    def test_doctor_shows_tools(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """doctor should show required and optional tools."""
+        result = runner.invoke(app, ["doctor"])
+        # May pass or fail depending on tools, but should run
+        assert "Required Tools" in result.stdout
+        assert "Optional Tools" in result.stdout
+        assert "git" in result.stdout
+
+    def test_doctor_json_output(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """doctor with --json should output structured JSON."""
+        import json
+
+        result = runner.invoke(app, ["--json", "doctor"])
+        # In JSON mode, output should be valid JSON
+        output = result.stdout.strip()
+
+        # Parse the entire output as JSON
+        data = json.loads(output)
+        assert "success" in data or "error" in data
+        assert "required" in data
+        assert "optional" in data
+        # Verify structure of required tools
+        assert "git" in data["required"]
+        assert "available" in data["required"]["git"]
+
+
+class TestNextCommand:
+    """Tests for weld next command."""
+
+    def test_next_help(self, runner: CliRunner) -> None:
+        """next --help should show usage."""
+        result = runner.invoke(app, ["next", "--help"])
+        assert result.exit_code == 0
+
+    def test_next_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """next should fail when not in a git repository."""
+        original = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(app, ["next"])
+            assert result.exit_code == 3
+            assert "Not a git repository" in result.stdout
+        finally:
+            os.chdir(original)
+
+    def test_next_no_runs(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """next should show message when no runs exist."""
+        result = runner.invoke(app, ["next"])
+        assert result.exit_code == 0
+        # May show either "No runs found" or "No active runs found"
+        assert "No" in result.stdout and "runs" in result.stdout
+
+    def test_next_shows_status(self, runner: CliRunner, run_with_plan: tuple[Path, str]) -> None:
+        """next should show status of most recent run."""
+        _repo_root, run_id = run_with_plan
+        result = runner.invoke(app, ["next"])
+        assert result.exit_code == 0
+        # Should show run info (delegates to status)
+        assert run_id in result.stdout
+
+
+class TestRunSubcommands:
+    """Tests for weld run subcommands."""
+
+    def test_run_help(self, runner: CliRunner) -> None:
+        """run --help should list subcommands."""
+        result = runner.invoke(app, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "start" in result.stdout
+        assert "abandon" in result.stdout
+        assert "continue" in result.stdout
+
+    def test_run_no_args_shows_help(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """run with no args should show help."""
+        result = runner.invoke(app, ["run"])
+        assert result.exit_code == 0
+        assert "Run management commands" in result.stdout
+        assert "start" in result.stdout
+
+    def test_run_abandon_nonexistent(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """run abandon should fail for nonexistent run."""
+        result = runner.invoke(app, ["run", "abandon", "--run", "nonexistent", "--force"])
+        assert result.exit_code == 1
+        assert "Run not found" in result.stdout
+
+    def test_run_abandon_marks_as_abandoned(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """run abandon should mark run as abandoned."""
+        from weld.models import Meta
+
+        repo_root, run_id = run_with_plan
+        result = runner.invoke(app, ["run", "abandon", "--run", run_id, "--force"])
+        assert result.exit_code == 0
+        assert "abandoned" in result.stdout.lower()
+
+        # Verify meta was updated
+        meta_path = repo_root / ".weld" / "runs" / run_id / "meta.json"
+        meta = Meta.model_validate_json(meta_path.read_text())
+        assert meta.abandoned is True
+        assert meta.abandoned_at is not None
+
+    def test_run_abandon_already_abandoned(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """run abandon should handle already abandoned run."""
+        _repo_root, run_id = run_with_plan
+        # Abandon once
+        runner.invoke(app, ["run", "abandon", "--run", run_id, "--force"])
+        # Try again
+        result = runner.invoke(app, ["run", "abandon", "--run", run_id, "--force"])
+        assert result.exit_code == 0
+        assert "already abandoned" in result.stdout.lower()
+
+    def test_run_continue_nonexistent(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """run continue should fail when no active runs."""
+        result = runner.invoke(app, ["run", "continue"])
+        assert result.exit_code == 1
+        assert "No runs found" in result.stdout or "No active runs" in result.stdout
+
+    def test_run_continue_shows_status(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """run continue should show status of run."""
+        _repo_root, run_id = run_with_plan
+        result = runner.invoke(app, ["run", "continue", "--run", run_id])
+        assert result.exit_code == 0
+        assert run_id in result.stdout
+
+
+class TestStepSkipCommand:
+    """Tests for weld step skip command."""
+
+    def test_step_skip_help(self, runner: CliRunner) -> None:
+        """step skip --help should show usage."""
+        result = runner.invoke(app, ["step", "skip", "--help"])
+        assert result.exit_code == 0
+        assert "--run" in result.stdout
+        assert "--n" in result.stdout
+        assert "--reason" in result.stdout
+
+    def test_step_skip_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """step skip should fail when not in a git repository."""
+        original = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(
+                app, ["step", "skip", "--run", "test", "--n", "1", "--reason", "test"]
+            )
+            assert result.exit_code == 3
+            assert "Not a git repository" in result.stdout
+        finally:
+            os.chdir(original)
+
+    def test_step_skip_nonexistent_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """step skip should fail for nonexistent run."""
+        result = runner.invoke(
+            app, ["step", "skip", "--run", "nonexistent", "--n", "1", "--reason", "test"]
+        )
+        assert result.exit_code == 1
+        assert "Run not found" in result.stdout
+
+    def test_step_skip_no_steps(self, runner: CliRunner, run_with_plan: tuple[Path, str]) -> None:
+        """step skip should fail when no steps directory exists."""
+        repo_root, run_id = run_with_plan
+        # Ensure steps directory doesn't exist or is empty
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        if steps_dir.exists():
+            import shutil
+
+            shutil.rmtree(steps_dir)
+
+        result = runner.invoke(
+            app, ["step", "skip", "--run", run_id, "--n", "1", "--reason", "test"]
+        )
+        assert result.exit_code == 1
+        assert "No steps found" in result.stdout
+
+    def test_step_skip_nonexistent_step(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """step skip should fail for nonexistent step number."""
+        repo_root, run_id = run_with_plan
+        # Create steps dir with step 1 only
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        steps_dir.mkdir(exist_ok=True)
+        (steps_dir / "01-setup").mkdir()
+
+        result = runner.invoke(
+            app, ["step", "skip", "--run", run_id, "--n", "99", "--reason", "test"]
+        )
+        assert result.exit_code == 1
+        assert "Step 99 not found" in result.stdout
+
+    def test_step_skip_marks_as_skipped(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """step skip should create skip marker file."""
+        repo_root, run_id = run_with_plan
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        steps_dir.mkdir(exist_ok=True)
+        step_dir = steps_dir / "01-setup"
+        step_dir.mkdir()
+
+        result = runner.invoke(
+            app, ["step", "skip", "--run", run_id, "--n", "1", "--reason", "Not needed"]
+        )
+        assert result.exit_code == 0
+        assert "skipped" in result.stdout.lower()
+
+        # Verify skip marker was created
+        skip_marker = step_dir / "skipped"
+        assert skip_marker.exists()
+        assert skip_marker.read_text() == "Not needed"
+
+    def test_step_skip_already_skipped(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """step skip should handle already skipped step."""
+        repo_root, run_id = run_with_plan
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        steps_dir.mkdir(exist_ok=True)
+        step_dir = steps_dir / "01-setup"
+        step_dir.mkdir()
+        (step_dir / "skipped").write_text("Previous reason")
+
+        result = runner.invoke(
+            app, ["step", "skip", "--run", run_id, "--n", "1", "--reason", "New reason"]
+        )
+        assert result.exit_code == 0
+        assert "already skipped" in result.stdout.lower()
+
+    def test_step_skip_already_completed(
+        self, runner: CliRunner, run_with_plan: tuple[Path, str]
+    ) -> None:
+        """step skip should handle already completed step."""
+        repo_root, run_id = run_with_plan
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        steps_dir.mkdir(exist_ok=True)
+        step_dir = steps_dir / "01-setup"
+        step_dir.mkdir()
+        (step_dir / "completed").write_text("")
+
+        result = runner.invoke(
+            app, ["step", "skip", "--run", run_id, "--n", "1", "--reason", "test"]
+        )
+        assert result.exit_code == 0
+        assert "already completed" in result.stdout.lower()
+
+    def test_step_skip_dry_run(self, runner: CliRunner, run_with_plan: tuple[Path, str]) -> None:
+        """step skip --dry-run should not create marker."""
+        repo_root, run_id = run_with_plan
+        steps_dir = repo_root / ".weld" / "runs" / run_id / "steps"
+        steps_dir.mkdir(exist_ok=True)
+        step_dir = steps_dir / "01-setup"
+        step_dir.mkdir()
+
+        result = runner.invoke(
+            app,
+            ["--dry-run", "step", "skip", "--run", run_id, "--n", "1", "--reason", "test"],
+        )
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+
+        # Verify no skip marker was created
+        assert not (step_dir / "skipped").exists()

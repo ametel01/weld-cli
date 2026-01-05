@@ -412,3 +412,60 @@ def step_loop(
             raise typer.Exit(10)
     finally:
         release_lock(weld_dir)
+
+
+def step_skip(
+    run: str = typer.Option(..., "--run", "-r", help="Run ID"),
+    n: int = typer.Option(..., "--n", help="Step number"),
+    reason: str = typer.Option(..., "--reason", help="Reason for skipping"),
+) -> None:
+    """Mark a step as skipped."""
+    ctx = get_output_context()
+
+    try:
+        repo_root = get_repo_root()
+    except GitError:
+        ctx.error("Not a git repository")
+        raise typer.Exit(3) from None
+
+    weld_dir = get_weld_dir(repo_root)
+    run_dir = get_run_dir(weld_dir, run)
+
+    if not run_dir.exists():
+        ctx.error(f"Run not found: {run}")
+        raise typer.Exit(1) from None
+
+    steps_dir = run_dir / "steps"
+
+    if not steps_dir.exists():
+        ctx.error("No steps found for this run")
+        raise typer.Exit(1) from None
+
+    # Find step directory
+    step_dirs = [d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")]
+
+    if not step_dirs:
+        ctx.error(f"Step {n} not found")
+        raise typer.Exit(1) from None
+
+    step_dir = step_dirs[0]
+
+    # Check if already completed or skipped
+    if (step_dir / "completed").exists():
+        ctx.console.print(f"[yellow]Step {n} is already completed[/yellow]")
+        return
+
+    if (step_dir / "skipped").exists():
+        ctx.console.print(f"[yellow]Step {n} is already skipped[/yellow]")
+        return
+
+    if ctx.dry_run:
+        ctx.console.print(f"[cyan][DRY RUN][/cyan] Would skip step {n}")
+        ctx.console.print(f"  Reason: {reason}")
+        return
+
+    # Write skip marker
+    skip_path = step_dir / "skipped"
+    skip_path.write_text(reason)
+
+    ctx.success(f"Step {n} marked as skipped: {reason}")

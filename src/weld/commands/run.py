@@ -1,5 +1,6 @@
 """Run command implementation."""
 
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -13,13 +14,46 @@ from ..core import (
     generate_plan_prompt,
     generate_research_prompt,
     generate_run_id,
+    get_run_dir,
     get_weld_dir,
     write_research_prompt,
 )
+from ..models import Meta
 from ..output import get_output_context
 from ..services import GitError, get_repo_root
 
+# Subcommand group for run operations
+run_app = typer.Typer(
+    help="Run management commands",
+    invoke_without_command=True,
+)
 
+
+@run_app.callback()
+def run_callback(
+    ctx: typer.Context,
+    spec: Path | None = typer.Option(None, "--spec", "-s", help="Path to spec file"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Run name slug"),
+    skip_research: bool = typer.Option(
+        False,
+        "--skip-research",
+        help="Skip research phase, generate plan directly",
+    ),
+) -> None:
+    """Run management commands. Use --spec to start a new run."""
+    if ctx.invoked_subcommand is None:
+        if spec is not None:
+            # Backwards compatibility: weld run --spec works like weld run start --spec
+            run_start(spec=spec, name=name, skip_research=skip_research)
+        else:
+            # No subcommand and no --spec: show help
+            import click
+
+            click.echo(ctx.get_help())
+            raise typer.Exit(0)
+
+
+@run_app.command("start")
 def run_start(
     spec: Path = typer.Option(..., "--spec", "-s", help="Path to spec file"),
     name: str | None = typer.Option(None, "--name", "-n", help="Run name slug"),
@@ -126,3 +160,84 @@ def run_start(
         ctx.console.print(f"  1. Copy prompt to {model_cfg.provider}")
         ctx.console.print("  2. Save response as research.md")
         ctx.console.print(f"  3. Run: weld research import --run {run_id} --file research.md")
+
+
+@run_app.command("abandon")
+def run_abandon(
+    run: str = typer.Option(..., "--run", "-r", help="Run ID to abandon"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+) -> None:
+    """Mark a run as abandoned."""
+    ctx = get_output_context()
+
+    try:
+        repo_root = get_repo_root()
+    except GitError:
+        ctx.error("Not a git repository")
+        raise typer.Exit(3) from None
+
+    weld_dir = get_weld_dir(repo_root)
+    run_dir = get_run_dir(weld_dir, run)
+    meta_path = run_dir / "meta.json"
+
+    if not meta_path.exists():
+        ctx.error(f"Run not found: {run}")
+        raise typer.Exit(1) from None
+
+    meta = Meta.model_validate_json(meta_path.read_text())
+
+    if meta.abandoned:
+        ctx.console.print(f"[yellow]Run {run} is already abandoned[/yellow]")
+        return
+
+    if not force:
+        confirm = typer.confirm(f"Abandon run {run}? This cannot be undone.")
+        if not confirm:
+            raise typer.Abort()
+
+    meta.abandoned = True
+    meta.abandoned_at = datetime.now()
+    meta.updated_at = datetime.now()
+    meta_path.write_text(meta.model_dump_json(indent=2))
+
+    ctx.success(f"Run {run} marked as abandoned")
+
+
+@run_app.command("continue")
+def run_continue(
+    run: str | None = typer.Option(None, "--run", "-r", help="Run ID to continue"),
+) -> None:
+    """Continue a paused run from where it left off."""
+    ctx = get_output_context()
+
+    try:
+        repo_root = get_repo_root()
+    except GitError:
+        ctx.error("Not a git repository")
+        raise typer.Exit(3) from None
+
+    weld_dir = get_weld_dir(repo_root)
+
+    # If no run specified, find most recent non-abandoned
+    if run is None:
+        runs_dir = weld_dir / "runs"
+        if not runs_dir.exists():
+            ctx.error("No runs found. Start with: weld run start --spec <file>")
+            raise typer.Exit(1) from None
+
+        for run_dir in sorted(runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            meta_path = run_dir / "meta.json"
+            if meta_path.exists():
+                meta = Meta.model_validate_json(meta_path.read_text())
+                if not meta.abandoned:
+                    run = run_dir.name
+                    break
+
+        if run is None:
+            ctx.error("No active runs found")
+            raise typer.Exit(1) from None
+
+    # Delegate to status to show next action
+    from .status import status as status_cmd
+
+    status_cmd(run=run)
