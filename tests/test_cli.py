@@ -141,6 +141,14 @@ class TestPlanCommand:
         assert result.exit_code == 0
         assert "DRY RUN" in result.stdout
         assert "Implementation Plan Request" in result.stdout
+        # Verify Phase/Step structure is in output
+        assert "## Phase <number>:" in result.stdout
+        assert "### Step <number>:" in result.stdout
+        assert "**Phase guidelines:**" in result.stdout
+        assert "**Step guidelines:**" in result.stdout
+        # Verify concrete example is included
+        assert "## Example" in result.stdout
+        assert "## Phase 1: Data Models" in result.stdout
 
 
 class TestResearchCommand:
