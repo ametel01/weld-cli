@@ -19,6 +19,12 @@ from .plan_parser import (
     parse_steps_lenient,
     parse_steps_strict,
 )
+from .research_processor import (
+    generate_research_prompt,
+    get_research_content,
+    import_research,
+    write_research_prompt,
+)
 from .review_engine import ReviewError, run_step_review
 from .run_manager import (
     create_meta,
@@ -60,14 +66,17 @@ __all__ = [
     "generate_fix_prompt",
     "generate_impl_prompt",
     "generate_plan_prompt",
+    "generate_research_prompt",
     "generate_review_prompt",
     "generate_run_id",
     "get_iter_dir",
+    "get_research_content",
     "get_run_dir",
     "get_step_dir",
     "get_weld_dir",
     "hash_config",
     "hash_file",
+    "import_research",
     "list_runs",
     "parse_steps",
     "parse_steps_lenient",
@@ -77,4 +86,5 @@ __all__ = [
     "run_step_review",
     "sanitize_slug",
     "update_heartbeat",
+    "write_research_prompt",
 ]
