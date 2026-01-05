@@ -1025,7 +1025,7 @@ In the function body, after getting weld_dir, add:
 
 ---
 
-### 1.3 Complete TaskType Enum
+### 1.3 Complete TaskType Enum **COMPLETE**
 
 **Current state:** Missing DISCOVER, INTERVIEW, RESEARCH, RESEARCH_REVIEW
 
