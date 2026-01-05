@@ -642,7 +642,7 @@ cat /tmp/test_weld/.weld/config.toml | grep -A5 checks  # Should show multi-cate
 
 ---
 
-### 1.2 Run Locking
+### 1.2 Run Locking **COMPLETE**
 
 **Current state:** No locking; concurrent runs can corrupt state
 
