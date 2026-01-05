@@ -1,7 +1,6 @@
 """Tests for discover workflow functionality."""
 
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -78,15 +77,16 @@ class TestGenerateDiscoverPrompt:
     """Tests for generate_discover_prompt function."""
 
     def test_includes_architecture_section(self) -> None:
-        """Prompt includes high-level architecture guidance."""
+        """Prompt includes system architecture guidance."""
         prompt = generate_discover_prompt()
-        assert "High-Level Architecture" in prompt
-        assert "System overview" in prompt
+        assert "System Architecture" in prompt
+        assert "High-Level Design" in prompt
 
     def test_includes_directory_section(self) -> None:
-        """Prompt includes directory structure section."""
+        """Prompt includes codebase structure section."""
         prompt = generate_discover_prompt()
-        assert "Directory Structure" in prompt
+        assert "Codebase Structure" in prompt
+        assert "Directory Layout" in prompt
 
     def test_includes_key_files_section(self) -> None:
         """Prompt includes key files section."""
@@ -95,14 +95,14 @@ class TestGenerateDiscoverPrompt:
         assert "file:line references" in prompt
 
     def test_includes_integration_section(self) -> None:
-        """Prompt includes integration points section."""
+        """Prompt includes dependencies and integrations section."""
         prompt = generate_discover_prompt()
-        assert "Integration Points" in prompt
+        assert "Dependencies & Integrations" in prompt
 
     def test_includes_testing_section(self) -> None:
-        """Prompt includes testing patterns section."""
+        """Prompt includes testing strategy section."""
         prompt = generate_discover_prompt()
-        assert "Testing Patterns" in prompt
+        assert "Testing Strategy" in prompt
 
     def test_default_focus_areas(self) -> None:
         """Uses default focus when none specified."""
@@ -115,10 +115,9 @@ class TestGenerateDiscoverPrompt:
         assert "Focus on the API layer and authentication" in prompt
         assert "Analyze the entire codebase holistically" not in prompt
 
-    def test_no_code_snippets_instruction(self) -> None:
-        """Prompt instructs to use file:line references only."""
+    def test_file_line_references_instruction(self) -> None:
+        """Prompt instructs to use file:line references."""
         prompt = generate_discover_prompt()
-        assert "Do NOT include code snippets" in prompt
         assert "file:line references" in prompt
 
 
@@ -247,20 +246,19 @@ class TestGenerateDiscoverPromptStructure:
         """Prompt contains all required analysis sections."""
         prompt = generate_discover_prompt()
 
-        # Verify prompt has numbered sections (1-5)
-        assert re.search(r"1\.\s+\*\*.*Architecture", prompt) is not None
-        assert re.search(r"2\.\s+\*\*.*Directory", prompt) is not None
-        assert re.search(r"3\.\s+\*\*.*Key Files", prompt) is not None
-        assert re.search(r"4\.\s+\*\*.*Integration", prompt) is not None
-        assert re.search(r"5\.\s+\*\*.*Testing", prompt) is not None
+        # Verify prompt has numbered sections
+        assert "### 1. Executive Summary" in prompt
+        assert "### 2. System Architecture" in prompt
+        assert "### 3. Codebase Structure" in prompt
+        assert "### 8. Testing Strategy" in prompt
 
-    def test_prompt_instructs_no_code_snippets(self) -> None:
-        """Prompt clearly instructs to avoid code snippets."""
+    def test_prompt_instructs_file_references(self) -> None:
+        """Prompt instructs to use file:line references."""
         prompt = generate_discover_prompt()
 
-        # Should mention both what TO use and what NOT to use
+        # Should mention file:line references
         assert "file:line" in prompt.lower()
-        assert "not" in prompt.lower() and "snippet" in prompt.lower()
+        assert "Use file:line references" in prompt
 
     def test_focus_replaces_default_not_appends(self) -> None:
         """Custom focus completely replaces default, doesn't append."""
@@ -277,5 +275,5 @@ class TestGenerateDiscoverPromptStructure:
         prompt = generate_discover_prompt()
 
         # Should mention markdown and file references
-        assert "markdown" in prompt.lower() or "Output Format" in prompt
-        assert "file:line" in prompt or "`src/" in prompt
+        assert "markdown" in prompt.lower()
+        assert "file:line" in prompt

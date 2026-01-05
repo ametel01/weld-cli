@@ -584,34 +584,32 @@ class TestPlanVersioning:
 
 
 class TestDiscoverCommands:
-    """Tests for weld discover subcommands."""
+    """Tests for weld discover command."""
 
     def test_discover_help(self, runner: CliRunner) -> None:
-        """discover --help should list subcommands."""
+        """discover --help should show options and subcommands."""
         result = runner.invoke(app, ["discover", "--help"])
         assert result.exit_code == 0
-        assert "prompt" in result.stdout
+        assert "--output" in result.stdout
         assert "list" in result.stdout
         assert "show" in result.stdout
 
-    def test_discover_prompt_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
-        """discover prompt should fail when not in a git repository."""
+    def test_discover_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """discover should fail when not in a git repository."""
         original = os.getcwd()
         os.chdir(tmp_path)
         try:
-            result = runner.invoke(app, ["discover", "prompt", "--output", "out.md"])
+            result = runner.invoke(app, ["discover", "--output", "out.md"])
             assert result.exit_code == 3
             assert "Not a git repository" in result.stdout
         finally:
             os.chdir(original)
 
-    def test_discover_prompt_creates_artifact(
-        self, runner: CliRunner, initialized_weld: Path
-    ) -> None:
-        """discover prompt should create discover artifact with prompt.md and meta.json."""
-        result = runner.invoke(app, ["discover", "prompt", "--output", "arch.md"])
+    def test_discover_creates_artifact(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover should create discover artifact with prompt.md and meta.json."""
+        result = runner.invoke(app, ["discover", "--output", "arch.md", "--prompt-only"])
         assert result.exit_code == 0
-        assert "Discover prompt written to" in result.stdout
+        assert "Discover run:" in result.stdout
         assert "prompt.md" in result.stdout
 
         # Verify discover directory was created
@@ -634,10 +632,11 @@ class TestDiscoverCommands:
         assert meta["output_path"] == "arch.md"
         assert meta["partial"] is False
 
-    def test_discover_prompt_with_focus(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """discover prompt --focus should include focus in prompt."""
+    def test_discover_with_focus(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover --focus should include focus in prompt."""
         result = runner.invoke(
-            app, ["discover", "prompt", "--output", "arch.md", "--focus", "API layer"]
+            app,
+            ["discover", "--output", "arch.md", "--focus", "API layer", "--prompt-only"],
         )
         assert result.exit_code == 0
 
@@ -647,9 +646,9 @@ class TestDiscoverCommands:
         prompt_content = (artifacts[0] / "prompt.md").read_text()
         assert "API layer" in prompt_content
 
-    def test_discover_prompt_dry_run(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """discover prompt --dry-run should not create artifacts."""
-        result = runner.invoke(app, ["--dry-run", "discover", "prompt", "--output", "arch.md"])
+    def test_discover_dry_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """discover --dry-run should not create artifacts."""
+        result = runner.invoke(app, ["--dry-run", "discover", "--output", "arch.md"])
         assert result.exit_code == 0
         assert "DRY RUN" in result.stdout
 
@@ -666,7 +665,7 @@ class TestDiscoverCommands:
     def test_discover_list_with_artifacts(self, runner: CliRunner, initialized_weld: Path) -> None:
         """discover list should show existing artifacts with their IDs."""
         # Create a discover artifact
-        runner.invoke(app, ["discover", "prompt", "--output", "out.md"])
+        runner.invoke(app, ["discover", "--output", "out.md", "--prompt-only"])
 
         result = runner.invoke(app, ["discover", "list"])
         assert result.exit_code == 0
@@ -688,11 +687,11 @@ class TestDiscoverCommands:
     def test_discover_show_displays_prompt(self, runner: CliRunner, initialized_weld: Path) -> None:
         """discover show should display prompt content."""
         # Create a discover artifact
-        runner.invoke(app, ["discover", "prompt", "--output", "out.md"])
+        runner.invoke(app, ["discover", "--output", "out.md", "--prompt-only"])
 
         result = runner.invoke(app, ["discover", "show"])
         assert result.exit_code == 0
-        assert "High-Level Architecture" in result.stdout
+        assert "System Architecture" in result.stdout
 
 
 class TestInterviewCommand:
