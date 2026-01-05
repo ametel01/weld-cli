@@ -16,6 +16,7 @@ from ..models import Lock
 LOCK_FILE = "active.lock"
 STALE_TIMEOUT_SECONDS = 3600  # 1 hour
 MAX_LOCK_RETRIES = 3  # Max retries when clearing stale locks
+HEARTBEAT_INTERVAL_SECONDS = 60  # How often to update heartbeat in long operations
 
 
 class LockError(Exception):
