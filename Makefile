@@ -147,6 +147,20 @@ build: ## Build the package
 	$(UV) build
 	@echo -e "$(GREEN)Build complete! Check dist/$(NC)"
 
+.PHONY: bin-install
+bin-install: ## Install weld globally as a CLI tool
+	@echo -e "$(BLUE)Installing weld globally...$(NC)"
+	$(UV) tool uninstall weld 2>/dev/null || true
+	$(UV) tool install .
+	@echo -e "$(GREEN)weld installed! Run 'weld --help' to verify.$(NC)"
+
+.PHONY: bin-uninstall
+bin-uninstall: ## Uninstall weld global CLI tool and clean cache
+	@echo -e "$(BLUE)Uninstalling weld...$(NC)"
+	$(UV) tool uninstall weld 2>/dev/null || true
+	$(UV) cache clean --force
+	@echo -e "$(GREEN)weld uninstalled and cache cleaned.$(NC)"
+
 .PHONY: clean
 clean: ## Clean build artifacts and caches
 	@echo -e "$(BLUE)Cleaning...$(NC)"
