@@ -27,6 +27,7 @@ def run_step_review(
     checks_exit_code: int,
     config: WeldConfig,
     cwd: Path,
+    stream: bool = False,
 ) -> tuple[str, Issues, Status]:
     """Run review using configured provider and return (review_md, issues, status).
 
@@ -37,6 +38,7 @@ def run_step_review(
         checks_exit_code: Exit code from checks
         config: Weld configuration
         cwd: Working directory
+        stream: If True, stream output to stdout in real-time
 
     Returns:
         Tuple of (review markdown, issues, status)
@@ -56,6 +58,7 @@ def run_step_review(
                 sandbox=config.codex.sandbox,
                 model=model_cfg.model,
                 cwd=cwd,
+                stream=stream,
             )
             issues = parse_codex_review(review_md)
         elif model_cfg.provider == "claude":
@@ -64,6 +67,7 @@ def run_step_review(
                 exec_path=model_cfg.exec or config.claude.exec,
                 model=model_cfg.model,
                 cwd=cwd,
+                stream=stream,
             )
             issues = parse_claude_review(review_md)
         else:

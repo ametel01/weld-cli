@@ -69,6 +69,7 @@ def run_step_loop(
     max_iterations: int | None = None,
     wait_mode: bool = False,
     weld_dir: Path | None = None,
+    stream: bool = True,
 ) -> LoopResult:
     """Run the implement-review-fix loop for a step.
 
@@ -80,6 +81,7 @@ def run_step_loop(
         max_iterations: Override max iterations from config
         wait_mode: If True, wait for user input before each iteration
         weld_dir: Path to .weld directory for heartbeat updates
+        stream: If True, stream review output to stdout in real-time
 
     Returns:
         LoopResult with success status and iteration count
@@ -138,7 +140,7 @@ def run_step_loop(
         checks_exit = checks_summary.get_exit_code()
 
         # Run review
-        console.print("[cyan]Running review...[/cyan]")
+        console.print("[cyan]Running review...[/cyan]\n")
         review_md, issues, status = run_step_review(
             step=step,
             diff=diff,
@@ -146,6 +148,7 @@ def run_step_loop(
             checks_exit_code=checks_exit,
             config=config,
             cwd=repo_root,
+            stream=stream,
         )
         # Update heartbeat after review (can be a long operation)
         if weld_dir:
