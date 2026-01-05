@@ -162,3 +162,26 @@ def has_staged_changes(cwd: Path | None = None) -> bool:
         return False
     # git diff --quiet exits 1 if there are differences
     return result.returncode != 0
+
+
+def is_file_staged(file_path: str, cwd: Path | None = None) -> bool:
+    """Check if a specific file has staged changes.
+
+    Args:
+        file_path: Path to file (relative to repo root)
+        cwd: Working directory
+
+    Returns:
+        True if the file has staged changes
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--staged", "--quiet", "--", file_path],
+            cwd=cwd,
+            capture_output=True,
+            timeout=GIT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    # git diff --quiet exits 1 if there are differences
+    return result.returncode != 0

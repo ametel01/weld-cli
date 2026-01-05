@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--edit/-e` flag for `weld commit` to review/edit generated commit message in `$EDITOR`
+- `is_file_staged()` helper in git service for checking if specific file is staged
+- CHANGELOG duplicate detection to prevent re-adding same entries on retry
+- Debug output showing Claude response when commit message parsing fails
+
+### Changed
+- Commit command now uses distinct exit codes: 21 (Claude error), 22 (git error), 23 (parse error), 24 (editor error)
+- History logging now stores commit message subject instead of diff snippet
+- CHANGELOG staging now preserves user's partial staging (warns if already staged)
+
+### Fixed
+- Fixed CHANGELOG update potentially overwriting user's carefully staged hunks
+- Fixed silent failure when Claude returns unparseable response (now shows response for debugging)
+
 ### Changed
 - **Major simplification**: Removed run-centric architecture in favor of lightweight prompt-based workflow
   - Weld now focuses on generating prompts for Claude Code rather than managing runs/steps

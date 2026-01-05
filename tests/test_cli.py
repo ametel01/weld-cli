@@ -177,16 +177,16 @@ class TestCommitCommand:
         original = os.getcwd()
         os.chdir(tmp_path)
         try:
-            result = runner.invoke(app, ["commit", "-m", "test message"])
+            result = runner.invoke(app, ["commit"])
             assert result.exit_code == 3
         finally:
             os.chdir(original)
 
     def test_commit_no_staged_changes(self, runner: CliRunner, initialized_weld: Path) -> None:
         """commit should fail when no staged changes."""
-        result = runner.invoke(app, ["commit", "-m", "test message"])
+        result = runner.invoke(app, ["commit"])
         assert result.exit_code == 20
-        assert "No staged changes" in result.stdout
+        assert "No changes" in result.stdout
 
 
 class TestDiscoverCommands:
@@ -524,6 +524,19 @@ class TestDiscoverCommandDetailed:
 class TestCommitCommandDetailed:
     """Detailed tests for commit command verifying actual behavior."""
 
+    def _mock_claude_response(self) -> str:
+        """Return a mock Claude response with commit message and changelog entry."""
+        return """<commit_message>
+Add test file
+
+This is a test commit message.
+</commit_message>
+
+<changelog_entry>
+### Added
+- Test file for unit testing
+</changelog_entry>"""
+
     def test_commit_requires_weld_init(self, runner: CliRunner, temp_git_repo: Path) -> None:
         """commit should fail if weld is not initialized."""
         # Create a file and stage it
@@ -531,7 +544,7 @@ class TestCommitCommandDetailed:
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
 
-        result = runner.invoke(app, ["commit", "-m", "test message"])
+        result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 1
         assert "not initialized" in result.stdout.lower()
@@ -545,15 +558,18 @@ class TestCommitCommandDetailed:
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
 
-        # Mock transcript upload
-        with patch("weld.commands.commit.run_transcript_gist") as mock_transcript:
+        # Mock Claude and transcript upload
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
+            patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
+        ):
             from weld.services.transcripts import TranscriptResult
 
             mock_transcript.return_value = TranscriptResult(
                 gist_url="https://gist.github.com/123",
                 raw_output="",
             )
-            result = runner.invoke(app, ["commit", "-m", "Test commit"])
+            result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 0
         assert "Committed:" in result.stdout
@@ -565,8 +581,11 @@ class TestCommitCommandDetailed:
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
 
-        with patch("weld.commands.commit.run_transcript_gist") as mock_transcript:
-            result = runner.invoke(app, ["commit", "-m", "Test", "--skip-transcript"])
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
+            patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
+        ):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
 
         assert result.exit_code == 0
         mock_transcript.assert_not_called()
@@ -577,14 +596,10 @@ class TestCommitCommandDetailed:
         test_file = initialized_weld / "unstaged.txt"
         test_file.write_text("content")
 
-        with patch("weld.commands.commit.run_transcript_gist") as mock_transcript:
-            from weld.services.transcripts import TranscriptResult
-
-            mock_transcript.return_value = TranscriptResult(
-                gist_url=None,
-                raw_output="",
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(
+                app, ["commit", "--all", "--skip-transcript", "--skip-changelog"]
             )
-            result = runner.invoke(app, ["commit", "-m", "Test", "--all", "--skip-transcript"])
 
         assert result.exit_code == 0
         assert "Committed:" in result.stdout
@@ -600,13 +615,14 @@ class TestCommitCommandDetailed:
 
         commit_error = GitError("Pre-commit hook failed")
         with (
+            patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
             patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
             patch("weld.commands.commit.commit_file", side_effect=commit_error),
         ):
             from weld.services.transcripts import TranscriptResult
 
             mock_transcript.return_value = TranscriptResult(gist_url=None, raw_output="")
-            result = runner.invoke(app, ["commit", "-m", "Test"])
+            result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 22
         assert "Commit failed" in result.stdout
@@ -622,12 +638,193 @@ class TestCommitCommandDetailed:
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
 
-        with patch(
-            "weld.commands.commit.run_transcript_gist",
-            side_effect=TranscriptError("Network error"),
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
+            patch(
+                "weld.commands.commit.run_transcript_gist",
+                side_effect=TranscriptError("Network error"),
+            ),
         ):
-            result = runner.invoke(app, ["commit", "-m", "Test"])
+            result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 0
         assert "Warning" in result.stdout
         assert "Committed:" in result.stdout
+
+    def test_commit_skip_changelog_flag(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """commit --skip-changelog should not update CHANGELOG.md."""
+        # Create CHANGELOG.md
+        changelog = initialized_weld / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n\n## [Unreleased]\n\n## [1.0.0]\n- Initial release\n")
+
+        # Create and stage a file
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        original_changelog = changelog.read_text()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        # CHANGELOG should be unchanged
+        assert changelog.read_text() == original_changelog
+
+    def test_commit_quiet_flag(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """commit --quiet should suppress streaming output."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with patch(
+            "weld.commands.commit.run_claude", return_value=self._mock_claude_response()
+        ) as mock:
+            result = runner.invoke(
+                app, ["commit", "--skip-transcript", "--skip-changelog", "--quiet"]
+            )
+
+        assert result.exit_code == 0
+        # Verify run_claude was called with stream=False
+        mock.assert_called_once()
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs.get("stream") is False
+
+    def test_commit_message_in_git_log(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """commit should use the generated commit message in git log."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 0
+
+        # Verify the commit message is in git log
+        log_result = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=initialized_weld,
+            capture_output=True,
+            text=True,
+        )
+        assert log_result.stdout.strip() == "Add test file"
+
+    def test_commit_claude_error(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """commit should fail with exit code 21 when Claude fails."""
+        from weld.services.claude import ClaudeError
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with patch(
+            "weld.commands.commit.run_claude",
+            side_effect=ClaudeError("Claude CLI not found"),
+        ):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 21
+        assert "Failed to generate commit message" in result.stdout
+
+    def test_commit_parse_failure(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """commit should fail with exit code 23 when Claude response doesn't parse."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        # Return garbage that doesn't contain the expected XML tags
+        with patch("weld.commands.commit.run_claude", return_value="This is not valid XML output"):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 23
+        assert "Could not parse commit message" in result.stdout
+        # Should show Claude's response for debugging
+        assert "This is not valid XML output" in result.stdout
+
+    def test_commit_changelog_no_unreleased_section(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """commit should handle CHANGELOG.md without [Unreleased] section."""
+        # Create CHANGELOG without [Unreleased]
+        changelog = initialized_weld / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n\n## [1.0.0]\n- Initial release\n")
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        original_changelog = changelog.read_text()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 0
+        # CHANGELOG should be unchanged (couldn't update)
+        assert changelog.read_text() == original_changelog
+        assert "Could not update CHANGELOG.md" in result.stdout
+
+    def test_commit_changelog_no_file(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """commit should handle missing CHANGELOG.md gracefully."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        # Ensure no CHANGELOG exists
+        changelog = initialized_weld / "CHANGELOG.md"
+        if changelog.exists():
+            changelog.unlink()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 0
+        assert "Committed:" in result.stdout
+        # Should show warning about changelog
+        assert "Could not update CHANGELOG.md" in result.stdout
+
+    def test_commit_changelog_duplicate_detection(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """commit should not add duplicate entries to CHANGELOG."""
+        # Create CHANGELOG with existing entry
+        changelog = initialized_weld / "CHANGELOG.md"
+        changelog.write_text(
+            "# Changelog\n\n## [Unreleased]\n\n### Added\n- Test file for unit testing\n\n"
+        )
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        original_changelog = changelog.read_text()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 0
+        # CHANGELOG should be unchanged (duplicate detected)
+        assert changelog.read_text() == original_changelog
+
+    def test_commit_changelog_updates_correctly(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """commit should correctly update CHANGELOG.md with new entry."""
+        # Create CHANGELOG
+        changelog = initialized_weld / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n\n## [Unreleased]\n\n## [1.0.0]\n- Initial release\n")
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 0
+        assert "Updated CHANGELOG.md" in result.stdout
+
+        # Verify the changelog was updated
+        updated_changelog = changelog.read_text()
+        assert "### Added" in updated_changelog
+        assert "- Test file for unit testing" in updated_changelog

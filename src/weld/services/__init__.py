@@ -25,6 +25,7 @@ from .git import (
     get_repo_root,
     get_status_porcelain,
     has_staged_changes,
+    is_file_staged,
     run_git,
     stage_all,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "get_repo_root",
     "get_status_porcelain",
     "has_staged_changes",
+    "is_file_staged",
     "read_file",
     "read_file_optional",
     "run_claude",
