@@ -8,7 +8,7 @@ import typer
 from rich.panel import Panel
 
 from ..config import load_config
-from ..core import get_weld_dir
+from ..core import get_weld_dir, strip_preamble
 from ..core.discover_engine import generate_discover_prompt, get_discover_dir
 from ..core.run_manager import create_meta, create_run_directory, hash_config
 from ..models import DiscoverMeta
@@ -157,6 +157,9 @@ def _run_discover(output: Path, focus: str | None, prompt_only: bool, quiet: boo
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
         raise typer.Exit(1) from None
+
+    # Strip any AI preamble from the result
+    result = strip_preamble(result)
 
     # Ensure output directory exists
     output.parent.mkdir(parents=True, exist_ok=True)
