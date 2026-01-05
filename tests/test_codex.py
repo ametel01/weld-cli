@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from weld.services.codex import CodexError, extract_revised_plan, parse_review_json, run_codex
+from weld.services.codex import (
+    CodexError,
+    _extract_text_from_codex_json,
+    extract_revised_plan,
+    parse_review_json,
+    run_codex,
+)
 
 
 class TestRunCodex:
@@ -250,3 +256,159 @@ More final content"""
         result = extract_revised_plan(output)
         assert "Final content" in result
         assert "More final content" in result
+
+
+class TestExtractTextFromCodexJson:
+    """Tests for _extract_text_from_codex_json function."""
+
+    def test_item_agent_message_format(self) -> None:
+        """Extracts text from item.agent_message events."""
+        line = '{"type":"item.agent_message","content":[{"type":"output_text","text":"Hello!"}]}'
+        assert _extract_text_from_codex_json(line) == "Hello!"
+
+    def test_turn_completed_format(self) -> None:
+        """Extracts text from turn.completed events."""
+        line = (
+            '{"type":"turn.completed","message":'
+            '{"content":[{"type":"output_text","text":"Done!"}]}}'
+        )
+        assert _extract_text_from_codex_json(line) == "Done!"
+
+    def test_multiple_text_blocks(self) -> None:
+        """Joins multiple text blocks."""
+        line = (
+            '{"type":"item.agent_message","content":['
+            '{"type":"output_text","text":"Hello "},'
+            '{"type":"output_text","text":"World!"}]}'
+        )
+        assert _extract_text_from_codex_json(line) == "Hello World!"
+
+    def test_ignores_non_output_text_content(self) -> None:
+        """Ignores non-output_text content types."""
+        line = (
+            '{"type":"item.agent_message","content":['
+            '{"type":"tool_call","name":"read"},'
+            '{"type":"output_text","text":"Result"}]}'
+        )
+        assert _extract_text_from_codex_json(line) == "Result"
+
+    def test_returns_none_for_no_text(self) -> None:
+        """Returns None when no text content."""
+        line = '{"type":"item.tool_use","tool":"read_file"}'
+        assert _extract_text_from_codex_json(line) is None
+
+    def test_returns_none_for_invalid_json(self) -> None:
+        """Returns None for invalid JSON."""
+        assert _extract_text_from_codex_json("not json") is None
+        assert _extract_text_from_codex_json("{invalid}") is None
+
+    def test_returns_none_for_empty_content(self) -> None:
+        """Returns None when content array is empty."""
+        line = '{"type":"item.agent_message","content":[]}'
+        assert _extract_text_from_codex_json(line) is None
+
+    def test_returns_none_for_other_event_types(self) -> None:
+        """Returns None for event types that don't contain text."""
+        line = '{"type":"session.started","session_id":"abc123"}'
+        assert _extract_text_from_codex_json(line) is None
+
+
+class TestRunCodexStreaming:
+    """Tests for run_codex streaming mode."""
+
+    def test_streaming_successful_execution(self) -> None:
+        """Streaming mode captures output correctly."""
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0
+
+        stream_lines = [
+            '{"type":"item.agent_message","content":[{"type":"output_text","text":"Hello"}]}',
+            '{"type":"item.agent_message","content":[{"type":"output_text","text":" World!"}]}',
+            "",
+        ]
+        mock_process.stdout.readline.side_effect = [*stream_lines, ""]
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            patch("weld.services.streaming.sys.stdout.write"),
+            patch("weld.services.streaming.sys.stdout.flush"),
+        ):
+            result = run_codex("test prompt", stream=True)
+
+        assert "Hello" in result
+        assert "World!" in result
+
+    def test_streaming_timeout_raises_error(self) -> None:
+        """Streaming mode times out and raises CodexError."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+
+        def slow_readline() -> str:
+            import time
+
+            time.sleep(0.1)
+            return '{"type":"session.heartbeat"}'
+
+        mock_process.stdout.readline.side_effect = slow_readline
+        mock_process.stderr = MagicMock()
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            patch("weld.services.streaming.sys.stdout.write"),
+            patch("weld.services.streaming.sys.stdout.flush"),
+            pytest.raises(CodexError, match="timed out after 1 seconds"),
+        ):
+            run_codex("test prompt", stream=True, timeout=1)
+
+        # Verify process was terminated (called by timeout logic and cleanup)
+        assert mock_process.terminate.call_count >= 1
+
+    def test_streaming_process_cleanup_on_error(self) -> None:
+        """Streaming mode cleans up process on error."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.stdout.readline.side_effect = Exception("Unexpected error")
+        mock_process.stderr = MagicMock()
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            pytest.raises(Exception, match="Unexpected error"),
+        ):
+            run_codex("test prompt", stream=True)
+
+        mock_process.terminate.assert_called_once()
+
+    def test_streaming_nonzero_exit_code(self) -> None:
+        """Streaming mode raises error on non-zero exit code."""
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.poll.return_value = 1
+        mock_process.stdout.readline.side_effect = [""]
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = "Codex error"
+
+        with (
+            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
+            pytest.raises(CodexError, match="Codex failed"),
+        ):
+            run_codex("test prompt", stream=True)
+
+    def test_streaming_uses_json_flag(self) -> None:
+        """Streaming mode uses --json flag."""
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0
+        mock_process.stdout.readline.side_effect = [""]
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+
+        with patch(
+            "weld.services.streaming.subprocess.Popen", return_value=mock_process
+        ) as mock_popen:
+            run_codex("test prompt", stream=True)
+
+        call_args = mock_popen.call_args[0][0]
+        assert "--json" in call_args

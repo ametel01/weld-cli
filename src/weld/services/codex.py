@@ -6,12 +6,54 @@ from pathlib import Path
 
 from ..constants import CODEX_TIMEOUT
 from ..models import Issues
+from .streaming import run_streaming_subprocess
 
 
 class CodexError(Exception):
     """Codex invocation failed."""
 
     pass
+
+
+def _extract_text_from_codex_json(line: str) -> str | None:
+    """Extract text content from a Codex JSONL line.
+
+    Codex CLI with --json emits JSONL events. Agent messages appear in
+    item.agent_message events with content array.
+
+    Args:
+        line: A single line from Codex JSON output
+
+    Returns:
+        Extracted text or None if line doesn't contain text content
+    """
+    try:
+        data = json.loads(line)
+
+        # Handle item.agent_message events
+        if data.get("type") == "item.agent_message":
+            content = data.get("content", [])
+            if isinstance(content, list):
+                texts = [
+                    item.get("text", "") for item in content if item.get("type") == "output_text"
+                ]
+                if texts:
+                    return "".join(texts)
+
+        # Handle turn.completed with final message
+        if data.get("type") == "turn.completed":
+            message = data.get("message", {})
+            content = message.get("content", [])
+            if isinstance(content, list):
+                texts = [
+                    item.get("text", "") for item in content if item.get("type") == "output_text"
+                ]
+                if texts:
+                    return "".join(texts)
+
+        return None
+    except json.JSONDecodeError:
+        return None
 
 
 def run_codex(
@@ -21,6 +63,7 @@ def run_codex(
     model: str | None = None,
     cwd: Path | None = None,
     timeout: int | None = None,
+    stream: bool = False,
 ) -> str:
     """Run codex with prompt and return output.
 
@@ -31,6 +74,7 @@ def run_codex(
         model: Model to use (e.g., o3, gpt-4o). If None, uses codex default.
         cwd: Working directory
         timeout: Optional timeout in seconds (default: 600)
+        stream: If True, stream output to stdout in real-time
 
     Returns:
         Codex stdout output
@@ -45,19 +89,34 @@ def run_codex(
         cmd.extend(["--model", model])
 
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        if stream:
+            # Use --json for streaming JSONL output
+            # See: https://developers.openai.com/codex/cli/reference/
+            stream_cmd = [*cmd, "--json"]
+
+            return run_streaming_subprocess(
+                cmd=stream_cmd,
+                text_extractor=_extract_text_from_codex_json,
+                cwd=cwd,
+                timeout=timeout,
+                error_class=CodexError,
+                service_name="Codex",
+            )
+        else:
+            result = subprocess.run(
+                cmd,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            if result.returncode != 0:
+                raise CodexError(f"Codex failed: {result.stderr}")
+            return result.stdout
     except subprocess.TimeoutExpired as e:
         raise CodexError(f"Codex timed out after {timeout} seconds") from e
-
-    if result.returncode != 0:
-        raise CodexError(f"Codex failed: {result.stderr}")
-    return result.stdout
+    except FileNotFoundError:
+        raise CodexError(f"Codex executable not found: {exec_path}") from None
 
 
 def parse_review_json(review_md: str) -> Issues:
