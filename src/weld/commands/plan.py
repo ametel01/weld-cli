@@ -196,8 +196,9 @@ def plan_import(
 def plan_review(
     run: str = typer.Option(..., "--run", "-r", help="Run ID"),
     apply: bool = typer.Option(False, "--apply", help="Apply revised plan"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
 ) -> None:
-    """Run Codex review on the plan."""
+    """Run review on the plan."""
     ctx = get_output_context()
 
     try:
@@ -251,7 +252,7 @@ def plan_review(
         codex_prompt = generate_codex_review_prompt(plan_content)
         (run_dir / "plan" / "codex.prompt.md").write_text(codex_prompt)
 
-        ctx.console.print(f"[cyan]Running {model_cfg.provider} plan review{model_info}...[/cyan]")
+        ctx.console.print(f"[cyan]Running {model_cfg.provider} plan review{model_info}...[/cyan]\n")
 
         try:
             codex_output = run_codex(
@@ -260,6 +261,7 @@ def plan_review(
                 sandbox=config.codex.sandbox,
                 model=model_cfg.model,
                 cwd=repo_root,
+                stream=not quiet,
             )
             (run_dir / "plan" / "codex.output.md").write_text(codex_output)
 

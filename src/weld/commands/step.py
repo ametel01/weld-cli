@@ -173,6 +173,7 @@ def step_review_cmd(
     run: str = typer.Option(..., "--run", "-r", help="Run ID"),
     n: int = typer.Option(..., "--n", help="Step number"),
     iter: int = typer.Option(1, "--iter", "-i", help="Iteration number"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
 ) -> None:
     """Run Codex review on step implementation."""
     ctx = get_output_context()
@@ -217,14 +218,40 @@ def step_review_cmd(
 
     # Load diff and checks
     diff = (iter_dir / "diff.patch").read_text() if (iter_dir / "diff.patch").exists() else ""
-    checks = (iter_dir / "checks.txt").read_text() if (iter_dir / "checks.txt").exists() else ""
 
-    # Parse checks exit code
-    exit_match = re.search(r"exit_code:\s*(\d+)", checks)
-    checks_exit = int(exit_match.group(1)) if exit_match else -1
+    # Load checks from multi-category format (preferred) or legacy format
+    checks_summary_path = iter_dir / "checks.summary.json"
+    checks_dir = iter_dir / "checks"
+
+    if checks_summary_path.exists():
+        # Multi-category format: read from checks.summary.json and individual category files
+        from ..models import ChecksSummary
+
+        summary = ChecksSummary.model_validate_json(checks_summary_path.read_text())
+
+        # Build combined output from category files (use config order if available)
+        category_order = config.checks.order or list(summary.categories.keys())
+        checks_parts = []
+        for name in category_order:
+            if name in summary.categories:
+                cat_result = summary.categories[name]
+                # Try to read from category file, fall back to stored output
+                cat_file = checks_dir / f"{name}.txt"
+                cat_output = cat_file.read_text() if cat_file.exists() else cat_result.output
+                checks_parts.append(f"=== {name} (exit {cat_result.exit_code}) ===\n{cat_output}")
+
+        checks = "\n\n".join(checks_parts)
+        checks_exit = summary.get_exit_code()
+    else:
+        # Legacy format: read from checks.txt
+        legacy_checks_path = iter_dir / "checks.txt"
+        checks = legacy_checks_path.read_text() if legacy_checks_path.exists() else ""
+        # Parse checks exit code from legacy format
+        exit_match = re.search(r"exit_code:\s*(\d+)", checks)
+        checks_exit = int(exit_match.group(1)) if exit_match else -1
 
     # Run review
-    ctx.console.print("[cyan]Running Codex review...[/cyan]")
+    ctx.console.print("[cyan]Running Codex review...[/cyan]\n")
 
     review_md, issues, status = run_step_review(
         step=step,
@@ -233,6 +260,7 @@ def step_review_cmd(
         checks_exit_code=checks_exit,
         config=config,
         cwd=repo_root,
+        stream=not quiet,
     )
 
     # Write results
@@ -312,6 +340,7 @@ def step_loop(
     n: int = typer.Option(..., "--n", help="Step number"),
     max: int | None = typer.Option(None, "--max", "-m", help="Max iterations"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for user between iterations"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
 ) -> None:
     """Run implement-review-fix loop for a step."""
     ctx = get_output_context()
@@ -397,6 +426,7 @@ def step_loop(
             max_iterations=max,
             wait_mode=wait,
             weld_dir=weld_dir,  # Pass for heartbeat updates
+            stream=not quiet,
         )
 
         if result.success:
