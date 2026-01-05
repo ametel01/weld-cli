@@ -32,38 +32,44 @@ make ci                       # Complete CI pipeline
 
 ## Architecture
 
-Weld is a human-in-the-loop coding harness that orchestrates AI-assisted development through: plan → implement → review → iterate → commit with transcript provenance.
+Weld is a prompt-generation tool for AI-assisted development. It creates structured prompts for: research → plan → review → commit with transcript provenance.
 
 ### Layered Structure
 
 ```
 src/weld/
 ├── cli.py              # Typer entry point, global options
-├── commands/           # CLI command handlers (thin layer, delegates to core/)
+├── commands/           # CLI command handlers (thin layer)
+│   ├── init.py         # weld init
+│   ├── plan.py         # weld plan
+│   ├── research.py     # weld research
+│   ├── discover.py     # weld discover
+│   ├── interview.py    # weld interview
+│   ├── doc_review.py   # weld review
+│   ├── commit.py       # weld commit
+│   └── doctor.py       # weld doctor
 ├── core/               # Business logic
-│   ├── run_manager.py  # Run lifecycle (create, load, list runs)
-│   ├── plan_parser.py  # Parse strict/lenient plan formats
-│   ├── step_processor.py # Step extraction and prompt generation
-│   ├── loop.py         # Implement-review-fix iteration loop
-│   ├── review_engine.py # AI review orchestration
-│   └── commit_handler.py # Commit with transcript trailers
-├── services/           # External integrations (git, codex, claude, transcripts)
-└── models/             # Pydantic data models (Meta, Step, Issues, Status)
+│   ├── history.py      # JSONL command history tracking
+│   ├── weld_dir.py     # .weld directory utilities
+│   ├── discover_engine.py    # Codebase discovery prompts
+│   ├── interview_engine.py   # Specification refinement prompts
+│   └── doc_review_engine.py  # Document review prompts
+├── services/           # External integrations (git, claude, transcripts)
+└── models/             # Pydantic data models (DiscoverMeta, Issue, Issues)
 ```
 
 ### Key Design Patterns
 
 - **Commands delegate to core**: `commands/*.py` handle CLI parsing, then call `core/*.py` for logic
 - **Services wrap external CLIs**: All subprocess calls go through `services/` (never `shell=True`)
-- **Pydantic models for JSON contracts**: All run artifacts use models for validation
-- **Run artifacts stored in `.weld/runs/<run_id>/`**: Each run is a self-contained directory
+- **JSONL history**: Each command logs to `.weld/<command>/history.jsonl`
 
 ### Data Flow
 
-1. `weld run --spec` → creates run directory, generates plan prompt
-2. `weld plan import` → imports AI plan, parses steps
-3. `weld step loop` → iterates: snapshot diff → AI review → fix prompt until pass
-4. `weld commit` → creates commit with transcript gist trailer
+1. `weld research spec.md -o research.md` → generates research prompt, runs Claude
+2. `weld plan spec.md -o plan.md` → generates plan prompt, runs Claude
+3. `weld review plan.md --apply` → validates against codebase, applies corrections
+4. `weld commit -m "message"` → creates commit with transcript gist trailer
 
 ## Git Commits
 
