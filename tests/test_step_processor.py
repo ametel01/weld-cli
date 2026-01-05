@@ -8,6 +8,7 @@ from pathlib import Path
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from weld.config import ChecksConfig
 from weld.core.step_processor import (
     create_iter_directory,
     create_step_directory,
@@ -18,6 +19,11 @@ from weld.core.step_processor import (
     get_step_dir,
 )
 from weld.models import Step
+
+
+def make_checks_config(command: str = "pytest") -> ChecksConfig:
+    """Create a legacy ChecksConfig for testing."""
+    return ChecksConfig(command=command)
 
 
 def make_step(
@@ -115,38 +121,38 @@ class TestGenerateImplPrompt:
     def test_includes_step_number(self) -> None:
         """Prompt should include step number."""
         step = make_step(n=5)
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "Step 5" in result
 
     def test_includes_title(self) -> None:
         """Prompt should include step title."""
         step = make_step(title="Create Module")
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "Create Module" in result
 
     def test_includes_body(self) -> None:
         """Prompt should include step body."""
         step = make_step(body_md="Implement the feature carefully.")
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "Implement the feature carefully" in result
 
     def test_includes_acceptance_criteria(self) -> None:
         """Prompt should include acceptance criteria."""
         step = make_step(acceptance_criteria=["Works correctly", "Handles errors"])
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "- [ ] Works correctly" in result
         assert "- [ ] Handles errors" in result
 
     def test_includes_checks_command(self) -> None:
         """Prompt should include checks command."""
         step = make_step()
-        result = generate_impl_prompt(step, "make test")
+        result = generate_impl_prompt(step, make_checks_config("make test"))
         assert "make test" in result
 
     def test_includes_scope_warning(self) -> None:
         """Prompt should include scope boundary warning."""
         step = make_step()
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "Only implement this step" in result
 
     def test_empty_acceptance_criteria(self) -> None:
@@ -159,7 +165,7 @@ class TestGenerateImplPrompt:
             acceptance_criteria=[],
             tests=[],
         )
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         # When AC list is empty, the default message is shown
         assert "- [ ] Implementation complete" in result
 
@@ -275,7 +281,7 @@ class TestEdgeCases:
         step = make_step(
             title="Handle <script>alert('xss')</script> & other $pecial chars!",
         )
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         # Title should be preserved exactly (no escaping at this layer)
         assert "Handle <script>" in result
         assert "& other $pecial" in result
@@ -293,7 +299,7 @@ class TestEdgeCases:
             title="实现功能 🚀",
             body_md="Create a feature with 日本語 support and emoji 🎉",
         )
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "实现功能" in result
         assert "🚀" in result
         assert "日本語" in result
@@ -304,7 +310,7 @@ class TestEdgeCases:
         # Create a 50KB body
         long_body = "This is a test paragraph.\n" * 2000
         step = make_step(body_md=long_body)
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         # The full body should be in the prompt
         assert long_body in result
         # Verify approximate size
@@ -314,7 +320,7 @@ class TestEdgeCases:
         """Step with many acceptance criteria should include all."""
         criteria = [f"Criterion {i}: something must work" for i in range(100)]
         step = make_step(acceptance_criteria=criteria)
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         # All criteria should be present
         for i in range(100):
             assert f"Criterion {i}" in result
@@ -340,7 +346,7 @@ And a list:
 | A        | B        |
 """
         step = make_step(body_md=body)
-        result = generate_impl_prompt(step, "pytest")
+        result = generate_impl_prompt(step, make_checks_config())
         assert "```python" in result
         assert "def hello():" in result
         assert "- Item 1" in result

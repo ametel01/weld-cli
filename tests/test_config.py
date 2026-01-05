@@ -84,3 +84,49 @@ def test_task_specific_override_beats_provider_default():
 
     plan_review = config.get_task_model(TaskType.PLAN_REVIEW)
     assert plan_review.model == "specific-model"
+
+
+class TestChecksConfigCategories:
+    """Tests for multi-category checks configuration."""
+
+    def test_get_categories_returns_enabled_only(self) -> None:
+        """Only categories with commands are returned."""
+        from weld.config import ChecksConfig
+
+        cfg = ChecksConfig(lint="ruff check .", test=None, typecheck="pyright")
+        categories = cfg.get_categories()
+        assert categories == {"lint": "ruff check .", "typecheck": "pyright"}
+
+    def test_get_categories_respects_order(self) -> None:
+        """Categories returned in configured order."""
+        from weld.config import ChecksConfig
+
+        cfg = ChecksConfig(
+            lint="ruff",
+            test="pytest",
+            typecheck="pyright",
+            order=["test", "lint", "typecheck"],
+        )
+        assert list(cfg.get_categories().keys()) == ["test", "lint", "typecheck"]
+
+    def test_is_legacy_mode_true_when_only_command(self) -> None:
+        """Legacy mode when only command field is set."""
+        from weld.config import ChecksConfig
+
+        cfg = ChecksConfig(command="make check")
+        assert cfg.is_legacy_mode() is True
+
+    def test_is_legacy_mode_false_when_categories_set(self) -> None:
+        """Not legacy mode when category commands exist."""
+        from weld.config import ChecksConfig
+
+        cfg = ChecksConfig(lint="ruff", command="make check")
+        assert cfg.is_legacy_mode() is False
+
+    def test_default_has_no_categories(self) -> None:
+        """Default config has no enabled categories."""
+        from weld.config import ChecksConfig
+
+        cfg = ChecksConfig()
+        assert cfg.get_categories() == {}
+        assert cfg.is_legacy_mode() is False

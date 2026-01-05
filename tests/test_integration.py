@@ -321,16 +321,25 @@ class TestCLIChecksIntegration:
         assert result.exit_code == 0
         assert "Snapshot captured" in result.stdout
 
-        # Verify checks.txt was written with correct format
+        # Verify checks were written with correct format (new multi-category structure)
         weld_dir = repo_root / ".weld"
         run_dir = weld_dir / "runs" / run_id
         step_dirs = [d for d in (run_dir / "steps").iterdir() if d.name.startswith("01-")]
         assert len(step_dirs) == 1
 
-        checks_file = step_dirs[0] / "iter" / "01" / "checks.txt"
-        assert checks_file.exists()
+        # Check for summary file (always present) and checks directory
+        iter_dir = step_dirs[0] / "iter" / "01"
+        summary_file = iter_dir / "checks.summary.json"
+        assert summary_file.exists()
 
-        checks_content = checks_file.read_text()
+        checks_dir = iter_dir / "checks"
+        assert checks_dir.exists()
+
+        # In legacy mode (single command), there's a default.txt
+        default_checks = checks_dir / "default.txt"
+        assert default_checks.exists()
+
+        checks_content = default_checks.read_text()
         # Verify checks output contains expected sections
         assert "exit_code:" in checks_content
         assert "stdout" in checks_content.lower()
@@ -660,12 +669,17 @@ Test the checks command.
         result = runner.invoke(app, ["step", "snapshot", "--run", run_id, "--n", "1"])
         assert result.exit_code == 0
 
-        # Verify checks.txt contains actual command output
+        # Verify checks were captured (new multi-category structure)
         step_dirs = [d for d in (run_dir / "steps").iterdir() if d.name.startswith("01-")]
-        checks_file = step_dirs[0] / "iter" / "01" / "checks.txt"
+        iter_dir = step_dirs[0] / "iter" / "01"
 
-        assert checks_file.exists()
-        checks_content = checks_file.read_text()
+        checks_dir = iter_dir / "checks"
+        assert checks_dir.exists()
+
+        # In legacy mode (single command), there's a default.txt
+        default_checks = checks_dir / "default.txt"
+        assert default_checks.exists()
+        checks_content = default_checks.read_text()
 
         # Verify real command output was captured
         assert "checks passed" in checks_content
@@ -720,8 +734,12 @@ Test.
         assert result.exit_code == 0  # Snapshot succeeds even if checks fail
 
         step_dirs = [d for d in (run_dir / "steps").iterdir() if d.name.startswith("01-")]
-        checks_file = step_dirs[0] / "iter" / "01" / "checks.txt"
-        checks_content = checks_file.read_text()
+        iter_dir = step_dirs[0] / "iter" / "01"
+
+        # In legacy mode (single command), there's a default.txt
+        checks_dir = iter_dir / "checks"
+        default_checks = checks_dir / "default.txt"
+        checks_content = default_checks.read_text()
 
         # Verify error message and exit code captured
         assert "error: test failed" in checks_content
