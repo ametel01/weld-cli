@@ -77,12 +77,13 @@ def hash_config(config: WeldConfig) -> str:
     return hashlib.sha256(config.model_dump_json().encode()).hexdigest()[:16]
 
 
-def create_run_directory(weld_dir: Path, run_id: str) -> Path:
+def create_run_directory(weld_dir: Path, run_id: str, skip_research: bool = False) -> Path:
     """Create run directory structure.
 
     Args:
         weld_dir: Path to .weld directory
         run_id: Run ID
+        skip_research: If True, skip research/ directory (direct planning)
 
     Returns:
         Path to created run directory
@@ -91,6 +92,8 @@ def create_run_directory(weld_dir: Path, run_id: str) -> Path:
 
     # Create subdirectories
     (run_dir / "inputs").mkdir(parents=True, exist_ok=True)
+    if not skip_research:
+        (run_dir / "research").mkdir(parents=True, exist_ok=True)
     (run_dir / "plan").mkdir(parents=True, exist_ok=True)
     (run_dir / "steps").mkdir(parents=True, exist_ok=True)
     (run_dir / "commit").mkdir(parents=True, exist_ok=True)
