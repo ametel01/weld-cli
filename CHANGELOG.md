@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-category checks configuration with separate `lint`, `test`, `typecheck` commands
+- Configurable execution order for check categories
+- Per-category output files in `checks/` subdirectory
+- `checks.summary.json` with aggregated results and first-failure tracking
+- `CategoryResult` and `ChecksSummary` Pydantic models for structured check results
+
+### Changed
+- Checks now run with fail-fast in iteration loop, full run for review context
+- Implementation prompt displays all configured check commands
+- Status model enriched with `checks_summary` field
+
+### Deprecated
+- Single-command `checks.command` field (use category fields instead)
+- Flat `checks_exit_code` in Status (use `checks_summary.get_exit_code()`)
+
 ## [0.1.0] - 2026-01-04
 
 Initial release of the weld CLI, a human-in-the-loop coding harness with transcript provenance.
