@@ -5,7 +5,7 @@ import json
 
 from rich.console import Console
 
-from weld.output import OutputContext
+from weld.output import SCHEMA_VERSION, OutputContext
 
 
 class TestOutputContextPrint:
@@ -46,15 +46,16 @@ class TestOutputContextPrintJson:
     """Tests for OutputContext.print_json method."""
 
     def test_print_json_in_json_mode(self, capsys) -> None:
-        """print_json should output JSON in json mode."""
+        """print_json should output JSON with schema version wrapper."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.print_json({"key": "value", "number": 42})
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["key"] == "value"
-        assert data["number"] == 42
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["key"] == "value"
+        assert output["data"]["number"] == 42
 
     def test_print_json_suppressed_in_normal_mode(self, capsys) -> None:
         """print_json should be suppressed in normal mode."""
@@ -70,14 +71,15 @@ class TestOutputContextResult:
     """Tests for OutputContext.result method."""
 
     def test_result_prints_json_in_json_mode(self, capsys) -> None:
-        """result should output JSON data in json mode."""
+        """result should output JSON data with schema version wrapper."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.result({"status": "ok"}, "Success message")
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["status"] == "ok"
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["status"] == "ok"
 
     def test_result_prints_message_in_normal_mode(self) -> None:
         """result should output message in normal mode."""
@@ -104,15 +106,16 @@ class TestOutputContextError:
     """Tests for OutputContext.error method."""
 
     def test_error_prints_json_in_json_mode(self, capsys) -> None:
-        """error should output JSON in json mode with data."""
+        """error should output JSON with schema version wrapper."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.error("Something failed", {"code": 500})
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["error"] == "Something failed"
-        assert data["code"] == 500
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["error"] == "Something failed"
+        assert output["data"]["code"] == 500
 
     def test_error_prints_message_in_normal_mode(self) -> None:
         """error should output formatted message in normal mode."""
@@ -125,39 +128,42 @@ class TestOutputContextError:
         assert "Something failed" in output.getvalue()
 
     def test_error_without_data_in_json_mode(self, capsys) -> None:
-        """error without data should output JSON in json mode."""
+        """error without data should output JSON with schema version wrapper."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.error("Something failed", data=None)
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["error"] == "Something failed"
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["error"] == "Something failed"
 
 
 class TestOutputContextSuccess:
     """Tests for OutputContext.success method."""
 
     def test_success_prints_json_in_json_mode_with_data(self, capsys) -> None:
-        """success should output JSON in json mode with data."""
+        """success should output JSON with schema version wrapper."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.success("Operation completed", {"count": 5})
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["success"] == "Operation completed"
-        assert data["count"] == 5
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["success"] == "Operation completed"
+        assert output["data"]["count"] == 5
 
     def test_success_prints_json_in_json_mode_without_data(self, capsys) -> None:
-        """success should output JSON in json mode even without data."""
+        """success should output JSON with schema version wrapper even without data."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.success("All done")
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["success"] == "All done"
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["success"] == "All done"
 
     def test_success_prints_message_in_normal_mode(self) -> None:
         """success should output formatted message in normal mode."""
@@ -186,14 +192,67 @@ class TestOutputContextErrorJsonMode:
     """Tests for OutputContext.error JSON mode behavior."""
 
     def test_error_outputs_json_without_data(self, capsys) -> None:
-        """error should output JSON in json mode even without data."""
+        """error should output JSON with schema version wrapper even without data."""
         console = Console()
         ctx = OutputContext(console=console, json_mode=True)
 
         ctx.error("Something failed")
         captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["error"] == "Something failed"
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["error"] == "Something failed"
+
+
+class TestOutputContextErrorNextAction:
+    """Tests for OutputContext.error next_action parameter."""
+
+    def test_error_with_next_action_in_json_mode(self, capsys) -> None:
+        """error with next_action should include it in JSON output."""
+        console = Console()
+        ctx = OutputContext(console=console, json_mode=True)
+
+        ctx.error("Run failed", next_action="weld doctor")
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert output["schema_version"] == SCHEMA_VERSION
+        assert output["data"]["error"] == "Run failed"
+        assert output["data"]["next_action"] == "weld doctor"
+
+    def test_error_with_next_action_and_data_in_json_mode(self, capsys) -> None:
+        """error with next_action and data should include both."""
+        console = Console()
+        ctx = OutputContext(console=console, json_mode=True)
+
+        ctx.error("Run failed", data={"code": 1}, next_action="weld status")
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert output["data"]["error"] == "Run failed"
+        assert output["data"]["code"] == 1
+        assert output["data"]["next_action"] == "weld status"
+
+    def test_error_with_next_action_in_normal_mode(self) -> None:
+        """error with next_action should show recovery hint in normal mode."""
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=False)
+        ctx = OutputContext(console=console, json_mode=False)
+
+        ctx.error("Something failed", next_action="weld init")
+        console.file.seek(0)
+        result = output.getvalue()
+        assert "Something failed" in result
+        assert "weld init" in result
+
+    def test_error_without_next_action_no_hint(self) -> None:
+        """error without next_action should not show recovery hint."""
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=False)
+        ctx = OutputContext(console=console, json_mode=False)
+
+        ctx.error("Something failed")
+        console.file.seek(0)
+        result = output.getvalue()
+        assert "Something failed" in result
+        assert "Run:" not in result
 
 
 class TestOutputContextDefault:

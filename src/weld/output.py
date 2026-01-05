@@ -6,6 +6,9 @@ from typing import Any
 
 from rich.console import Console
 
+# JSON output schema version for automation compatibility
+SCHEMA_VERSION = 1
+
 
 @dataclass
 class OutputContext:
@@ -21,9 +24,13 @@ class OutputContext:
             self.console.print(message, style=style)
 
     def print_json(self, data: dict[str, Any]) -> None:
-        """Print JSON data."""
+        """Print JSON data with schema version wrapper."""
         if self.json_mode:
-            print(json.dumps(data, indent=2, default=str))
+            wrapped = {
+                "schema_version": SCHEMA_VERSION,
+                "data": data,
+            }
+            print(json.dumps(wrapped, indent=2, default=str))
 
     def result(self, data: dict[str, Any], message: str = "") -> None:
         """Print result in appropriate format."""
@@ -32,14 +39,30 @@ class OutputContext:
         elif message:
             self.console.print(message)
 
-    def error(self, message: str, data: dict[str, Any] | None = None) -> None:
-        """Print error in appropriate format."""
-        if self.json_mode and data:
-            self.print_json({"error": message, **data})
-        elif self.json_mode:
-            self.print_json({"error": message})
+    def error(
+        self,
+        message: str,
+        data: dict[str, Any] | None = None,
+        next_action: str | None = None,
+    ) -> None:
+        """Print error with optional suggested next action.
+
+        Args:
+            message: Error message to display
+            data: Optional structured data for JSON mode
+            next_action: Optional command suggestion for recovery
+        """
+        if self.json_mode:
+            error_data: dict[str, Any] = {"error": message}
+            if data:
+                error_data.update(data)
+            if next_action:
+                error_data["next_action"] = next_action
+            self.print_json(error_data)
         else:
             self.console.print(f"[red]Error: {message}[/red]")
+            if next_action:
+                self.console.print(f"  Run: [bold]{next_action}[/bold]")
 
     def success(self, message: str, data: dict[str, Any] | None = None) -> None:
         """Print success message in appropriate format."""

@@ -830,15 +830,19 @@ class TestDoctorCommand:
         assert "git" in result.stdout
 
     def test_doctor_json_output(self, runner: CliRunner, temp_git_repo: Path) -> None:
-        """doctor with --json should output structured JSON."""
+        """doctor with --json should output structured JSON with schema version."""
         import json
+
+        from weld.output import SCHEMA_VERSION
 
         result = runner.invoke(app, ["--json", "doctor"])
         # In JSON mode, output should be valid JSON
         output = result.stdout.strip()
 
-        # Parse the entire output as JSON
-        data = json.loads(output)
+        # Parse the entire output as JSON (now wrapped with schema_version)
+        wrapped = json.loads(output)
+        assert wrapped["schema_version"] == SCHEMA_VERSION
+        data = wrapped["data"]
         assert "success" in data or "error" in data
         assert "required" in data
         assert "optional" in data
