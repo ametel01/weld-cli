@@ -14,6 +14,7 @@ from .commands import (
     init,
     list_runs_cmd,
     plan_import,
+    plan_prompt,
     plan_review,
     run_start,
     step_fix_prompt,
@@ -23,6 +24,7 @@ from .commands import (
     step_snapshot,
     transcript_gist,
 )
+from .commands.research import research_app
 from .logging import configure_logging
 from .output import OutputContext, set_output_context
 
@@ -46,6 +48,7 @@ step_app = typer.Typer(help="Step implementation commands")
 transcript_app = typer.Typer(help="Transcript management commands")
 
 app.add_typer(plan_app, name="plan")
+app.add_typer(research_app, name="research")
 app.add_typer(step_app, name="step")
 app.add_typer(transcript_app, name="transcript")
 
@@ -124,6 +127,7 @@ app.command()(commit)
 app.command("list")(list_runs_cmd)
 
 # Plan subcommands
+plan_app.command("prompt")(plan_prompt)
 plan_app.command("import")(plan_import)
 plan_app.command("review")(plan_review)
 
