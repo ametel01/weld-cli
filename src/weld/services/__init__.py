@@ -10,7 +10,7 @@ This package provides interfaces to external tools and services:
 - filesystem: Common file I/O operations
 """
 
-from .checks import ChecksError, run_checks, write_checks
+from .checks import ChecksError, run_checks, run_single_check, write_checks, write_checks_results
 from .claude import ClaudeError, run_claude
 from .claude import parse_review_json as parse_claude_review
 from .codex import CodexError, extract_revised_plan, run_codex
@@ -65,9 +65,11 @@ __all__ = [
     "run_claude",
     "run_codex",
     "run_git",
+    "run_single_check",
     "run_transcript_gist",
     "stage_all",
     "write_checks",
+    "write_checks_results",
     "write_diff",
     "write_file",
 ]
