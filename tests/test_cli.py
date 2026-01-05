@@ -37,6 +37,7 @@ class TestHelpCommand:
         assert "init" in result.stdout
         assert "run" in result.stdout
         assert "plan" in result.stdout
+        assert "research" in result.stdout
         assert "step" in result.stdout
         assert "commit" in result.stdout
         assert "list" in result.stdout
@@ -238,6 +239,102 @@ class TestRunCommand:
         runs_after = list(runs_dir.iterdir()) if runs_dir.exists() else []
         assert len(runs_after) == len(runs_before)
 
+    def test_run_with_skip_research(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """run --skip-research should create plan prompt directly."""
+        spec_path = initialized_weld / "spec.md"
+        spec_path.write_text("# Test Spec\n\nDo something useful.")
+
+        result = runner.invoke(app, ["run", "--spec", str(spec_path), "--skip-research"])
+        assert result.exit_code == 0
+        assert "Run created" in result.stdout
+
+        # Verify run directory was created without research dir
+        runs_dir = initialized_weld / ".weld" / "runs"
+        runs = list(runs_dir.iterdir())
+        assert len(runs) == 1
+        run_dir = runs[0]
+
+        # Should have plan dir but not research dir
+        assert (run_dir / "plan").exists()
+        assert (run_dir / "plan" / "plan.prompt.md").exists()
+        assert not (run_dir / "research").exists()
+
+    def test_run_default_creates_research_dir(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """run without --skip-research should create research directory."""
+        spec_path = initialized_weld / "spec.md"
+        spec_path.write_text("# Test Spec\n\nDo something useful.")
+
+        result = runner.invoke(app, ["run", "--spec", str(spec_path)])
+        assert result.exit_code == 0
+        assert "Run created" in result.stdout
+
+        # Verify research directory was created
+        runs_dir = initialized_weld / ".weld" / "runs"
+        runs = list(runs_dir.iterdir())
+        assert len(runs) == 1
+        run_dir = runs[0]
+
+        # Should have research dir with prompt
+        assert (run_dir / "research").exists()
+        assert (run_dir / "research" / "prompt.md").exists()
+
+
+class TestResearchCommands:
+    """Tests for weld research subcommands."""
+
+    def test_research_help(self, runner: CliRunner) -> None:
+        """research --help should list subcommands."""
+        result = runner.invoke(app, ["research", "--help"])
+        assert result.exit_code == 0
+        assert "prompt" in result.stdout
+        assert "import" in result.stdout
+        assert "show" in result.stdout
+
+    def test_research_prompt_missing_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """research prompt should fail with nonexistent run."""
+        result = runner.invoke(app, ["research", "prompt", "--run", "nonexistent"])
+        assert result.exit_code == 1
+        assert "not found" in result.stdout.lower()
+
+    def test_research_import_missing_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """research import should fail with nonexistent run."""
+        research_file = initialized_weld / "research.md"
+        research_file.write_text("# Research\n")
+        result = runner.invoke(
+            app, ["research", "import", "--run", "nonexistent", "--file", str(research_file)]
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.stdout.lower()
+
+    def test_research_show_missing_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """research show should fail with nonexistent run."""
+        result = runner.invoke(app, ["research", "show", "--run", "nonexistent"])
+        assert result.exit_code == 1
+        assert "not found" in result.stdout.lower()
+
+    def test_research_show_skip_research_run(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """research show should fail with helpful error for skip-research runs."""
+        spec_path = initialized_weld / "spec.md"
+        spec_path.write_text("# Test Spec\n")
+
+        # Create run with --skip-research
+        result = runner.invoke(app, ["run", "--spec", str(spec_path), "--skip-research"])
+        assert result.exit_code == 0
+
+        # Get run ID from output
+        runs_dir = initialized_weld / ".weld" / "runs"
+        runs = list(runs_dir.iterdir())
+        run_id = runs[0].name
+
+        # Try to show research - should fail with clear error
+        result = runner.invoke(app, ["research", "show", "--run", run_id])
+        assert result.exit_code == 1
+        assert "skip-research" in result.stdout.lower()
+
 
 class TestPlanCommands:
     """Tests for weld plan subcommands."""
@@ -246,6 +343,7 @@ class TestPlanCommands:
         """plan --help should list subcommands."""
         result = runner.invoke(app, ["plan", "--help"])
         assert result.exit_code == 0
+        assert "prompt" in result.stdout
         assert "import" in result.stdout
         assert "review" in result.stdout
 
