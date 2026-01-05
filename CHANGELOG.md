@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Multi-category checks configuration with separate `lint`, `test`, `typecheck` commands
+- Run locking to prevent concurrent modifications to the same weld project
+- PID-based lock files with stale lock detection and automatic cleanup
+- Heartbeat updates during long-running operations to prevent false stale detection
 - Configurable execution order for check categories
 - Per-category output files in `checks/` subdirectory
 - `checks.summary.json` with aggregated results and first-failure tracking
