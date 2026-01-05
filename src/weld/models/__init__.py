@@ -19,7 +19,16 @@ Example:
 
 from .issues import Issue, Issues
 from .meta import Meta, SpecRef
-from .status import Status
+from .status import CategoryResult, ChecksSummary, Status
 from .step import Step
 
-__all__ = ["Issue", "Issues", "Meta", "SpecRef", "Status", "Step"]
+__all__ = [
+    "CategoryResult",
+    "ChecksSummary",
+    "Issue",
+    "Issues",
+    "Meta",
+    "SpecRef",
+    "Status",
+    "Step",
+]
