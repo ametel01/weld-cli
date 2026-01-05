@@ -36,8 +36,19 @@ class OutputContext:
         """Print error in appropriate format."""
         if self.json_mode and data:
             self.print_json({"error": message, **data})
+        elif self.json_mode:
+            self.print_json({"error": message})
         else:
             self.console.print(f"[red]Error: {message}[/red]")
+
+    def success(self, message: str, data: dict[str, Any] | None = None) -> None:
+        """Print success message in appropriate format."""
+        if self.json_mode and data:
+            self.print_json({"success": message, **data})
+        elif self.json_mode:
+            self.print_json({"success": message})
+        else:
+            self.console.print(f"[green]{message}[/green]")
 
 
 # Global output context (set by cli.py main callback)
