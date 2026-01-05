@@ -6,12 +6,11 @@ separated from the CLI framework setup in cli.py.
 
 from .commit import commit, list_runs_cmd, transcript_gist
 from .init import init
-from .plan import plan_import, plan_prompt, plan_review
+from .plan import plan_import, plan_prompt
 from .run import run_abandon, run_app, run_continue, run_start
 from .step import (
     step_fix_prompt,
     step_loop,
-    step_review_cmd,
     step_select,
     step_skip,
     step_snapshot,
@@ -23,14 +22,12 @@ __all__ = [
     "list_runs_cmd",
     "plan_import",
     "plan_prompt",
-    "plan_review",
     "run_abandon",
     "run_app",
     "run_continue",
     "run_start",
     "step_fix_prompt",
     "step_loop",
-    "step_review_cmd",
     "step_select",
     "step_skip",
     "step_snapshot",

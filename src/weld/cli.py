@@ -15,16 +15,15 @@ from .commands import (
     list_runs_cmd,
     plan_import,
     plan_prompt,
-    plan_review,
     step_fix_prompt,
     step_loop,
-    step_review_cmd,
     step_select,
     step_skip,
     step_snapshot,
     transcript_gist,
 )
 from .commands.discover import discover_app
+from .commands.doc_review import doc_review
 from .commands.doctor import doctor
 from .commands.interview import interview
 from .commands.next import next_action
@@ -150,16 +149,15 @@ app.command("list")(list_runs_cmd)
 app.command()(status)
 app.command()(doctor)
 app.command("next")(next_action)
+app.command("review")(doc_review)
 
 # Plan subcommands
 plan_app.command("prompt")(plan_prompt)
 plan_app.command("import")(plan_import)
-plan_app.command("review")(plan_review)
 
 # Step subcommands
 step_app.command("select")(step_select)
 step_app.command("snapshot")(step_snapshot)
-step_app.command("review")(step_review_cmd)
 step_app.command("fix-prompt")(step_fix_prompt)
 step_app.command("loop")(step_loop)
 step_app.command("skip")(step_skip)

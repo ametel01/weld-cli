@@ -347,7 +347,6 @@ class TestPlanCommands:
         assert result.exit_code == 0
         assert "prompt" in result.stdout
         assert "import" in result.stdout
-        assert "review" in result.stdout
 
     def test_plan_import_missing_run(self, runner: CliRunner, initialized_weld: Path) -> None:
         """plan import should fail with nonexistent run."""
@@ -356,11 +355,6 @@ class TestPlanCommands:
         result = runner.invoke(
             app, ["plan", "import", "--run", "nonexistent", "--file", str(plan_file)]
         )
-        assert result.exit_code == 1
-
-    def test_plan_review_missing_run(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """plan review should fail with nonexistent run."""
-        result = runner.invoke(app, ["plan", "review", "--run", "nonexistent"])
         assert result.exit_code == 1
 
 
@@ -373,7 +367,6 @@ class TestStepCommands:
         assert result.exit_code == 0
         assert "select" in result.stdout
         assert "snapshot" in result.stdout
-        assert "review" in result.stdout
         assert "loop" in result.stdout
 
     def test_step_select_missing_run(self, runner: CliRunner, initialized_weld: Path) -> None:
