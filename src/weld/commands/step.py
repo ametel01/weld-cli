@@ -8,6 +8,8 @@ from rich.console import Console
 
 from ..config import TaskType, load_config
 from ..core import (
+    LockError,
+    acquire_lock,
     create_iter_directory,
     create_step_directory,
     generate_fix_prompt,
@@ -15,6 +17,7 @@ from ..core import (
     get_run_dir,
     get_weld_dir,
     parse_steps,
+    release_lock,
     run_step_review,
 )
 from ..models import Status, Step
@@ -265,64 +268,74 @@ def step_loop(
     run_dir = get_run_dir(weld_dir, run)
     config = load_config(weld_dir)
 
-    # Find or select step
-    steps_dir = run_dir / "steps"
-    step_dirs = (
-        [d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")]
-        if steps_dir.exists()
-        else []
-    )
+    # Acquire lock for the duration of the loop
+    try:
+        acquire_lock(weld_dir, run, f"step loop --n {n}")
+    except LockError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from None
 
-    if not step_dirs:
-        # Auto-select step
-        console.print(f"[yellow]Step {n} not selected, selecting now...[/yellow]")
-        step_select(run=run, n=n)
-        step_dirs = [
-            d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")
-        ]
-
-    step_dir = step_dirs[0]
-
-    # Load step
-    step = Step.model_validate(json.loads((step_dir / "step.json").read_text()))
-
-    # Print initial prompt with model info
-    impl_model_cfg = config.get_task_model(TaskType.IMPLEMENTATION)
-    impl_model_info = f" ({impl_model_cfg.model})" if impl_model_cfg.model else ""
-    review_model_cfg = config.get_task_model(TaskType.IMPLEMENTATION_REVIEW)
-    review_model_info = f" ({review_model_cfg.model})" if review_model_cfg.model else ""
-
-    impl_prompt_path = step_dir / "prompt" / "impl.prompt.md"
-    console.print(
-        f"\n[bold]Implementation model:[/bold] {impl_model_cfg.provider}{impl_model_info}"
-    )
-    console.print(f"[bold]Review model:[/bold] {review_model_cfg.provider}{review_model_info}")
-    console.print(f"[bold]Implementation prompt:[/bold] {impl_prompt_path}")
-    console.print("\n" + "=" * 60)
-    console.print(impl_prompt_path.read_text())
-    console.print("=" * 60 + "\n")
-
-    # Run loop
-    from ..core import run_step_loop
-
-    result = run_step_loop(
-        run_dir=run_dir,
-        step=step,
-        config=config,
-        repo_root=repo_root,
-        max_iterations=max,
-        wait_mode=wait,
-    )
-
-    if result.success:
-        console.print(
-            f"\n[bold green]Step {n} completed in {result.iterations} iteration(s)![/bold green]"
+    try:
+        # Find or select step
+        steps_dir = run_dir / "steps"
+        step_dirs = (
+            [d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")]
+            if steps_dir.exists()
+            else []
         )
-        console.print("\n[bold]Next step:[/bold] Commit your changes:")
-        console.print(f"  weld commit --run {run} -m 'Implement step {n}' --staged")
-        raise typer.Exit(0)
-    else:
+
+        if not step_dirs:
+            # Auto-select step
+            console.print(f"[yellow]Step {n} not selected, selecting now...[/yellow]")
+            step_select(run=run, n=n)
+            step_dirs = [
+                d for d in steps_dir.iterdir() if d.is_dir() and d.name.startswith(f"{n:02d}-")
+            ]
+
+        step_dir = step_dirs[0]
+
+        # Load step
+        step = Step.model_validate(json.loads((step_dir / "step.json").read_text()))
+
+        # Print initial prompt with model info
+        impl_model_cfg = config.get_task_model(TaskType.IMPLEMENTATION)
+        impl_model_info = f" ({impl_model_cfg.model})" if impl_model_cfg.model else ""
+        review_model_cfg = config.get_task_model(TaskType.IMPLEMENTATION_REVIEW)
+        review_model_info = f" ({review_model_cfg.model})" if review_model_cfg.model else ""
+
+        impl_prompt_path = step_dir / "prompt" / "impl.prompt.md"
         console.print(
-            f"\n[bold red]Step {n} did not pass after {result.iterations} iterations[/bold red]"
+            f"\n[bold]Implementation model:[/bold] {impl_model_cfg.provider}{impl_model_info}"
         )
-        raise typer.Exit(10)
+        console.print(f"[bold]Review model:[/bold] {review_model_cfg.provider}{review_model_info}")
+        console.print(f"[bold]Implementation prompt:[/bold] {impl_prompt_path}")
+        console.print("\n" + "=" * 60)
+        console.print(impl_prompt_path.read_text())
+        console.print("=" * 60 + "\n")
+
+        # Run loop
+        from ..core import run_step_loop
+
+        result = run_step_loop(
+            run_dir=run_dir,
+            step=step,
+            config=config,
+            repo_root=repo_root,
+            max_iterations=max,
+            wait_mode=wait,
+            weld_dir=weld_dir,  # Pass for heartbeat updates
+        )
+
+        if result.success:
+            msg = f"Step {n} completed in {result.iterations} iteration(s)!"
+            console.print(f"\n[bold green]{msg}[/bold green]")
+            console.print("\n[bold]Next step:[/bold] Commit your changes:")
+            console.print(f"  weld commit --run {run} -m 'Implement step {n}' --staged")
+            raise typer.Exit(0)
+        else:
+            console.print(
+                f"\n[bold red]Step {n} did not pass after {result.iterations} iterations[/bold red]"
+            )
+            raise typer.Exit(10)
+    finally:
+        release_lock(weld_dir)

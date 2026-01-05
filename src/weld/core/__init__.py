@@ -10,6 +10,7 @@ This package contains pure business logic with no external I/O:
 """
 
 from .commit_handler import CommitError, build_commit_message, do_commit, ensure_transcript_gist
+from .lock_manager import LockError, acquire_lock, release_lock, update_heartbeat
 from .loop import LoopResult, run_step_loop
 from .plan_parser import (
     generate_codex_review_prompt,
@@ -43,8 +44,10 @@ from .step_processor import (
 
 __all__ = [
     "CommitError",
+    "LockError",
     "LoopResult",
     "ReviewError",
+    "acquire_lock",
     "build_commit_message",
     "create_iter_directory",
     "create_meta",
@@ -69,7 +72,9 @@ __all__ = [
     "parse_steps",
     "parse_steps_lenient",
     "parse_steps_strict",
+    "release_lock",
     "run_step_loop",
     "run_step_review",
     "sanitize_slug",
+    "update_heartbeat",
 ]

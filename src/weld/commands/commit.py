@@ -6,11 +6,14 @@ from rich.console import Console
 from ..config import load_config
 from ..core import (
     CommitError,
+    LockError,
+    acquire_lock,
     do_commit,
     ensure_transcript_gist,
     get_run_dir,
     get_weld_dir,
     list_runs,
+    release_lock,
 )
 from ..services import GitError, get_repo_root
 
@@ -68,6 +71,13 @@ def commit(
         console.print(f"[red]Error: Run not found: {run}[/red]")
         raise typer.Exit(1)
 
+    # Acquire lock for commit
+    try:
+        acquire_lock(weld_dir, run, f"commit -m '{message[:30]}...'")
+    except LockError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from None
+
     try:
         sha = do_commit(
             run_dir=run_dir,
@@ -87,6 +97,8 @@ def commit(
         else:
             console.print(f"[red]Error: {e}[/red]")
             raise typer.Exit(22) from None
+    finally:
+        release_lock(weld_dir)
 
 
 def list_runs_cmd() -> None:

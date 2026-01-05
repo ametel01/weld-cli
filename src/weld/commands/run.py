@@ -45,6 +45,8 @@ def run_start(
 
     # Generate run ID
     run_id = generate_run_id(slug=name, spec_path=spec)
+
+    # Create run directory and metadata (fast, idempotent - no locking needed)
     run_dir = create_run_directory(weld_dir, run_id)
 
     # Create metadata

@@ -16,6 +16,7 @@ from ..config import WeldConfig
 from ..models import Status, Step
 from ..services import capture_diff, write_diff
 from ..services.checks import run_checks, write_checks_results
+from .lock_manager import update_heartbeat
 from .review_engine import run_step_review
 from .step_processor import create_iter_directory, generate_fix_prompt, get_step_dir
 
@@ -67,6 +68,7 @@ def run_step_loop(
     repo_root: Path,
     max_iterations: int | None = None,
     wait_mode: bool = False,
+    weld_dir: Path | None = None,
 ) -> LoopResult:
     """Run the implement-review-fix loop for a step.
 
@@ -77,6 +79,7 @@ def run_step_loop(
         repo_root: Repository root path
         max_iterations: Override max iterations from config
         wait_mode: If True, wait for user input before each iteration
+        weld_dir: Path to .weld directory for heartbeat updates
 
     Returns:
         LoopResult with success status and iteration count
@@ -86,6 +89,10 @@ def run_step_loop(
     status: Status | None = None
 
     for iteration in range(1, max_iter + 1):
+        # Update heartbeat at the start of each iteration
+        if weld_dir:
+            update_heartbeat(weld_dir)
+
         console.print(f"\n[bold blue]Iteration {iteration}/{max_iter}[/bold blue]")
 
         if wait_mode:
@@ -140,6 +147,9 @@ def run_step_loop(
             config=config,
             cwd=repo_root,
         )
+        # Update heartbeat after review (can be a long operation)
+        if weld_dir:
+            update_heartbeat(weld_dir)
         # Enrich status with checks summary
         status.checks_summary = checks_summary
 
