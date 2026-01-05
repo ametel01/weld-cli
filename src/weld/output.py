@@ -13,6 +13,7 @@ class OutputContext:
 
     console: Console
     json_mode: bool = False
+    dry_run: bool = False
 
     def print(self, message: str, style: str | None = None) -> None:
         """Print message respecting output mode."""
@@ -37,3 +38,23 @@ class OutputContext:
             self.print_json({"error": message, **data})
         else:
             self.console.print(f"[red]Error: {message}[/red]")
+
+
+# Global output context (set by cli.py main callback)
+_ctx: OutputContext | None = None
+
+
+def get_output_context() -> OutputContext:
+    """Get the current output context.
+
+    Returns a default OutputContext if not yet initialized by CLI.
+    """
+    if _ctx is None:
+        return OutputContext(Console())
+    return _ctx
+
+
+def set_output_context(ctx: OutputContext) -> None:
+    """Set the global output context. Called by CLI main callback."""
+    global _ctx
+    _ctx = ctx
