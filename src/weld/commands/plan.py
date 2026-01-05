@@ -41,27 +41,122 @@ A solid plan dramatically constrains agent behavior.
 
 ## Output Format
 
-Create a step-by-step implementation plan. Each step must follow this format:
+Create a phased implementation plan. The plan MUST follow this exact structure:
 
-## Step N: <Title>
+### Phase Structure
 
-### Goal
+Divide the implementation into discrete, incremental phases. Each phase builds on the previous
+one and represents a logical milestone. Use this exact format for phase headers:
+
+## Phase <number>: <Title>
+
+Brief description of what this phase accomplishes and its prerequisites.
+
+### Phase Validation
+```bash
+# Command(s) to verify the entire phase is complete and working
+```
+
+### Step Structure
+
+Within each phase, break down the work into discrete, incremental steps. Each step must be
+atomic and verifiable. Step numbers restart at 1 within each phase. Use this exact format:
+
+### Step <number>: <Title>
+
+#### Goal
 Brief description of what this step accomplishes.
 
-### Files
+#### Files
 - `path/to/file.py` - What changes to make
 
-### Validation
+#### Validation
 ```bash
 # Command to verify this step works
 ```
 
-### Failure modes
+#### Failure modes
 - What could go wrong and how to detect it
 
 ---
 
-Guidelines:
+## Example
+
+Here is a brief example showing the structure (your plan should be more detailed):
+
+## Phase 1: Data Models
+
+Set up the core data structures needed for the feature.
+
+### Phase Validation
+```bash
+pytest tests/test_models.py -v
+```
+
+### Step 1: Create user model
+
+#### Goal
+Define the User dataclass with required fields.
+
+#### Files
+- `src/models/user.py` - Create new file with User dataclass
+
+#### Validation
+```bash
+python -c "from src.models.user import User; print(User.__annotations__)"
+```
+
+#### Failure modes
+- Import error if module path is wrong
+
+---
+
+### Step 2: Add validation logic
+
+#### Goal
+Add field validation to the User model.
+
+#### Files
+- `src/models/user.py` - Add validator methods
+
+#### Validation
+```bash
+pytest tests/test_models.py::test_user_validation -v
+```
+
+#### Failure modes
+- Validation too strict/lenient for requirements
+
+---
+
+## Phase 2: Core Logic
+
+Implement the business logic using the data models from Phase 1.
+
+### Phase Validation
+```bash
+pytest tests/test_core.py -v
+```
+
+### Step 1: Implement user service
+
+(Note: Step numbering restarts at 1 for each phase)
+
+...
+
+---
+
+## Guidelines
+
+**Phase guidelines:**
+- Each phase should be a logical milestone (e.g., "Phase 1: Data Models", "Phase 2: Core Logic")
+- Phases are incremental - each builds on the foundation of previous phases
+- A phase should be completable and testable before moving to the next
+- Include a Phase Validation section with commands to verify the entire phase works
+- Number phases sequentially starting from 1
+
+**Step guidelines:**
+- Step numbers restart at 1 within each new phase
 - Each step should be independently verifiable
 - Steps should be atomic and focused
 - Order steps by dependency (do prerequisites first)
