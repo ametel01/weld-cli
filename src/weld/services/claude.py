@@ -1,12 +1,11 @@
-"""Claude integration for weld."""
+"""Claude CLI integration for weld."""
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from ..constants import CLAUDE_TIMEOUT
-from ..models import Issues
-from .streaming import run_streaming_subprocess
 
 
 class ClaudeError(Exception):
@@ -52,6 +51,126 @@ def _extract_text_from_stream_json(line: str) -> str | None:
         return None
 
 
+def _run_streaming(
+    cmd: list[str],
+    cwd: Path | None,
+    timeout: int,
+) -> str:
+    """Run command with streaming output to stdout.
+
+    Args:
+        cmd: Command and arguments to run
+        cwd: Working directory
+        timeout: Timeout in seconds
+
+    Returns:
+        Full output text
+
+    Raises:
+        ClaudeError: If command fails or times out
+    """
+    import select
+    import time
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise ClaudeError(f"Claude executable not found: {cmd[0]}") from None
+
+    output_parts: list[str] = []
+    start_time = time.monotonic()
+
+    try:
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
+        # Use select for timeout-aware reading on Unix
+        # Fall back to blocking read with periodic timeout checks on other platforms
+        stdout_fd = proc.stdout.fileno()
+        buffer = ""
+
+        while True:
+            # Check timeout
+            elapsed = time.monotonic() - start_time
+            if elapsed >= timeout:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                raise ClaudeError(f"Claude timed out after {timeout} seconds")
+
+            remaining = timeout - elapsed
+
+            # Use select to wait for data with timeout
+            try:
+                readable, _, _ = select.select([stdout_fd], [], [], min(remaining, 1.0))
+            except (ValueError, OSError):
+                # File descriptor closed or invalid
+                break
+
+            if readable:
+                chunk = proc.stdout.read(4096)
+                if not chunk:
+                    # EOF
+                    break
+                buffer += chunk
+
+                # Process complete lines
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    text = _extract_text_from_stream_json(line.strip())
+                    if text:
+                        output_parts.append(text)
+                        sys.stdout.write(text)
+                        sys.stdout.flush()
+
+            # Check if process has exited
+            if proc.poll() is not None:
+                # Read any remaining data
+                remaining_data = proc.stdout.read()
+                if remaining_data:
+                    buffer += remaining_data
+                break
+
+        # Process any remaining buffer content
+        if buffer.strip():
+            text = _extract_text_from_stream_json(buffer.strip())
+            if text:
+                output_parts.append(text)
+                sys.stdout.write(text)
+                sys.stdout.flush()
+
+        # Wait for process to complete
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.read() if proc.stderr else ""
+            raise ClaudeError(f"Claude failed: {stderr}")
+
+        return "".join(output_parts)
+
+    except ClaudeError:
+        raise
+    except Exception as e:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        raise ClaudeError(f"Streaming failed: {e}") from e
+
+
 def run_claude(
     prompt: str,
     exec_path: str = "claude",
@@ -84,22 +203,11 @@ def run_claude(
 
     try:
         if stream:
-            # Use --output-format stream-json for real-time streaming
-            # Claude CLI doesn't support streaming text output directly in print mode
-            # See: https://github.com/anthropics/claude-code/issues/733
-            # Note: --verbose is required when using stream-json with --print
+            # Use stream-json for real-time streaming
             stream_cmd = [exec_path, "-p", prompt, "--verbose", "--output-format", "stream-json"]
             if model:
                 stream_cmd.extend(["--model", model])
-
-            return run_streaming_subprocess(
-                cmd=stream_cmd,
-                text_extractor=_extract_text_from_stream_json,
-                cwd=cwd,
-                timeout=timeout,
-                error_class=ClaudeError,
-                service_name="Claude",
-            )
+            return _run_streaming(stream_cmd, cwd, timeout)
         else:
             result = subprocess.run(
                 cmd,
@@ -115,32 +223,3 @@ def run_claude(
         raise ClaudeError(f"Claude timed out after {timeout} seconds") from e
     except FileNotFoundError:
         raise ClaudeError(f"Claude executable not found: {exec_path}") from None
-
-
-def parse_review_json(review_md: str) -> Issues:
-    """Parse issues JSON from last line of review.
-
-    The review format expects a JSON object on the last line with
-    format: {"pass": bool, "issues": [...]}
-
-    Args:
-        review_md: Full review markdown output
-
-    Returns:
-        Parsed Issues model
-
-    Raises:
-        ClaudeError: If parsing fails
-    """
-    lines = review_md.strip().split("\n")
-    if not lines:
-        raise ClaudeError("Empty review output")
-
-    last_line = lines[-1].strip()
-    try:
-        data = json.loads(last_line)
-        return Issues.model_validate(data)
-    except json.JSONDecodeError as e:
-        raise ClaudeError(f"Invalid JSON in review last line: {e}") from e
-    except Exception as e:
-        raise ClaudeError(f"Failed to parse issues: {e}") from e

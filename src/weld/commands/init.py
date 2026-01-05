@@ -26,7 +26,6 @@ def init() -> None:
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would initialize weld in this repository:")
         ctx.console.print(f"  Create directory: {weld_dir}")
-        ctx.console.print(f"  Create directory: {weld_dir / 'runs'}")
         if not config_path.exists():
             ctx.console.print(f"  Create config: {config_path}")
         else:
@@ -35,9 +34,8 @@ def init() -> None:
         ctx.console.print("  git, gh, codex, claude-code-transcripts")
         return
 
-    # Create directories
+    # Create directory
     weld_dir.mkdir(exist_ok=True)
-    (weld_dir / "runs").mkdir(exist_ok=True)
 
     # Create config if missing
     if not config_path.exists():

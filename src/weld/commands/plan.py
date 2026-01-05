@@ -1,281 +1,120 @@
-"""Plan command implementations."""
+"""Plan command implementation."""
 
-import json
 from pathlib import Path
 
 import typer
 
-from ..config import TaskType, load_config
-from ..core import (
-    LockError,
-    acquire_lock,
-    create_version_snapshot,
-    generate_codex_review_prompt,
-    generate_plan_prompt,
-    get_research_content,
-    get_run_dir,
-    get_weld_dir,
-    parse_steps,
-    release_lock,
-    update_run_meta_version,
-)
-from ..models import SpecRef
+from ..core import get_weld_dir, log_command
 from ..output import get_output_context
-from ..services import CodexError, GitError, extract_revised_plan, get_repo_root, run_codex
+from ..services import ClaudeError, GitError, get_repo_root, run_claude
 
 
-def plan_prompt(
-    run: str = typer.Option(..., "--run", "-r", help="Run ID"),
-) -> None:
-    """Generate plan prompt from spec and research."""
-    ctx = get_output_context()
+def generate_plan_prompt(spec_content: str, spec_name: str) -> str:
+    """Generate prompt for creating an implementation plan.
 
-    try:
-        repo_root = get_repo_root()
-    except GitError:
-        ctx.console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3) from None
+    Args:
+        spec_content: Content of the specification file
+        spec_name: Name of the specification file
 
-    weld_dir = get_weld_dir(repo_root)
-    run_dir = get_run_dir(weld_dir, run)
-    config = load_config(weld_dir)
+    Returns:
+        Formatted prompt for Claude
+    """
+    return f"""# Implementation Plan Request
 
-    if not run_dir.exists():
-        ctx.console.print(f"[red]Error: Run not found: {run}[/red]")
-        raise typer.Exit(1)
+Read the following specification carefully and create an implementation plan.
 
-    # Load spec reference
-    spec_ref_path = run_dir / "inputs" / "spec.ref.json"
-    if not spec_ref_path.exists():
-        ctx.console.print("[red]Error: spec.ref.json not found[/red]")
-        raise typer.Exit(1)
+## Specification: {spec_name}
 
-    spec_ref = SpecRef.model_validate_json(spec_ref_path.read_text())
-    spec_path = spec_ref.absolute_path
+{spec_content}
 
-    if not spec_path.exists():
-        ctx.console.print(f"[red]Error: Spec file not found: {spec_path}[/red]")
-        raise typer.Exit(1)
+---
 
-    spec_content = spec_path.read_text()
+## Planning Principles
 
-    # Check for research content
-    research_dir = run_dir / "research"
-    research_content: str | None = None
-    if research_dir.exists():
-        research_content = get_research_content(research_dir)
+Planning is the highest-leverage activity. A good plan:
+- Lists exact steps
+- References concrete files and snippets
+- Specifies validation after each change
+- Makes failure modes obvious
 
-    # Get model config for plan generation task
-    model_cfg = config.get_task_model(TaskType.PLAN_GENERATION)
-    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+A solid plan dramatically constrains agent behavior.
 
-    # Generate plan prompt
-    plan_prompt_content = generate_plan_prompt(
-        spec_content, spec_path, research_content=research_content
-    )
+## Output Format
 
-    if ctx.dry_run:
-        ctx.console.print("[cyan][DRY RUN][/cyan] Would generate plan prompt:")
-        ctx.console.print(f"  Run: {run}")
-        ctx.console.print(f"  Spec: {spec_path}")
-        ctx.console.print(f"  Research: {'included' if research_content else 'none'}")
-        ctx.console.print(f"  Target model: {model_cfg.provider}{model_info}")
-        ctx.console.print("\n[cyan][DRY RUN][/cyan] Would write:")
-        ctx.console.print("  plan/plan.prompt.md")
-        ctx.console.print("\n" + "=" * 60)
-        ctx.console.print(plan_prompt_content)
-        ctx.console.print("=" * 60)
-        return
+Create a step-by-step implementation plan. Each step must follow this format:
 
-    # Write plan prompt
-    prompt_path = run_dir / "plan" / "plan.prompt.md"
-    prompt_path.write_text(plan_prompt_content)
+## Step N: <Title>
 
-    ctx.console.print("[green]Plan prompt generated[/green]")
-    ctx.console.print(f"\n[bold]Spec:[/bold] {spec_path.name}")
-    if research_content:
-        ctx.console.print("[bold]Research:[/bold] included")
-    ctx.console.print(f"[bold]Target model:[/bold] {model_cfg.provider}{model_info}")
-    ctx.console.print(f"[bold]Prompt file:[/bold] {prompt_path}")
-    ctx.console.print("\n" + "=" * 60)
-    ctx.console.print(plan_prompt_content)
-    ctx.console.print("=" * 60)
-    ctx.console.print(f"\n[bold]Next step:[/bold] Copy prompt to {model_cfg.provider}, then run:")
-    ctx.console.print(f"  weld plan import --run {run} --file <plan_output.md>")
+### Goal
+Brief description of what this step accomplishes.
+
+### Files
+- `path/to/file.py` - What changes to make
+
+### Validation
+```bash
+# Command to verify this step works
+```
+
+### Failure modes
+- What could go wrong and how to detect it
+
+---
+
+Guidelines:
+- Each step should be independently verifiable
+- Steps should be atomic and focused
+- Order steps by dependency (do prerequisites first)
+- Reference specific files, functions, and line numbers where possible
+- Include concrete validation commands for each step
+"""
 
 
-def plan_import(
-    run: str = typer.Option(..., "--run", "-r", help="Run ID"),
-    file: Path = typer.Option(..., "--file", "-f", help="Plan file from Claude"),
-) -> None:
-    """Import Claude's plan output."""
-    ctx = get_output_context()
-
-    try:
-        repo_root = get_repo_root()
-    except GitError:
-        ctx.console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3) from None
-
-    weld_dir = get_weld_dir(repo_root)
-    run_dir = get_run_dir(weld_dir, run)
-
-    if not run_dir.exists():
-        ctx.console.print(f"[red]Error: Run not found: {run}[/red]")
-        raise typer.Exit(1)
-
-    if not file.exists():
-        ctx.console.print(f"[red]Error: Plan file not found: {file}[/red]")
-        raise typer.Exit(1)
-
-    # Parse plan to show info in dry-run mode
-    plan_content = file.read_text()
-    steps, warnings = parse_steps(plan_content)
-
-    # Check if plan already exists for versioning
-    plan_dir = run_dir / "plan"
-    existing_plan = plan_dir / "plan.raw.md"
-    has_existing = existing_plan.exists()
-
-    if ctx.dry_run:
-        ctx.console.print("[cyan][DRY RUN][/cyan] Would import plan:")
-        ctx.console.print(f"  Run: {run}")
-        ctx.console.print(f"  File: {file}")
-        ctx.console.print(f"  Steps found: {len(steps)}")
-        if has_existing:
-            ctx.console.print("  Previous plan: would be versioned")
-        if warnings:
-            for w in warnings:
-                ctx.console.print(f"  [yellow]Warning: {w}[/yellow]")
-        ctx.console.print("\n[cyan][DRY RUN][/cyan] Would write files:")
-        ctx.console.print("  output.md, plan.raw.md, meta.json")
-        return
-
-    # Acquire lock for plan import
-    try:
-        acquire_lock(weld_dir, run, f"plan import --file {file}")
-    except LockError as e:
-        ctx.console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1) from None
-
-    try:
-        # Create version snapshot before overwriting
-        if has_existing:
-            version = create_version_snapshot(
-                plan_dir,
-                "plan.raw.md",
-                trigger_reason="import",
-            )
-            ctx.console.print(f"Previous plan saved as v{version}")
-            # Update run meta with new version number (next version after import)
-            update_run_meta_version(run_dir, "plan", version + 1)
-
-        # Write verbatim output
-        (run_dir / "plan" / "output.md").write_text(plan_content)
-
-        # Update meta with warnings
-        meta_path = run_dir / "meta.json"
-        meta = json.loads(meta_path.read_text())
-        meta["plan_parse_warnings"] = warnings
-        meta_path.write_text(json.dumps(meta, indent=2, default=str))
-
-        # Write normalized plan
-        (run_dir / "plan" / "plan.raw.md").write_text(plan_content)
-
-        ctx.console.print(f"[green]Imported plan with {len(steps)} steps[/green]")
-        if warnings:
-            for w in warnings:
-                ctx.console.print(f"[yellow]Warning: {w}[/yellow]")
-
-        ctx.console.print("\n[bold]Next step:[/bold] Review plan with Codex:")
-        ctx.console.print(f"  weld plan review --run {run} --apply")
-    finally:
-        release_lock(weld_dir)
-
-
-def plan_review(
-    run: str = typer.Option(..., "--run", "-r", help="Run ID"),
-    apply: bool = typer.Option(False, "--apply", help="Apply revised plan"),
+def plan(
+    input_file: Path = typer.Argument(..., help="Specification markdown file"),
+    output: Path = typer.Option(..., "--output", "-o", help="Output path for the plan"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
 ) -> None:
-    """Run review on the plan."""
+    """Generate an implementation plan from a specification."""
     ctx = get_output_context()
 
+    if not input_file.exists():
+        ctx.error(f"Input file not found: {input_file}")
+        raise typer.Exit(1)
+
+    # Get weld directory for history logging (optional - plan can run without init)
     try:
         repo_root = get_repo_root()
+        weld_dir = get_weld_dir(repo_root)
     except GitError:
-        ctx.console.print("[red]Error: Not a git repository[/red]")
-        raise typer.Exit(3) from None
+        repo_root = None
+        weld_dir = None
 
-    weld_dir = get_weld_dir(repo_root)
-    run_dir = get_run_dir(weld_dir, run)
-    config = load_config(weld_dir)
-
-    if not run_dir.exists():
-        ctx.console.print(f"[red]Error: Run not found: {run}[/red]")
-        raise typer.Exit(1)
-
-    # Load plan
-    plan_raw = run_dir / "plan" / "plan.raw.md"
-    if not plan_raw.exists():
-        ctx.console.print("[red]Error: No plan imported yet. Run 'weld plan import' first.[/red]")
-        raise typer.Exit(1)
-
-    # Get model config for plan review task
-    model_cfg = config.get_task_model(TaskType.PLAN_REVIEW)
-    model_info = f" ({model_cfg.model})" if model_cfg.model else ""
+    spec_content = input_file.read_text()
+    prompt = generate_plan_prompt(spec_content, input_file.name)
 
     if ctx.dry_run:
-        ctx.console.print("[cyan][DRY RUN][/cyan] Would run plan review:")
-        ctx.console.print(f"  Run: {run}")
-        ctx.console.print(f"  Model: {model_cfg.provider}{model_info}")
-        ctx.console.print(f"  Apply revised plan: {apply}")
-        ctx.console.print("\n[cyan][DRY RUN][/cyan] Would:")
-        ctx.console.print("  1. Generate Codex prompt")
-        ctx.console.print("  2. Run Codex review")
-        ctx.console.print("  3. Write codex.prompt.md, codex.output.md")
-        if apply:
-            ctx.console.print("  4. Extract and write plan.final.md")
+        ctx.console.print("[cyan][DRY RUN][/cyan] Would generate plan:")
+        ctx.console.print(f"  Input: {input_file}")
+        ctx.console.print(f"  Output: {output}")
+        ctx.console.print("\n[cyan]Prompt:[/cyan]")
+        ctx.console.print(prompt)
         return
 
-    # Acquire lock for plan review
+    ctx.console.print(f"[cyan]Generating plan from {input_file.name}...[/cyan]\n")
+
     try:
-        acquire_lock(weld_dir, run, "plan review")
-    except LockError as e:
-        ctx.console.print(f"[red]Error: {e}[/red]")
+        result = run_claude(prompt=prompt, stream=not quiet)
+    except ClaudeError as e:
+        ctx.error(f"Claude failed: {e}")
         raise typer.Exit(1) from None
 
-    try:
-        plan_content = plan_raw.read_text()
+    # Write output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(result)
 
-        # Generate Codex prompt
-        codex_prompt = generate_codex_review_prompt(plan_content)
-        (run_dir / "plan" / "codex.prompt.md").write_text(codex_prompt)
+    # Log to history (only if weld is initialized)
+    if weld_dir and weld_dir.exists():
+        log_command(weld_dir, "plan", str(input_file), str(output))
 
-        ctx.console.print(f"[cyan]Running {model_cfg.provider} plan review{model_info}...[/cyan]\n")
-
-        try:
-            codex_output = run_codex(
-                prompt=codex_prompt,
-                exec_path=model_cfg.exec or config.codex.exec,
-                sandbox=config.codex.sandbox,
-                model=model_cfg.model,
-                cwd=repo_root,
-                stream=not quiet,
-            )
-            (run_dir / "plan" / "codex.output.md").write_text(codex_output)
-
-            if apply:
-                revised = extract_revised_plan(codex_output)
-                (run_dir / "plan" / "plan.final.md").write_text(revised)
-                ctx.console.print("[green]Revised plan saved to plan.final.md[/green]")
-
-            ctx.console.print("[green]Plan review complete[/green]")
-            ctx.console.print("\n[bold]Next step:[/bold] Select a step to implement:")
-            ctx.console.print(f"  weld step select --run {run} --n 1")
-
-        except CodexError as e:
-            ctx.console.print(f"[red]Codex error: {e}[/red]")
-            raise typer.Exit(12) from None
-    finally:
-        release_lock(weld_dir)
+    ctx.success(f"Plan written to {output}")

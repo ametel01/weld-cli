@@ -9,27 +9,14 @@ from rich.console import Console
 
 from weld import __version__
 
-from .commands import (
-    commit,
-    init,
-    list_runs_cmd,
-    plan_import,
-    plan_prompt,
-    step_fix_prompt,
-    step_loop,
-    step_select,
-    step_skip,
-    step_snapshot,
-    transcript_gist,
-)
+from .commands.commit import commit
 from .commands.discover import discover_app
 from .commands.doc_review import doc_review
 from .commands.doctor import doctor
+from .commands.init import init
 from .commands.interview import interview
-from .commands.next import next_action
-from .commands.research import research_app
-from .commands.run import run_app
-from .commands.status import status
+from .commands.plan import plan
+from .commands.research import research
 from .logging import configure_logging, setup_debug_logging
 from .output import OutputContext, set_output_context
 
@@ -48,16 +35,7 @@ app = typer.Typer(
 )
 
 # Sub-command groups
-plan_app = typer.Typer(help="Plan management commands")
-step_app = typer.Typer(help="Step implementation commands")
-transcript_app = typer.Typer(help="Transcript management commands")
-
 app.add_typer(discover_app, name="discover")
-app.add_typer(plan_app, name="plan")
-app.add_typer(research_app, name="research")
-app.add_typer(run_app, name="run")
-app.add_typer(step_app, name="step")
-app.add_typer(transcript_app, name="transcript")
 
 # Global console (initialized in main callback)
 _console: Console | None = None
@@ -118,7 +96,7 @@ def main(
     )
     # Setup debug file logging if in a git repo
     if debug:
-        from .core.run_manager import get_weld_dir
+        from .core import get_weld_dir
         from .services.git import GitError
 
         try:
@@ -145,25 +123,10 @@ def main(
 app.command()(init)
 app.command()(commit)
 app.command()(interview)
-app.command("list")(list_runs_cmd)
-app.command()(status)
 app.command()(doctor)
-app.command("next")(next_action)
+app.command()(plan)
+app.command()(research)
 app.command("review")(doc_review)
-
-# Plan subcommands
-plan_app.command("prompt")(plan_prompt)
-plan_app.command("import")(plan_import)
-
-# Step subcommands
-step_app.command("select")(step_select)
-step_app.command("snapshot")(step_snapshot)
-step_app.command("fix-prompt")(step_fix_prompt)
-step_app.command("loop")(step_loop)
-step_app.command("skip")(step_skip)
-
-# Transcript subcommands
-transcript_app.command("gist")(transcript_gist)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,6 @@ import pytest
 from weld.services.claude import (
     ClaudeError,
     _extract_text_from_stream_json,
-    parse_review_json,
     run_claude,
 )
 
@@ -104,186 +103,6 @@ class TestRunClaude:
             run_claude("prompt")
 
 
-class TestParseReviewJson:
-    """Tests for parse_review_json function."""
-
-    def test_valid_passing_review(self) -> None:
-        """Valid passing review JSON is parsed correctly."""
-        review = """# Review
-Some review content here.
-
-{"pass":true,"issues":[]}"""
-
-        issues = parse_review_json(review)
-        assert issues.pass_ is True
-        assert issues.issues == []
-
-    def test_valid_failing_review(self) -> None:
-        """Valid failing review with issues is parsed correctly."""
-        review = """# Review
-Found some problems.
-
-{"pass":false,"issues":[{"severity":"blocker","file":"main.py","hint":"Missing"}]}"""
-
-        issues = parse_review_json(review)
-        assert issues.pass_ is False
-        assert len(issues.issues) == 1
-        assert issues.issues[0].severity == "blocker"
-        assert issues.issues[0].file == "main.py"
-        assert issues.issues[0].hint == "Missing"
-
-    def test_multiple_issues(self) -> None:
-        """Multiple issues are parsed correctly."""
-        issue1 = '{"severity":"blocker","file":"a.py","hint":"Bug"}'
-        issue2 = '{"severity":"minor","file":"b.py","hint":"Style"}'
-        review = f"""Review text
-
-{{"pass":false,"issues":[{issue1},{issue2}]}}"""
-
-        issues = parse_review_json(review)
-        assert len(issues.issues) == 2
-        assert issues.issues[0].severity == "blocker"
-        assert issues.issues[1].severity == "minor"
-
-    def test_empty_output_raises_error(self) -> None:
-        """Empty output raises ClaudeError."""
-        with pytest.raises(ClaudeError, match="Invalid JSON"):
-            parse_review_json("")
-
-    def test_whitespace_only_raises_error(self) -> None:
-        """Whitespace-only output raises ClaudeError."""
-        with pytest.raises(ClaudeError, match="Invalid JSON"):
-            parse_review_json("   \n\n   ")
-
-    def test_invalid_json_raises_error(self) -> None:
-        """Invalid JSON on last line raises ClaudeError."""
-        review = """# Review
-Not valid JSON at the end
-{invalid json}"""
-
-        with pytest.raises(ClaudeError, match="Invalid JSON"):
-            parse_review_json(review)
-
-    def test_no_json_on_last_line(self) -> None:
-        """Non-JSON last line raises ClaudeError."""
-        review = """# Review
-Just some text
-No JSON here"""
-
-        with pytest.raises(ClaudeError, match="Invalid JSON"):
-            parse_review_json(review)
-
-
-class TestRunClaudeStreaming:
-    """Tests for run_claude streaming mode."""
-
-    def test_streaming_successful_execution(self) -> None:
-        """Streaming mode captures output correctly."""
-        # Create mock process with streaming JSONL output
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.poll.return_value = 0  # Process has exited
-
-        # Simulate streaming output line by line
-        stream_lines = [
-            '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}',
-            '{"type":"assistant","message":{"content":[{"type":"text","text":" World!"}]}}',
-            "",  # Empty line signals EOF
-        ]
-        mock_process.stdout.readline.side_effect = [*stream_lines, ""]
-        mock_process.stderr = MagicMock()
-        mock_process.stderr.read.return_value = ""
-
-        with (
-            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
-            patch("weld.services.streaming.sys.stdout.write"),
-            patch("weld.services.streaming.sys.stdout.flush"),
-        ):
-            result = run_claude("test prompt", stream=True)
-
-        # Verify output was captured
-        assert "Hello" in result
-        assert "World!" in result
-
-    def test_streaming_timeout_raises_error(self) -> None:
-        """Streaming mode times out and raises ClaudeError."""
-        mock_process = MagicMock()
-        mock_process.poll.return_value = None  # Process still running
-
-        # Make readline block forever (simulated via side_effect that always returns data)
-        def slow_readline() -> str:
-            import time
-
-            time.sleep(0.1)  # Small delay to ensure timeout check runs
-            return '{"type":"system","message":"waiting..."}'
-
-        mock_process.stdout.readline.side_effect = slow_readline
-        mock_process.stderr = MagicMock()
-
-        with (
-            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
-            patch("weld.services.streaming.sys.stdout.write"),
-            patch("weld.services.streaming.sys.stdout.flush"),
-            pytest.raises(ClaudeError, match="timed out after 1 seconds"),
-        ):
-            run_claude("test prompt", stream=True, timeout=1)
-
-        # Verify process was terminated (called by timeout logic and cleanup)
-        assert mock_process.terminate.call_count >= 1
-
-    def test_streaming_process_cleanup_on_error(self) -> None:
-        """Streaming mode cleans up process on error."""
-        mock_process = MagicMock()
-        mock_process.poll.return_value = None  # Process still running
-        mock_process.stdout.readline.side_effect = Exception("Unexpected error")
-        mock_process.stderr = MagicMock()
-
-        with (
-            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
-            pytest.raises(Exception, match="Unexpected error"),
-        ):
-            run_claude("test prompt", stream=True)
-
-        # Verify cleanup was attempted
-        mock_process.terminate.assert_called_once()
-
-    def test_streaming_nonzero_exit_code(self) -> None:
-        """Streaming mode raises error on non-zero exit code."""
-        mock_process = MagicMock()
-        mock_process.returncode = 1
-        mock_process.poll.return_value = 1
-
-        mock_process.stdout.readline.side_effect = [""]  # EOF immediately
-        mock_process.stderr = MagicMock()
-        mock_process.stderr.read.return_value = "Claude error occurred"
-
-        with (
-            patch("weld.services.streaming.subprocess.Popen", return_value=mock_process),
-            pytest.raises(ClaudeError, match="Claude failed"),
-        ):
-            run_claude("test prompt", stream=True)
-
-    def test_streaming_uses_stream_json_format(self) -> None:
-        """Streaming mode uses --output-format stream-json."""
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.poll.return_value = 0
-        mock_process.stdout.readline.side_effect = [""]
-        mock_process.stderr = MagicMock()
-        mock_process.stderr.read.return_value = ""
-
-        with patch(
-            "weld.services.streaming.subprocess.Popen", return_value=mock_process
-        ) as mock_popen:
-            run_claude("test prompt", stream=True)
-
-        # Verify command includes stream-json format
-        call_args = mock_popen.call_args[0][0]
-        assert "--output-format" in call_args
-        assert "stream-json" in call_args
-        assert "--verbose" in call_args
-
-
 class TestExtractTextFromStreamJson:
     """Tests for _extract_text_from_stream_json function."""
 
@@ -321,3 +140,168 @@ class TestExtractTextFromStreamJson:
         """Returns None when content array is empty."""
         line = '{"content":[]}'
         assert _extract_text_from_stream_json(line) is None
+
+
+class TestRunClaudeStreaming:
+    """Tests for run_claude streaming mode."""
+
+    def test_streaming_uses_stream_json_format(self) -> None:
+        """Streaming mode uses --output-format stream-json."""
+        import select as select_module
+
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0
+        mock_process.stdout.fileno.return_value = 1
+        mock_process.stdout.read.return_value = ""
+        mock_process.stderr.read.return_value = ""
+
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process) as mock_popen,
+            patch.object(select_module, "select", return_value=([], [], [])),
+        ):
+            run_claude("test prompt", stream=True)
+
+        call_args = mock_popen.call_args[0][0]
+        assert "--output-format" in call_args
+        assert "stream-json" in call_args
+        assert "--verbose" in call_args
+
+    def test_streaming_successful_execution(self) -> None:
+        """Streaming mode captures output correctly."""
+        import select as select_module
+
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.stdout.fileno.return_value = 1
+
+        # Simulate streaming output
+        chunks = [
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}\n',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":" World!"}]}}\n',
+            "",  # EOF
+        ]
+        read_call_count = [0]
+
+        def mock_read(size: int) -> str:
+            if read_call_count[0] < len(chunks):
+                result = chunks[read_call_count[0]]
+                read_call_count[0] += 1
+                return result
+            return ""
+
+        mock_process.stdout.read.side_effect = mock_read
+        mock_process.stderr.read.return_value = ""
+
+        # First call returns readable, subsequent calls return empty (process exited)
+        poll_returns = [None, None, 0]
+        poll_count = [0]
+
+        def mock_poll() -> int | None:
+            if poll_count[0] < len(poll_returns):
+                result = poll_returns[poll_count[0]]
+                poll_count[0] += 1
+                return result
+            return 0
+
+        mock_process.poll.side_effect = mock_poll
+
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
+            patch.object(select_module, "select", return_value=([1], [], [])),
+            patch("weld.services.claude.sys.stdout.write"),
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = run_claude("test prompt", stream=True)
+
+        assert "Hello" in result
+        assert "World!" in result
+
+    def test_streaming_timeout_terminates_process(self) -> None:
+        """Streaming mode terminates process on timeout."""
+        import select as select_module
+        import time as time_module
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process never exits
+        mock_process.stdout.fileno.return_value = 1
+        mock_process.stderr.read.return_value = ""
+
+        time_values = [0, 0, 5, 10]  # Simulate time passing
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
+            patch.object(select_module, "select", return_value=([], [], [])),
+            patch.object(time_module, "monotonic", side_effect=time_values),
+            pytest.raises(ClaudeError, match="timed out after 1 seconds"),
+        ):
+            run_claude("test prompt", stream=True, timeout=1)
+
+        mock_process.terminate.assert_called()
+
+    def test_streaming_nonzero_exit_code(self) -> None:
+        """Streaming mode raises error on non-zero exit code."""
+        import select as select_module
+
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.poll.return_value = 1  # Process exited with error
+        mock_process.stdout.fileno.return_value = 1
+        mock_process.stdout.read.return_value = ""
+        mock_process.stderr.read.return_value = "Claude error occurred"
+
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
+            patch.object(select_module, "select", return_value=([], [], [])),
+            pytest.raises(ClaudeError, match="Claude failed"),
+        ):
+            run_claude("test prompt", stream=True)
+
+    def test_streaming_executable_not_found(self) -> None:
+        """Streaming mode raises error when executable not found."""
+        with (
+            patch(
+                "weld.services.claude.subprocess.Popen",
+                side_effect=FileNotFoundError("claude not found"),
+            ),
+            pytest.raises(ClaudeError, match="not found"),
+        ):
+            run_claude("test prompt", stream=True)
+
+    def test_streaming_with_model_parameter(self) -> None:
+        """Streaming mode passes model parameter."""
+        import select as select_module
+
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0
+        mock_process.stdout.fileno.return_value = 1
+        mock_process.stdout.read.return_value = ""
+        mock_process.stderr.read.return_value = ""
+
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process) as mock_popen,
+            patch.object(select_module, "select", return_value=([], [], [])),
+        ):
+            run_claude("test prompt", stream=True, model="claude-sonnet-4-20250514")
+
+        call_args = mock_popen.call_args[0][0]
+        assert "--model" in call_args
+        assert "claude-sonnet-4-20250514" in call_args
+
+    def test_streaming_cleans_up_on_error(self) -> None:
+        """Streaming mode cleans up process on unexpected error."""
+        import select as select_module
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.stdout.fileno.return_value = 1
+        mock_process.stderr = MagicMock()
+
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
+            patch.object(select_module, "select", side_effect=Exception("Unexpected error")),
+            pytest.raises(ClaudeError, match="Streaming failed"),
+        ):
+            run_claude("test prompt", stream=True)
+
+        mock_process.terminate.assert_called()

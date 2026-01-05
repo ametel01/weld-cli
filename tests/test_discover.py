@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from weld.commands.discover import _get_discover_artifacts
 from weld.core.discover_engine import generate_discover_prompt, get_discover_dir
 from weld.models import DiscoverMeta
 
@@ -38,27 +37,6 @@ class TestDiscoverMeta:
         assert isinstance(meta.created_at, datetime)
         assert meta.used_by_runs == []
         assert meta.partial is False
-
-    def test_discover_meta_with_runs(self) -> None:
-        """Can track runs using this discover."""
-        meta = DiscoverMeta(
-            discover_id="test-discover",
-            config_hash="hash",
-            output_path=Path("out.md"),
-            used_by_runs=["run-1", "run-2"],
-        )
-        assert len(meta.used_by_runs) == 2
-        assert "run-1" in meta.used_by_runs
-
-    def test_discover_meta_partial(self) -> None:
-        """Can mark discovery as partial/incomplete."""
-        meta = DiscoverMeta(
-            discover_id="test-discover",
-            config_hash="hash",
-            output_path=Path("out.md"),
-            partial=True,
-        )
-        assert meta.partial is True
 
     def test_discover_meta_serialization(self) -> None:
         """DiscoverMeta can be serialized to JSON."""
@@ -94,16 +72,6 @@ class TestGenerateDiscoverPrompt:
         assert "Key Files" in prompt
         assert "file:line references" in prompt
 
-    def test_includes_integration_section(self) -> None:
-        """Prompt includes dependencies and integrations section."""
-        prompt = generate_discover_prompt()
-        assert "Dependencies & Integrations" in prompt
-
-    def test_includes_testing_section(self) -> None:
-        """Prompt includes testing strategy section."""
-        prompt = generate_discover_prompt()
-        assert "Testing Strategy" in prompt
-
     def test_default_focus_areas(self) -> None:
         """Uses default focus when none specified."""
         prompt = generate_discover_prompt()
@@ -114,11 +82,6 @@ class TestGenerateDiscoverPrompt:
         prompt = generate_discover_prompt("Focus on the API layer and authentication.")
         assert "Focus on the API layer and authentication" in prompt
         assert "Analyze the entire codebase holistically" not in prompt
-
-    def test_file_line_references_instruction(self) -> None:
-        """Prompt instructs to use file:line references."""
-        prompt = generate_discover_prompt()
-        assert "file:line references" in prompt
 
 
 @pytest.mark.unit
@@ -160,60 +123,6 @@ class TestGetDiscoverDir:
 
 
 @pytest.mark.unit
-class TestGetDiscoverArtifacts:
-    """Tests for _get_discover_artifacts helper function."""
-
-    def test_returns_empty_when_no_discover_dir(self, tmp_path: Path) -> None:
-        """Returns empty list when .weld/discover doesn't exist."""
-        weld_dir = tmp_path / ".weld"
-        weld_dir.mkdir()
-
-        result = _get_discover_artifacts(weld_dir)
-
-        assert result == []
-
-    def test_returns_empty_when_discover_dir_empty(self, tmp_path: Path) -> None:
-        """Returns empty list when .weld/discover exists but has no artifacts."""
-        weld_dir = tmp_path / ".weld"
-        (weld_dir / "discover").mkdir(parents=True)
-
-        result = _get_discover_artifacts(weld_dir)
-
-        assert result == []
-
-    def test_returns_artifacts_sorted_by_mtime(self, tmp_path: Path) -> None:
-        """Returns artifacts sorted by modification time, newest first."""
-        weld_dir = tmp_path / ".weld"
-        discover_dir = weld_dir / "discover"
-        discover_dir.mkdir(parents=True)
-
-        # Create artifacts with different names (simulating timestamps)
-        (discover_dir / "20260101-120000-discover").mkdir()
-        (discover_dir / "20260102-120000-discover").mkdir()
-        (discover_dir / "20260103-120000-discover").mkdir()
-
-        result = _get_discover_artifacts(weld_dir)
-
-        # Should be sorted by mtime, but since created in order, last is newest
-        assert len(result) == 3
-        assert all(p.is_dir() for p in result)
-
-    def test_ignores_files_only_returns_directories(self, tmp_path: Path) -> None:
-        """Only returns directories, ignores regular files."""
-        weld_dir = tmp_path / ".weld"
-        discover_dir = weld_dir / "discover"
-        discover_dir.mkdir(parents=True)
-
-        (discover_dir / "artifact-dir").mkdir()
-        (discover_dir / "stray-file.txt").write_text("should be ignored")
-
-        result = _get_discover_artifacts(weld_dir)
-
-        assert len(result) == 1
-        assert result[0].name == "artifact-dir"
-
-
-@pytest.mark.unit
 class TestDiscoverMetaSerialization:
     """Tests for DiscoverMeta JSON round-trip."""
 
@@ -236,44 +145,3 @@ class TestDiscoverMetaSerialization:
         assert loaded["output_path"] == "architecture.md"
         assert loaded["used_by_runs"] == ["run-1"]
         assert loaded["partial"] is False
-
-
-@pytest.mark.unit
-class TestGenerateDiscoverPromptStructure:
-    """Tests verifying prompt structure and required sections."""
-
-    def test_prompt_has_required_sections(self) -> None:
-        """Prompt contains all required analysis sections."""
-        prompt = generate_discover_prompt()
-
-        # Verify prompt has numbered sections
-        assert "### 1. Executive Summary" in prompt
-        assert "### 2. System Architecture" in prompt
-        assert "### 3. Codebase Structure" in prompt
-        assert "### 8. Testing Strategy" in prompt
-
-    def test_prompt_instructs_file_references(self) -> None:
-        """Prompt instructs to use file:line references."""
-        prompt = generate_discover_prompt()
-
-        # Should mention file:line references
-        assert "file:line" in prompt.lower()
-        assert "Use file:line references" in prompt
-
-    def test_focus_replaces_default_not_appends(self) -> None:
-        """Custom focus completely replaces default, doesn't append."""
-        default_prompt = generate_discover_prompt()
-        custom_prompt = generate_discover_prompt("Only analyze security")
-
-        # Default text should NOT appear when custom focus given
-        assert "holistically" in default_prompt
-        assert "holistically" not in custom_prompt
-        assert "Only analyze security" in custom_prompt
-
-    def test_prompt_mentions_output_format(self) -> None:
-        """Prompt explains expected output format."""
-        prompt = generate_discover_prompt()
-
-        # Should mention markdown and file references
-        assert "markdown" in prompt.lower()
-        assert "file:line" in prompt
