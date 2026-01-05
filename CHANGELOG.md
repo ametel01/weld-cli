@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic version pruning (keeps last 5 versions per artifact)
 - Version snapshots stored in `history/v<N>/` with content.md and meta.json
 - Research and plan import commands now create version snapshots before overwriting
+- Discover workflow for brownfield codebase analysis
+  - `weld discover prompt` generates architecture analysis prompts
+  - `weld discover show` displays generated prompts
+  - `weld discover list` lists all discover artifacts
+  - `DiscoverMeta` model for tracking discover artifact lineage
+- Interview workflow for specification refinement
+  - `weld interview` command for interactive Q&A-based spec refinement
+  - `generate_interview_prompt()` for creating AI interview prompts
 
 ### Changed
 - `OutputContext` now includes `dry_run` field for command dry-run support
