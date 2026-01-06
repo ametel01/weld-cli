@@ -178,6 +178,7 @@ def run_claude(
     cwd: Path | None = None,
     timeout: int | None = None,
     stream: bool = False,
+    skip_permissions: bool = False,
 ) -> str:
     """Run Claude CLI with prompt and return output.
 
@@ -188,6 +189,7 @@ def run_claude(
         cwd: Working directory
         timeout: Optional timeout in seconds (default: 600)
         stream: If True, stream output to stdout in real-time
+        skip_permissions: If True, add --dangerously-skip-permissions for write operations
 
     Returns:
         Claude stdout output
@@ -200,6 +202,8 @@ def run_claude(
     cmd = [exec_path, "-p", prompt, "--output-format", "text"]
     if model:
         cmd.extend(["--model", model])
+    if skip_permissions:
+        cmd.append("--dangerously-skip-permissions")
 
     try:
         if stream:
@@ -207,6 +211,8 @@ def run_claude(
             stream_cmd = [exec_path, "-p", prompt, "--verbose", "--output-format", "stream-json"]
             if model:
                 stream_cmd.extend(["--model", model])
+            if skip_permissions:
+                stream_cmd.append("--dangerously-skip-permissions")
             return _run_streaming(stream_cmd, cwd, timeout)
         else:
             result = subprocess.run(

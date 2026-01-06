@@ -57,14 +57,40 @@ class TestRunClaude:
         call_args = mock_run.call_args[0][0]
         assert call_args[0] == "/custom/path/claude"
 
+    def test_skip_permissions_flag(self) -> None:
+        """skip_permissions adds --dangerously-skip-permissions flag."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "response"
+        mock_result.stderr = ""
+
+        with patch("weld.services.claude.subprocess.run", return_value=mock_result) as mock_run:
+            run_claude("prompt", skip_permissions=True)
+
+        call_args = mock_run.call_args[0][0]
+        assert "--dangerously-skip-permissions" in call_args
+
+    def test_skip_permissions_default_false(self) -> None:
+        """By default, skip_permissions is False."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "response"
+        mock_result.stderr = ""
+
+        with patch("weld.services.claude.subprocess.run", return_value=mock_result) as mock_run:
+            run_claude("prompt")
+
+        call_args = mock_run.call_args[0][0]
+        assert "--dangerously-skip-permissions" not in call_args
+
     def test_timeout_raises_error(self) -> None:
         """Timeout raises ClaudeError."""
         with (
             patch(
                 "weld.services.claude.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=600),
+                side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=1800),
             ),
-            pytest.raises(ClaudeError, match="timed out after 600 seconds"),
+            pytest.raises(ClaudeError, match="timed out after 1800 seconds"),
         ):
             run_claude("prompt")
 
@@ -287,6 +313,26 @@ class TestRunClaudeStreaming:
         call_args = mock_popen.call_args[0][0]
         assert "--model" in call_args
         assert "claude-sonnet-4-20250514" in call_args
+
+    def test_streaming_with_skip_permissions(self) -> None:
+        """Streaming mode passes skip_permissions flag."""
+        import select as select_module
+
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.poll.return_value = 0
+        mock_process.stdout.fileno.return_value = 1
+        mock_process.stdout.read.return_value = ""
+        mock_process.stderr.read.return_value = ""
+
+        with (
+            patch("weld.services.claude.subprocess.Popen", return_value=mock_process) as mock_popen,
+            patch.object(select_module, "select", return_value=([], [], [])),
+        ):
+            run_claude("test prompt", stream=True, skip_permissions=True)
+
+        call_args = mock_popen.call_args[0][0]
+        assert "--dangerously-skip-permissions" in call_args
 
     def test_streaming_cleans_up_on_error(self) -> None:
         """Streaming mode cleans up process on unexpected error."""
