@@ -9,13 +9,19 @@ This package contains pure business logic with no external I/O:
 """
 
 from .discover_engine import generate_discover_prompt, get_discover_dir
-from .doc_review_engine import generate_doc_review_prompt, get_doc_review_dir, strip_preamble
+from .doc_review_engine import (
+    generate_code_review_prompt,
+    generate_doc_review_prompt,
+    get_doc_review_dir,
+    strip_preamble,
+)
 from .history import HistoryEntry, get_history_path, log_command, prune_history, read_history
 from .interview_engine import generate_interview_prompt, run_interview_loop
 from .weld_dir import get_weld_dir
 
 __all__ = [
     "HistoryEntry",
+    "generate_code_review_prompt",
     "generate_discover_prompt",
     "generate_doc_review_prompt",
     "generate_interview_prompt",

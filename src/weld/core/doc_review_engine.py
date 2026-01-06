@@ -1,7 +1,9 @@
-"""Document review engine for verifying documentation against codebase.
+"""Review engine for verifying documentation and code changes.
 
 Validates documentation by comparing it against the actual state of the codebase,
 identifying errors, missing implementations, gaps, and incorrect evaluations.
+
+Also provides code change review functionality for analyzing git diffs.
 """
 
 import re
@@ -193,6 +195,211 @@ Your ENTIRE response must be the corrected markdown document, starting with its 
 (title, frontmatter, or heading) and ending with its last line. No wrapper text.
 """
 
+# =============================================================================
+# Code Review Prompt Templates
+# =============================================================================
+
+CODE_REVIEW_PROMPT_TEMPLATE = """You are an expert code reviewer performing a thorough analysis \
+of code changes.
+
+## Your Mission
+
+Review the provided git diff and identify issues that could cause problems in production. \
+Focus on substantive issues, not style preferences.
+
+## Diff to Review
+
+```diff
+{diff_content}
+```
+
+## Review Categories
+
+Analyze the changes for the following types of issues:
+
+### 1. Bugs
+Logic errors and correctness issues:
+- Off-by-one errors, boundary conditions
+- Null/undefined handling issues
+- Race conditions or async problems
+- Incorrect boolean logic or comparisons
+- Resource leaks (memory, file handles, connections)
+- Exception handling gaps
+
+### 2. Security Vulnerabilities
+Security issues introduced or exposed:
+- Injection vulnerabilities (SQL, command, XSS)
+- Authentication/authorization bypasses
+- Sensitive data exposure
+- Insecure cryptographic practices
+- Missing input validation
+
+### 3. Missing Implementations
+Incomplete changes that will cause failures:
+- Functions that don't handle all code paths
+- Missing error handling for expected failures
+- Unimplemented TODO/FIXME items in the diff
+- Partial refactors leaving dead code or broken references
+
+### 4. Test Issues
+Problems with test coverage and assertions:
+- Tests that don't assert expected behavior (silent passes)
+- Missing test cases for edge conditions
+- Tests that would pass even if the code was broken
+- Mocked behavior that doesn't match real implementation
+- Missing error path testing
+
+### 5. Improvements
+Significant issues that should be addressed (not style nits):
+- Performance problems (N+1 queries, unnecessary iterations)
+- API design issues that will be hard to change later
+- Missing logging/observability for debugging
+- Hardcoded values that should be configurable
+
+## Output Format
+
+Produce a structured findings report:
+
+# Code Review Findings
+
+## Summary
+- **Changes reviewed:** [brief description]
+- **Files modified:** [count]
+- **Issues found:** [total count]
+- **Critical issues:** [count of bugs + security]
+- **Verdict:** APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION
+
+## Critical Issues
+
+### Bugs
+For each bug found:
+- **File:** [filename:line]
+- **Issue:** [clear description of the bug]
+- **Impact:** [what will go wrong]
+- **Fix:** [specific fix recommendation]
+
+### Security
+For each security issue:
+- **File:** [filename:line]
+- **Vulnerability:** [type of vulnerability]
+- **Risk:** HIGH/MEDIUM/LOW
+- **Fix:** [specific remediation]
+
+## Other Issues
+
+### Missing Implementations
+- **File:** [filename:line]
+- **Gap:** [what's missing]
+- **Required:** [what needs to be added]
+
+### Test Issues
+- **File:** [filename:line]
+- **Problem:** [what's wrong with the test]
+- **Fix:** [how to improve the test]
+
+### Improvements
+- **File:** [filename:line]
+- **Issue:** [the problem]
+- **Suggestion:** [recommended change]
+
+## Approval Status
+
+[Final recommendation with rationale]
+
+---
+
+Be thorough but focus on issues that matter. Skip style comments unless they indicate \
+deeper problems. Every issue should be actionable with a clear fix.
+"""
+
+CODE_REVIEW_APPLY_PROMPT_TEMPLATE = """You are an expert code reviewer who fixes issues \
+directly in the codebase.
+
+## Your Mission
+
+Review the provided git diff, identify issues, and **fix them directly** in the affected files. \
+Apply fixes for all substantive issues found.
+
+## Diff to Review
+
+```diff
+{diff_content}
+```
+
+## Issues to Fix
+
+Look for and fix these types of issues:
+
+### 1. Bugs
+- Off-by-one errors, boundary conditions
+- Null/undefined handling issues
+- Race conditions or async problems
+- Incorrect boolean logic
+- Resource leaks
+- Exception handling gaps
+
+### 2. Security Vulnerabilities
+- Injection vulnerabilities
+- Missing input validation
+- Sensitive data exposure
+- Authentication/authorization issues
+
+### 3. Missing Implementations
+- Functions that don't handle all code paths
+- Missing error handling
+- Partial refactors leaving broken code
+
+### 4. Test Issues
+- Tests that don't assert expected behavior
+- Missing edge case tests
+- Assertions that would pass on broken code
+- Missing error path testing
+
+### 5. Significant Improvements
+- Performance problems (N+1 queries, etc.)
+- Missing error logging
+- Hardcoded values that should be configurable
+
+## Instructions
+
+1. Read the diff carefully to understand all changes
+2. Identify every file with issues that need fixing
+3. For each file with issues, use your tools to:
+   - Read the current file content
+   - Apply all necessary fixes
+   - Ensure fixes don't break other code
+
+## Fix Guidelines
+
+- Fix ALL issues found, not just critical ones
+- Preserve existing code style and patterns
+- Add error handling where missing
+- Fix tests to properly assert expected behavior
+- Add TODO comments only for issues you cannot fix without more context
+
+## Output
+
+After applying all fixes, provide a summary:
+
+# Fixes Applied
+
+## Summary
+- **Files fixed:** [count]
+- **Issues fixed:** [total]
+- **Issues requiring manual review:** [count, if any]
+
+## Changes Made
+
+For each file modified:
+### [filename]
+- [Issue 1]: [what was fixed]
+- [Issue 2]: [what was fixed]
+
+## Manual Review Needed
+
+[List any issues that couldn't be fixed automatically, with explanation]
+"""
+
 
 def generate_doc_review_prompt(document_content: str, apply_mode: bool = False) -> str:
     """Generate review prompt for document verification.
@@ -207,6 +414,21 @@ def generate_doc_review_prompt(document_content: str, apply_mode: bool = False) 
     if apply_mode:
         return DOC_REVIEW_APPLY_PROMPT_TEMPLATE.format(document_content=document_content)
     return DOC_REVIEW_PROMPT_TEMPLATE.format(document_content=document_content)
+
+
+def generate_code_review_prompt(diff_content: str, apply_mode: bool = False) -> str:
+    """Generate review prompt for code changes.
+
+    Args:
+        diff_content: Git diff output to review
+        apply_mode: If True, generate prompt for fixing issues directly
+
+    Returns:
+        Formatted prompt for AI code review
+    """
+    if apply_mode:
+        return CODE_REVIEW_APPLY_PROMPT_TEMPLATE.format(diff_content=diff_content)
+    return CODE_REVIEW_PROMPT_TEMPLATE.format(diff_content=diff_content)
 
 
 def get_doc_review_dir(weld_dir: Path) -> Path:
