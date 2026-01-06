@@ -56,8 +56,11 @@ weld plan specs/my-feature.md --output plan.md
 # 6. Review a document against the codebase
 weld review plan.md --apply
 
-# 7. Commit with transcript provenance
-weld commit -m "Implement feature" --staged
+# 7. Review code changes before committing
+weld review --diff --staged
+
+# 8. Commit with transcript provenance (auto-generates message)
+weld commit --all
 ```
 
 ---
@@ -328,46 +331,72 @@ Outputs a prompt for Claude Code that:
 
 ---
 
-### `weld review <file> [--apply]`
+### `weld review [<file>] [--diff] [--apply]`
 
-Review a document against the codebase.
+Review documents or code changes.
 
+**Document review** (verifies docs against codebase):
 ```bash
-weld review plan.md                    # Show review prompt
+weld review plan.md                    # Review document accuracy
 weld review plan.md --apply            # Apply corrections in place
 weld review research.md --prompt-only  # Just show the prompt
 ```
 
+**Code review** (reviews git diff for issues):
+```bash
+weld review --diff                     # Review all uncommitted changes
+weld review --diff --staged            # Review only staged changes
+weld review --diff --apply             # Review and fix all issues directly
+weld review --diff --prompt-only       # Generate prompt without running
+```
+
 Options:
-- `--apply` - Correct document in place (saves original to `.weld/reviews/`)
+- `--diff`, `-d` - Review git diff instead of a document
+- `--staged`, `-s` - Review only staged changes (requires `--diff`)
+- `--apply` - Apply corrections/fixes directly
 - `--prompt-only` - Output prompt without running Claude
 - `--quiet`, `-q` - Suppress streaming output
 
-Reviews check for:
+Document reviews check for:
 - Errors and inaccuracies
 - Missing implementations
 - Gaps in coverage
 - Wrong evaluations
 
+Code reviews check for:
+- Bugs and logic errors
+- Security vulnerabilities
+- Missing implementations
+- Test issues (assertions, coverage)
+- Significant improvements needed
+
 ---
 
-### `weld commit -m "<message>" [--all] [--staged]`
+### `weld commit [--all] [--no-split]`
 
-Create a commit with transcript trailer.
+Auto-generate commit message(s) from diff, update CHANGELOG, and commit with transcript.
+
+Automatically analyzes the diff and creates multiple logical commits when appropriate
+(e.g., separating typo fixes from version updates from documentation changes).
 
 ```bash
-weld commit -m "Implement user auth" --staged
-weld commit -m "Implement user auth" --all
-weld commit -m "Add feature" --skip-transcript
+weld commit --all               # Stage all changes, auto-split into logical commits
+weld commit                     # Commit only staged changes
+weld commit --no-split          # Force single commit (disable auto-split)
+weld commit --edit              # Review/edit commit message in $EDITOR
+weld commit --skip-transcript   # Skip transcript generation
+weld commit --skip-changelog    # Skip CHANGELOG.md update
 ```
 
 Options:
-- `-m`, `--message` - Commit message (required)
-- `--staged` (default) - Commit only staged changes
 - `--all`, `-a` - Stage all changes before committing
+- `--no-split` - Force single commit (disable automatic splitting)
+- `--edit`, `-e` - Edit generated message in $EDITOR before commit
 - `--skip-transcript` - Skip transcript generation
+- `--skip-changelog` - Skip CHANGELOG.md update
+- `--quiet`, `-q` - Suppress Claude streaming output
 
-The commit message includes a trailer:
+The final commit message includes a transcript trailer:
 ```
 Implement user auth
 
@@ -378,8 +407,10 @@ Exit codes:
 - `0` - Committed
 - `1` - Weld not initialized
 - `20` - No changes to commit
-- `21` - Transcript generation failed (warning only)
+- `21` - Claude failed to generate message
 - `22` - Git commit failed
+- `23` - Failed to parse Claude response
+- `24` - Editor error
 
 ---
 
@@ -412,6 +443,7 @@ name = "your-project"
 [claude]
 exec = "claude"          # Claude CLI path
 model = "claude-sonnet-4-20250514"  # Default model (optional)
+timeout = 1800           # Timeout in seconds for AI operations (30 min default)
 
 [claude.transcripts]
 exec = "claude-code-transcripts"

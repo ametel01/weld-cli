@@ -8,13 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `weld commit` now automatically splits changes into logical commits
+  - Analyzes diff and groups files by logical change (typo fixes, version updates, docs, etc.)
+  - Creates separate commits for each group in logical order
+  - Transcript gist attached to final commit only
+  - Use `--no-split` to force single commit behavior
+- Transcript timeout increased from 60s to 120s for larger transcripts
 - `weld plan` now generates plans with hierarchical Phase → Step structure
   - Plans divided into discrete incremental phases (`## Phase N: <Title>`)
   - Each phase contains discrete steps (`### Step N: <Title>`)
   - Step numbers restart at 1 within each phase
   - Added Phase Validation section for verifying entire phases
+- Default Claude timeout increased from 600s to 1800s (30 minutes) for apply operations
+- `--apply` mode now automatically passes `--dangerously-skip-permissions` to Claude for write access
 
 ### Added
+- `--no-split` flag for `weld commit` to disable automatic commit splitting
+- `get_staged_files()`, `unstage_all()`, `stage_files()` git helpers for commit splitting
+- `--timeout/-t` option for `weld review` to override Claude timeout
+- `[claude].timeout` configuration option in `.weld/config.toml` (default: 1800s)
+- Code review mode for `weld review` command with `--diff` flag
+  - Reviews git diff for bugs, security issues, missing implementations, and test problems
+  - `--staged` flag to review only staged changes
+  - `--apply` flag to have Claude fix all issues directly in the codebase
+  - Prompt templates optimized for actionable code review findings
 - `--edit/-e` flag for `weld commit` to review/edit generated commit message in `$EDITOR`
 - `is_file_staged()` helper in git service for checking if specific file is staged
 - CHANGELOG duplicate detection to prevent re-adding same entries on retry
