@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Non-interactive mode via `--step` and `--phase` flags for CI/automation
   - Graceful Ctrl+C handling that preserves progress
   - Atomic checkpointing after each step completion
+- Comprehensive test suites for plan parser and implement command
+  - `tests/test_plan_parser.py`: 26 tests for parsing, validation, and completion marking
+  - `tests/test_implement.py`: 18 tests for CLI, interactive mode, and error handling
 - `--no-split` flag for `weld commit` to disable automatic commit splitting
 - `get_staged_files()`, `unstage_all()`, `stage_files()` git helpers for commit splitting
 - `--timeout/-t` option for `weld review` to override Claude timeout
