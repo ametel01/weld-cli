@@ -1,7 +1,13 @@
-"""Tests for document review engine."""
+"""Tests for document review engine and CLI command."""
+
+import os
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
+from weld.cli import app
 from weld.core.doc_review_engine import generate_code_review_prompt, strip_preamble
 
 
@@ -251,3 +257,523 @@ index 1234567..abcdefg 100644
         prompt = generate_code_review_prompt("", apply_mode=False)
         assert "```diff" in prompt
         # Template should still be valid
+
+
+# =============================================================================
+# CLI Command Tests
+# =============================================================================
+
+
+@pytest.mark.cli
+class TestReviewCommandNotGitRepo:
+    """Tests for review command when not in a git repository."""
+
+    def test_review_diff_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """review --diff should fail when not in a git repository."""
+        original = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(app, ["review", "--diff"])
+            assert result.exit_code == 3
+            assert "Not a git repository" in result.stdout
+        finally:
+            os.chdir(original)
+
+    def test_review_document_not_git_repo(self, runner: CliRunner, tmp_path: Path) -> None:
+        """review document should fail when not in a git repository."""
+        original = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            doc = tmp_path / "doc.md"
+            doc.write_text("# Test Document")
+            result = runner.invoke(app, ["review", str(doc)])
+            assert result.exit_code == 3
+            assert "Not a git repository" in result.stdout
+        finally:
+            os.chdir(original)
+
+
+@pytest.mark.cli
+class TestReviewCommandNotInitialized:
+    """Tests for review command when weld is not initialized."""
+
+    def test_review_diff_not_initialized(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """review --diff should fail when weld is not initialized."""
+        # Create a change to review
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("print('hello')")
+
+        result = runner.invoke(app, ["review", "--diff"])
+        assert result.exit_code == 1
+        assert "not initialized" in result.stdout.lower()
+
+    def test_review_document_not_initialized(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """review document should fail when weld is not initialized."""
+        doc = temp_git_repo / "doc.md"
+        doc.write_text("# Test Document")
+
+        result = runner.invoke(app, ["review", str(doc)])
+        assert result.exit_code == 1
+        assert "not initialized" in result.stdout.lower()
+
+
+SAMPLE_DIFF = """diff --git a/test.py b/test.py
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/test.py
+@@ -0,0 +1 @@
++print('hello')
+"""
+
+
+@pytest.mark.cli
+class TestReviewCodeDryRun:
+    """Tests for review --diff in dry run mode."""
+
+    def test_code_review_dry_run_shows_info(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff --dry-run should show review info without running Claude."""
+        with patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF):
+            result = runner.invoke(app, ["--dry-run", "review", "--diff"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "code review" in result.stdout.lower()
+
+    def test_code_review_dry_run_staged(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff --staged --dry-run should show staged changes info."""
+        with patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF):
+            result = runner.invoke(app, ["--dry-run", "review", "--diff", "--staged"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "staged" in result.stdout.lower()
+
+    def test_code_review_dry_run_apply_mode(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff --apply --dry-run should show apply mode info."""
+        with patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF):
+            result = runner.invoke(app, ["--dry-run", "review", "--diff", "--apply"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "apply fixes" in result.stdout.lower()
+
+    def test_code_review_dry_run_with_output(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff --dry-run -o should show output path."""
+        with patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF):
+            result = runner.invoke(app, ["--dry-run", "review", "--diff", "-o", "findings.md"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "findings.md" in result.stdout
+
+
+@pytest.mark.cli
+class TestReviewCodePromptOnly:
+    """Tests for review --diff with --prompt-only flag."""
+
+    def test_code_review_prompt_only(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff --prompt-only should generate prompt without running Claude."""
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude") as mock_claude,
+        ):
+            result = runner.invoke(app, ["review", "--diff", "--prompt-only"])
+
+        assert result.exit_code == 0
+        mock_claude.assert_not_called()
+        assert "Prompt generated" in result.stdout
+        # Verify artifact directory created with prompt.md
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        assert reviews_dir.exists()
+        review_dirs = list(reviews_dir.iterdir())
+        assert len(review_dirs) == 1
+        assert (review_dirs[0] / "prompt.md").exists()
+
+    def test_code_review_prompt_only_apply_mode(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff --apply --prompt-only shows fix instructions."""
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude") as mock_claude,
+        ):
+            result = runner.invoke(app, ["review", "--diff", "--apply", "--prompt-only"])
+
+        assert result.exit_code == 0
+        mock_claude.assert_not_called()
+        assert "fix issues" in result.stdout.lower()
+
+
+@pytest.mark.cli
+class TestReviewCodeFullRun:
+    """Tests for review --diff full execution."""
+
+    def test_code_review_success(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff should run Claude and save findings."""
+        mock_response = "# Code Review Findings\n\nNo issues found."
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", return_value=mock_response),
+        ):
+            result = runner.invoke(app, ["review", "--diff"])
+
+        assert result.exit_code == 0
+        assert "Review complete" in result.stdout
+
+    def test_code_review_with_output_file(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff -o should write findings to output file."""
+        output_file = initialized_weld / "findings.md"
+
+        mock_response = "# Code Review Findings\n\nNo issues found."
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", return_value=mock_response),
+        ):
+            result = runner.invoke(app, ["review", "--diff", "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        assert "Code Review Findings" in output_file.read_text()
+
+    def test_code_review_apply_mode_success(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff --apply should apply fixes."""
+        mock_response = "# Fixes Applied\n\nFixed 2 issues."
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", return_value=mock_response),
+        ):
+            result = runner.invoke(app, ["review", "--diff", "--apply"])
+
+        assert result.exit_code == 0
+        assert "Fixes applied" in result.stdout
+
+    def test_code_review_quiet_mode(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff --quiet should suppress streaming."""
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", return_value="findings") as mock,
+        ):
+            result = runner.invoke(app, ["review", "--diff", "--quiet"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs.get("stream") is False
+
+    def test_code_review_claude_error(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff should handle Claude errors gracefully."""
+        from weld.services import ClaudeError
+
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", side_effect=ClaudeError("API error")),
+        ):
+            result = runner.invoke(app, ["review", "--diff"])
+
+        assert result.exit_code == 1
+        assert "Claude failed" in result.stdout
+
+
+@pytest.mark.cli
+class TestReviewDocumentDryRun:
+    """Tests for document review in dry run mode."""
+
+    def test_doc_review_dry_run_shows_info(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document --dry-run should show review info."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nDescription here.")
+
+        result = runner.invoke(app, ["--dry-run", "review", str(doc)])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "document review" in result.stdout.lower()
+
+    def test_doc_review_dry_run_apply_mode(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document --apply --dry-run should show correction mode."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nDescription here.")
+
+        result = runner.invoke(app, ["--dry-run", "review", str(doc), "--apply"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "apply corrections" in result.stdout.lower()
+
+    def test_doc_review_dry_run_with_output(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document --dry-run -o should show output path."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+
+        result = runner.invoke(app, ["--dry-run", "review", str(doc), "-o", "findings.md"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "findings.md" in result.stdout
+
+
+@pytest.mark.cli
+class TestReviewDocumentPromptOnly:
+    """Tests for document review with --prompt-only flag."""
+
+    def test_doc_review_prompt_only(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document --prompt-only should generate prompt without Claude."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nDescription here.")
+
+        with patch("weld.commands.doc_review.run_claude") as mock_claude:
+            result = runner.invoke(app, ["review", str(doc), "--prompt-only"])
+
+        assert result.exit_code == 0
+        mock_claude.assert_not_called()
+        assert "Prompt generated" in result.stdout
+        # Verify artifact directory created with prompt.md
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        assert reviews_dir.exists()
+        review_dirs = list(reviews_dir.iterdir())
+        assert len(review_dirs) == 1
+        assert (review_dirs[0] / "prompt.md").exists()
+
+    def test_doc_review_prompt_only_apply_mode(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document --apply --prompt-only shows correction instructions."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nDescription here.")
+
+        with patch("weld.commands.doc_review.run_claude") as mock_claude:
+            result = runner.invoke(app, ["review", str(doc), "--apply", "--prompt-only"])
+
+        assert result.exit_code == 0
+        mock_claude.assert_not_called()
+        # Should mention saving corrected document
+        assert str(doc) in result.stdout
+
+
+@pytest.mark.cli
+class TestReviewDocumentFullRun:
+    """Tests for document review full execution."""
+
+    def test_doc_review_success(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document should run Claude and save findings."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nDescription here.")
+
+        mock_response = "# Review Findings\n\n## Summary\nAll good."
+        with patch("weld.commands.doc_review.run_claude", return_value=mock_response):
+            result = runner.invoke(app, ["review", str(doc)])
+
+        assert result.exit_code == 0
+        assert "Review complete" in result.stdout
+
+    def test_doc_review_with_output_file(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document -o should write findings to output file."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nDescription here.")
+        output_file = initialized_weld / "findings.md"
+
+        mock_response = "# Review Findings\n\n## Summary\nAll good."
+        with patch("weld.commands.doc_review.run_claude", return_value=mock_response):
+            result = runner.invoke(app, ["review", str(doc), "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        assert "Review Findings" in output_file.read_text()
+
+    def test_doc_review_creates_nested_output_dirs(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document should create parent directories for output."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+        output_file = initialized_weld / "output" / "nested" / "findings.md"
+
+        mock_response = "# Review Findings"
+        with patch("weld.commands.doc_review.run_claude", return_value=mock_response):
+            result = runner.invoke(app, ["review", str(doc), "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+
+    def test_doc_review_apply_mode_corrects_document(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document --apply should correct the document in place."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project\n\nOld description.")
+
+        corrected_content = "# Project\n\nCorrected description."
+        with patch("weld.commands.doc_review.run_claude", return_value=corrected_content):
+            result = runner.invoke(app, ["review", str(doc), "--apply"])
+
+        assert result.exit_code == 0
+        assert "corrected" in result.stdout.lower()
+        # Verify document was updated
+        assert doc.read_text() == corrected_content
+
+    def test_doc_review_apply_mode_saves_original(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document --apply should save original to artifact dir."""
+        doc = initialized_weld / "README.md"
+        original_content = "# Project\n\nOriginal content."
+        doc.write_text(original_content)
+
+        corrected_content = "# Project\n\nCorrected content."
+        with patch("weld.commands.doc_review.run_claude", return_value=corrected_content):
+            result = runner.invoke(app, ["review", str(doc), "--apply"])
+
+        assert result.exit_code == 0
+        # Find the review artifact directory
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        review_dirs = list(reviews_dir.iterdir())
+        assert len(review_dirs) == 1
+        original_file = review_dirs[0] / "original.md"
+        assert original_file.exists()
+        assert original_file.read_text() == original_content
+
+    def test_doc_review_strips_preamble(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document should strip AI preamble from response."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+        output_file = initialized_weld / "findings.md"
+
+        # Simulate Claude response with preamble
+        mock_response = "I'll review this document.\n\n# Review Findings\n\nAll good."
+        with patch("weld.commands.doc_review.run_claude", return_value=mock_response):
+            result = runner.invoke(app, ["review", str(doc), "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        content = output_file.read_text()
+        assert "I'll review" not in content
+        assert content.startswith("# Review Findings")
+
+    def test_doc_review_quiet_mode(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document --quiet should suppress streaming."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+
+        with patch("weld.commands.doc_review.run_claude", return_value="findings") as mock:
+            result = runner.invoke(app, ["review", str(doc), "--quiet"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs.get("stream") is False
+
+    def test_doc_review_claude_error(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document should handle Claude errors gracefully."""
+        from weld.services import ClaudeError
+
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+
+        with patch("weld.commands.doc_review.run_claude", side_effect=ClaudeError("Timeout")):
+            result = runner.invoke(app, ["review", str(doc)])
+
+        assert result.exit_code == 1
+        assert "Claude failed" in result.stdout
+
+    def test_doc_review_with_timeout(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review document --timeout should pass timeout to Claude."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+
+        with patch("weld.commands.doc_review.run_claude", return_value="findings") as mock:
+            result = runner.invoke(app, ["review", str(doc), "--timeout", "300"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs.get("timeout") == 300
+
+
+@pytest.mark.cli
+class TestReviewCodeArtifacts:
+    """Tests for code review artifact creation."""
+
+    def test_code_review_creates_artifact_dir(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff should create artifact directory with prompt and diff."""
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", return_value="findings"),
+        ):
+            result = runner.invoke(app, ["review", "--diff"])
+
+        assert result.exit_code == 0
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        review_dirs = list(reviews_dir.iterdir())
+        assert len(review_dirs) == 1
+
+        # Check artifact files
+        artifact_dir = review_dirs[0]
+        assert (artifact_dir / "prompt.md").exists()
+        assert (artifact_dir / "diff.patch").exists()
+        assert (artifact_dir / "findings.md").exists()
+
+    def test_code_review_apply_saves_fixes(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff --apply should save fixes.md instead of findings.md."""
+        with (
+            patch("weld.commands.doc_review.get_diff", return_value=SAMPLE_DIFF),
+            patch("weld.commands.doc_review.run_claude", return_value="# Fixes Applied"),
+        ):
+            result = runner.invoke(app, ["review", "--diff", "--apply"])
+
+        assert result.exit_code == 0
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        review_dirs = list(reviews_dir.iterdir())
+        artifact_dir = review_dirs[0]
+        assert (artifact_dir / "fixes.md").exists()
+        assert not (artifact_dir / "findings.md").exists()
+
+
+@pytest.mark.cli
+class TestReviewDocumentArtifacts:
+    """Tests for document review artifact creation."""
+
+    def test_doc_review_creates_artifact_dir(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document should create artifact directory with prompt."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Project")
+
+        with patch("weld.commands.doc_review.run_claude", return_value="# Findings"):
+            result = runner.invoke(app, ["review", str(doc)])
+
+        assert result.exit_code == 0
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        review_dirs = list(reviews_dir.iterdir())
+        assert len(review_dirs) == 1
+
+        artifact_dir = review_dirs[0]
+        assert (artifact_dir / "prompt.md").exists()
+        assert (artifact_dir / "findings.md").exists()
+
+    def test_doc_review_apply_saves_corrected(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review document --apply should save corrected.md and original.md."""
+        doc = initialized_weld / "README.md"
+        doc.write_text("# Original")
+
+        with patch("weld.commands.doc_review.run_claude", return_value="# Corrected"):
+            result = runner.invoke(app, ["review", str(doc), "--apply"])
+
+        assert result.exit_code == 0
+        reviews_dir = initialized_weld / ".weld" / "reviews"
+        review_dirs = list(reviews_dir.iterdir())
+        artifact_dir = review_dirs[0]
+        assert (artifact_dir / "corrected.md").exists()
+        assert (artifact_dir / "original.md").exists()
+        assert not (artifact_dir / "findings.md").exists()

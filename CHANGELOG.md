@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--apply` mode now automatically passes `--dangerously-skip-permissions` to Claude for write access
 
 ### Added
+- Comprehensive test coverage for `weld review` and `weld commit` commands
+  - 33 CLI tests for doc_review command covering dry-run, prompt-only, and full execution modes
+  - 33 tests for commit command covering parsing, changelog updates, and CLI options
+  - Strengthened assertions for artifact verification and error handling
 - Plan parser module (`weld.core.plan_parser`) for parsing phased implementation plans
   - `Step`, `Phase`, `Plan`, `ValidationResult` data classes
   - `parse_plan()` and `validate_plan()` functions for structured plan extraction
