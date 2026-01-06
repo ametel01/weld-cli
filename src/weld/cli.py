@@ -13,6 +13,7 @@ from .commands.commit import commit
 from .commands.discover import discover_app
 from .commands.doc_review import doc_review
 from .commands.doctor import doctor
+from .commands.implement import implement
 from .commands.init import init
 from .commands.interview import interview
 from .commands.plan import plan
@@ -122,6 +123,7 @@ def main(
 # Top-level commands
 app.command()(init)
 app.command()(commit)
+app.command()(implement)
 app.command()(interview)
 app.command()(doctor)
 app.command()(plan)

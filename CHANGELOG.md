@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `get_phase_by_number()` and `get_step_by_number()` helper methods on `Plan`
   - Atomic file writes using temp file + rename pattern
 - `simple-term-menu` dependency for interactive terminal menus
+- `weld implement` command for interactive plan execution
+  - Arrow-key navigable menu for selecting phases/steps
+  - Non-interactive mode via `--step` and `--phase` flags for CI/automation
+  - Graceful Ctrl+C handling that preserves progress
+  - Atomic checkpointing after each step completion
 - `--no-split` flag for `weld commit` to disable automatic commit splitting
 - `get_staged_files()`, `unstage_all()`, `stage_files()` git helpers for commit splitting
 - `--timeout/-t` option for `weld review` to override Claude timeout
