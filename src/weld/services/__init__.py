@@ -23,11 +23,14 @@ from .git import (
     get_diff,
     get_head_sha,
     get_repo_root,
+    get_staged_files,
     get_status_porcelain,
     has_staged_changes,
     is_file_staged,
     run_git,
     stage_all,
+    stage_files,
+    unstage_all,
 )
 from .transcripts import TranscriptError, TranscriptResult, run_transcript_gist
 
@@ -44,6 +47,7 @@ __all__ = [
     "get_diff",
     "get_head_sha",
     "get_repo_root",
+    "get_staged_files",
     "get_status_porcelain",
     "has_staged_changes",
     "is_file_staged",
@@ -53,5 +57,7 @@ __all__ = [
     "run_git",
     "run_transcript_gist",
     "stage_all",
+    "stage_files",
+    "unstage_all",
     "write_file",
 ]

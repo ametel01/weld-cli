@@ -185,3 +185,38 @@ def is_file_staged(file_path: str, cwd: Path | None = None) -> bool:
         return False
     # git diff --quiet exits 1 if there are differences
     return result.returncode != 0
+
+
+def get_staged_files(cwd: Path | None = None) -> list[str]:
+    """Get list of staged file paths.
+
+    Args:
+        cwd: Working directory
+
+    Returns:
+        List of staged file paths (relative to repo root)
+    """
+    output = run_git("diff", "--staged", "--name-only", cwd=cwd, check=False)
+    if not output:
+        return []
+    return [f for f in output.split("\n") if f.strip()]
+
+
+def unstage_all(cwd: Path | None = None) -> None:
+    """Unstage all staged changes.
+
+    Args:
+        cwd: Working directory
+    """
+    run_git("reset", "HEAD", cwd=cwd, check=False)
+
+
+def stage_files(files: list[str], cwd: Path | None = None) -> None:
+    """Stage specific files.
+
+    Args:
+        files: List of file paths to stage
+        cwd: Working directory
+    """
+    if files:
+        run_git("add", "--", *files, cwd=cwd)
