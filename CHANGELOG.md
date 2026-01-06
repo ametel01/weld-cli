@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--apply` mode now automatically passes `--dangerously-skip-permissions` to Claude for write access
 
 ### Added
+- Plan parser module (`weld.core.plan_parser`) for parsing phased implementation plans
+  - `Step`, `Phase`, `Plan`, `ValidationResult` data classes
+  - `parse_plan()` and `validate_plan()` functions for structured plan extraction
+  - `mark_step_complete()` and `mark_phase_complete()` for atomic progress tracking
+  - `get_phase_by_number()` and `get_step_by_number()` helper methods on `Plan`
+  - Atomic file writes using temp file + rename pattern
+- `simple-term-menu` dependency for interactive terminal menus
 - `--no-split` flag for `weld commit` to disable automatic commit splitting
 - `get_staged_files()`, `unstage_all()`, `stage_files()` git helpers for commit splitting
 - `--timeout/-t` option for `weld review` to override Claude timeout

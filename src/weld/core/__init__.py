@@ -17,10 +17,26 @@ from .doc_review_engine import (
 )
 from .history import HistoryEntry, get_history_path, log_command, prune_history, read_history
 from .interview_engine import generate_interview_prompt, run_interview_loop
+from .plan_parser import (
+    Phase,
+    Plan,
+    Step,
+    ValidationResult,
+    is_complete,
+    mark_complete,
+    mark_phase_complete,
+    mark_step_complete,
+    parse_plan,
+    validate_plan,
+)
 from .weld_dir import get_weld_dir
 
 __all__ = [
     "HistoryEntry",
+    "Phase",
+    "Plan",
+    "Step",
+    "ValidationResult",
     "generate_code_review_prompt",
     "generate_discover_prompt",
     "generate_doc_review_prompt",
@@ -29,9 +45,15 @@ __all__ = [
     "get_doc_review_dir",
     "get_history_path",
     "get_weld_dir",
+    "is_complete",
     "log_command",
+    "mark_complete",
+    "mark_phase_complete",
+    "mark_step_complete",
+    "parse_plan",
     "prune_history",
     "read_history",
     "run_interview_loop",
     "strip_preamble",
+    "validate_plan",
 ]
