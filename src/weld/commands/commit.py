@@ -17,20 +17,41 @@ from ..services import (
     commit_file,
     get_diff,
     get_repo_root,
+    get_staged_files,
     has_staged_changes,
     is_file_staged,
     run_git,
     run_transcript_gist,
     stage_all,
+    stage_files,
+    unstage_all,
 )
 from ..services.claude import ClaudeError, run_claude
 
 
-def _generate_commit_prompt(diff: str, changelog: str) -> str:
-    """Generate prompt for Claude to create commit message and CHANGELOG entry."""
-    return f"""Analyze this git diff and generate:
-1. A commit message
-2. A CHANGELOG entry
+class CommitGroup:
+    """A logical group of files to commit together."""
+
+    def __init__(self, message: str, files: list[str], changelog_entry: str = ""):
+        self.message = message
+        self.files = files
+        self.changelog_entry = changelog_entry
+
+
+def _generate_commit_prompt(diff: str, staged_files: list[str], changelog: str) -> str:
+    """Generate prompt for Claude to analyze diff and create logical commit groups."""
+    files_list = "\n".join(f"- {f}" for f in staged_files)
+
+    return f"""Analyze this git diff and determine if changes should be split into multiple commits.
+
+## Staged Files
+{files_list}
+
+## Analysis Rules
+1. Group files by logical change (e.g., "fix typo" vs "update version" vs "add docs")
+2. Each group should be a coherent, atomic change
+3. If ALL changes are tightly related, return a single commit
+4. Consider: docs, version bumps, bug fixes, features, refactoring as separate categories
 
 ## Commit Message Rules
 - Use imperative mood ("Add feature" not "Added feature")
@@ -57,43 +78,71 @@ def _generate_commit_prompt(diff: str, changelog: str) -> str:
 ```
 
 ## Output Format
-Respond in EXACTLY this format (including the markers):
+Return one or more commit blocks. If changes should be split, return multiple blocks.
+Each block MUST have all three tags (files, commit_message, changelog_entry).
+Order commits logically (foundational changes first).
 
+<commit>
+<files>
+path/to/file1.py
+path/to/file2.py
+</files>
 <commit_message>
-Your commit message here (first line is subject, optional body after blank line)
+Your commit message here
 </commit_message>
-
 <changelog_entry>
 ### Category
-- Entry description here
+- Entry description
 </changelog_entry>
+</commit>
 
-If no CHANGELOG entry is needed (trivial change), output empty changelog_entry tags."""
+<commit>
+<files>
+path/to/other.md
+</files>
+<commit_message>
+Another commit message
+</commit_message>
+<changelog_entry>
+</changelog_entry>
+</commit>
+
+If no CHANGELOG entry is needed for a commit, leave changelog_entry empty."""
 
 
-def _parse_claude_response(response: str) -> tuple[str, str]:
-    """Parse commit message and changelog entry from Claude response.
+def _parse_commit_groups(response: str) -> list[CommitGroup]:
+    """Parse multiple commit groups from Claude response.
 
     Returns:
-        Tuple of (commit_message, changelog_entry)
+        List of CommitGroup objects
     """
-    # Extract commit message
-    commit_match = re.search(
-        r"<commit_message>\s*(.*?)\s*</commit_message>",
-        response,
-        re.DOTALL,
-    )
-    commit_msg = commit_match.group(1).strip() if commit_match else ""
+    groups = []
 
-    # Extract changelog entry
-    changelog_match = re.search(
-        r"<changelog_entry>\s*(.*?)\s*</changelog_entry>",
-        response,
-        re.DOTALL,
-    )
-    changelog_entry = changelog_match.group(1).strip() if changelog_match else ""
+    # Find all <commit>...</commit> blocks
+    commit_pattern = re.compile(r"<commit>\s*(.*?)\s*</commit>", re.DOTALL)
+    commit_blocks = commit_pattern.findall(response)
 
-    return commit_msg, changelog_entry
+    for block in commit_blocks:
+        # Extract files
+        files_match = re.search(r"<files>\s*(.*?)\s*</files>", block, re.DOTALL)
+        files = []
+        if files_match:
+            files = [f.strip() for f in files_match.group(1).strip().split("\n") if f.strip()]
+
+        # Extract commit message
+        msg_match = re.search(r"<commit_message>\s*(.*?)\s*</commit_message>", block, re.DOTALL)
+        message = msg_match.group(1).strip() if msg_match else ""
+
+        # Extract changelog entry
+        changelog_match = re.search(
+            r"<changelog_entry>\s*(.*?)\s*</changelog_entry>", block, re.DOTALL
+        )
+        changelog_entry = changelog_match.group(1).strip() if changelog_match else ""
+
+        if message and files:
+            groups.append(CommitGroup(message, files, changelog_entry))
+
+    return groups
 
 
 def _normalize_entry(entry: str) -> str:
@@ -163,10 +212,14 @@ def commit(
     skip_changelog: bool = typer.Option(False, "--skip-changelog", help="Skip CHANGELOG.md update"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
     edit: bool = typer.Option(False, "--edit", "-e", help="Edit message in $EDITOR before commit"),
+    no_split: bool = typer.Option(False, "--no-split", help="Disable auto-split, force one commit"),
 ) -> None:
     """Auto-generate commit message from diff, update CHANGELOG, and commit with transcript.
 
-    By default, only commits staged changes. Use -a/--all to stage all changes first.
+    By default, analyzes the diff and automatically creates multiple commits if changes
+    are logically separate. Use --no-split to force a single commit.
+
+    Use -a/--all to stage all changes first.
     Use -e/--edit to review and modify the generated commit message before committing.
     """
     ctx = get_output_context()
@@ -195,11 +248,13 @@ def commit(
         ctx.error("No changes to commit")
         raise typer.Exit(20) from None
 
-    # Get staged diff
+    # Get staged diff and files
     diff = get_diff(staged=True, cwd=repo_root)
     if not diff:
         ctx.error("No diff content to analyze")
         raise typer.Exit(20) from None
+
+    staged_files = get_staged_files(cwd=repo_root)
 
     # Read current changelog for context
     changelog_path = repo_root / "CHANGELOG.md"
@@ -216,17 +271,19 @@ def commit(
             changelog_unreleased = unreleased_match.group(1).strip()
 
     if ctx.dry_run:
-        ctx.console.print("[cyan][DRY RUN][/cyan] Would analyze diff and create commit")
+        ctx.console.print("[cyan][DRY RUN][/cyan] Would analyze diff and create commit(s)")
         ctx.console.print(f"  Stage all: {all}")
+        ctx.console.print(f"  Files: {len(staged_files)}")
         ctx.console.print(f"  Diff size: {len(diff)} chars")
+        ctx.console.print(f"  Auto-split: {not no_split}")
         ctx.console.print(f"  Skip changelog: {skip_changelog}")
         if not skip_transcript:
-            ctx.console.print("  Would upload transcript gist and add trailer")
+            ctx.console.print("  Would upload transcript gist and add trailer to last commit")
         return
 
-    # Generate commit message using Claude
-    ctx.console.print("[cyan]Generating commit message...[/cyan]")
-    prompt = _generate_commit_prompt(diff, changelog_unreleased)
+    # Generate commit message(s) using Claude
+    ctx.console.print("[cyan]Analyzing changes...[/cyan]")
+    prompt = _generate_commit_prompt(diff, staged_files, changelog_unreleased)
 
     try:
         response = run_claude(
@@ -240,93 +297,121 @@ def commit(
         ctx.error(f"Failed to generate commit message: {e}")
         raise typer.Exit(21) from None
 
-    commit_msg, changelog_entry = _parse_claude_response(response)
+    commit_groups = _parse_commit_groups(response)
 
-    if not commit_msg:
-        ctx.error("Could not parse commit message from Claude response")
+    if not commit_groups:
+        ctx.error("Could not parse commit groups from Claude response")
         ctx.console.print("[dim]Claude response:[/dim]")
         ctx.console.print(f"[dim]{response[:500]}{'...' if len(response) > 500 else ''}[/dim]")
         raise typer.Exit(23) from None
 
-    ctx.console.print("")  # Newline after streaming output
-    ctx.console.print(f"[green]Commit message:[/green]\n{commit_msg}")
+    # If --no-split, merge all groups into one
+    if no_split and len(commit_groups) > 1:
+        merged_files = []
+        merged_changelog = []
+        for g in commit_groups:
+            merged_files.extend(g.files)
+            if g.changelog_entry:
+                merged_changelog.append(g.changelog_entry)
+        # Use first commit message as base
+        merged_message = commit_groups[0].message
+        commit_groups = [CommitGroup(merged_message, merged_files, "\n\n".join(merged_changelog))]
+        ctx.console.print("[yellow]Merged into single commit (--no-split)[/yellow]")
 
-    # Allow user to edit commit message if requested
-    if edit:
-        editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "vi"))
+    ctx.console.print("")  # Newline after streaming output
+    ctx.console.print(f"[green]Identified {len(commit_groups)} commit(s):[/green]")
+    for i, group in enumerate(commit_groups, 1):
+        first_line = group.message.split("\n")[0]
+        ctx.console.print(f"  {i}. {first_line} ({len(group.files)} files)")
+
+    # Unstage everything first so we can stage per-group
+    unstage_all(cwd=repo_root)
+
+    # Track all created commits
+    created_commits = []
+    gist_url = None
+
+    for i, group in enumerate(commit_groups):
+        is_last = i == len(commit_groups) - 1
+        ctx.console.print(f"\n[cyan]Creating commit {i + 1}/{len(commit_groups)}...[/cyan]")
+
+        commit_msg = group.message
+
+        # Allow user to edit commit message if requested (only for first or single commit)
+        if edit and (len(commit_groups) == 1 or i == 0):
+            editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "vi"))
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+                f.write(commit_msg)
+                edit_file = Path(f.name)
+            try:
+                result = subprocess.run([editor, str(edit_file)])
+                if result.returncode != 0:
+                    ctx.error(f"Editor exited with code {result.returncode}")
+                    edit_file.unlink()
+                    raise typer.Exit(24) from None
+                commit_msg = edit_file.read_text().strip()
+                if not commit_msg:
+                    ctx.error("Commit message is empty after editing")
+                    edit_file.unlink()
+                    raise typer.Exit(24) from None
+            finally:
+                if edit_file.exists():
+                    edit_file.unlink()
+
+        # Stage only this group's files
+        stage_files(group.files, cwd=repo_root)
+
+        # Update CHANGELOG if entry was generated
+        if not skip_changelog and group.changelog_entry:
+            changelog_was_staged = is_file_staged("CHANGELOG.md", cwd=repo_root)
+
+            if _update_changelog(repo_root, group.changelog_entry):
+                ctx.console.print("[green]Updated CHANGELOG.md[/green]")
+                if not changelog_was_staged:
+                    run_git("add", "CHANGELOG.md", cwd=repo_root)
+            else:
+                ctx.console.print("[yellow]Could not update CHANGELOG.md[/yellow]")
+
+        # Upload transcript for the LAST commit only
+        if is_last and not skip_transcript:
+            ctx.console.print("[cyan]Uploading transcript...[/cyan]")
+            try:
+                result = run_transcript_gist(
+                    exec_path=config.claude.transcripts.exec,
+                    visibility=config.claude.transcripts.visibility,
+                    cwd=repo_root,
+                )
+                if result.gist_url:
+                    gist_url = result.gist_url
+                    commit_msg = f"{commit_msg}\n\n{config.git.commit_trailer_key}: {gist_url}"
+                else:
+                    ctx.console.print("[yellow]Warning: Could not get transcript gist URL[/yellow]")
+            except TranscriptError as e:
+                ctx.console.print(f"[yellow]Warning: Transcript upload failed: {e}[/yellow]")
+
+        # Write message to temp file and commit
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write(commit_msg)
-            edit_file = Path(f.name)
+            msg_file = Path(f.name)
+
         try:
-            result = subprocess.run([editor, str(edit_file)])
-            if result.returncode != 0:
-                ctx.error(f"Editor exited with code {result.returncode}")
-                edit_file.unlink()
-                raise typer.Exit(24) from None
-            commit_msg = edit_file.read_text().strip()
-            if not commit_msg:
-                ctx.error("Commit message is empty after editing")
-                edit_file.unlink()
-                raise typer.Exit(24) from None
-        finally:
-            if edit_file.exists():
-                edit_file.unlink()
-        ctx.console.print(f"[green]Edited commit message:[/green]\n{commit_msg}")
-
-    # Update CHANGELOG if entry was generated
-    if not skip_changelog and changelog_entry:
-        # Check if CHANGELOG was already staged before we modify it
-        changelog_was_staged = is_file_staged("CHANGELOG.md", cwd=repo_root)
-
-        if _update_changelog(repo_root, changelog_entry):
-            ctx.console.print("[green]Updated CHANGELOG.md[/green]")
-            # Only stage CHANGELOG if it wasn't already staged (preserve user's staged hunks)
-            if not changelog_was_staged:
-                run_git("add", "CHANGELOG.md", cwd=repo_root)
-            else:
-                ctx.console.print(
-                    "[yellow]CHANGELOG.md was already staged - please review and re-stage[/yellow]"
-                )
-        else:
-            ctx.console.print("[yellow]Could not update CHANGELOG.md[/yellow]")
-
-    # Upload transcript and add gist URL to commit message
-    gist_url = None
-    if not skip_transcript:
-        ctx.console.print("[cyan]Uploading transcript...[/cyan]")
-        try:
-            result = run_transcript_gist(
-                exec_path=config.claude.transcripts.exec,
-                visibility=config.claude.transcripts.visibility,
-                cwd=repo_root,
-            )
-            if result.gist_url:
-                gist_url = result.gist_url
-                commit_msg = f"{commit_msg}\n\n{config.git.commit_trailer_key}: {gist_url}"
-            else:
-                ctx.console.print("[yellow]Warning: Could not get transcript gist URL[/yellow]")
-        except TranscriptError as e:
-            ctx.console.print(f"[yellow]Warning: Transcript upload failed: {e}[/yellow]")
-
-    # Write message to temp file and commit
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(commit_msg)
-        msg_file = Path(f.name)
-
-    try:
-        sha = commit_file(msg_file, cwd=repo_root)
-    except GitError as e:
-        msg_file.unlink()
-        ctx.error(f"Commit failed: {e}")
-        raise typer.Exit(22) from None
-    finally:
-        if msg_file.exists():
+            sha = commit_file(msg_file, cwd=repo_root)
+            created_commits.append(sha[:8])
+        except GitError as e:
             msg_file.unlink()
+            ctx.error(f"Commit failed: {e}")
+            raise typer.Exit(22) from None
+        finally:
+            if msg_file.exists():
+                msg_file.unlink()
 
-    ctx.success(f"Committed: {sha[:8]}")
+        first_line = commit_msg.split("\n")[0]
+        ctx.success(f"Committed: {sha[:8]} - {first_line[:50]}")
+
+        # Log to history
+        log_command(weld_dir, "commit", first_line, sha)
+
+    # Summary
+    ctx.console.print(f"\n[green]✓ Created {len(created_commits)} commit(s)[/green]")
     if gist_url:
         ctx.console.print(f"  Transcript: {gist_url}")
-
-    # Log to history (use first line of commit message, more meaningful than diff)
-    first_line = commit_msg.split("\n")[0]
-    log_command(weld_dir, "commit", first_line, sha)

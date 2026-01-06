@@ -39,6 +39,7 @@ class TestHelpCommand:
         assert "research" in result.stdout
         assert "discover" in result.stdout
         assert "interview" in result.stdout
+        assert "review" in result.stdout
         assert "commit" in result.stdout
 
     def test_no_args_shows_help(self, runner: CliRunner) -> None:
@@ -238,6 +239,54 @@ class TestInterviewCommand:
         result = runner.invoke(app, ["interview", "nonexistent.md"])
         assert result.exit_code == 1
         assert "File not found" in result.stdout
+
+
+class TestReviewCommand:
+    """Tests for weld review command."""
+
+    def test_review_help(self, runner: CliRunner) -> None:
+        """review --help should show options."""
+        result = runner.invoke(app, ["review", "--help"])
+        assert result.exit_code == 0
+        assert "--diff" in result.stdout
+        assert "--staged" in result.stdout
+        assert "--apply" in result.stdout
+
+    def test_review_requires_document_or_diff(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review without args or --diff should fail."""
+        result = runner.invoke(app, ["review"])
+        assert result.exit_code == 1
+        assert "Either provide a document or use --diff" in result.stdout
+
+    def test_review_diff_conflicts_with_document(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """review --diff with document argument should fail."""
+        doc = initialized_weld / "doc.md"
+        doc.write_text("# Doc")
+        result = runner.invoke(app, ["review", "--diff", str(doc)])
+        assert result.exit_code == 1
+        assert "Cannot use --diff with a document" in result.stdout
+
+    def test_review_staged_requires_diff(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --staged without --diff should fail."""
+        result = runner.invoke(app, ["review", "--staged"])
+        assert result.exit_code == 1
+        assert "--staged requires --diff" in result.stdout
+
+    def test_review_diff_no_changes(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review --diff with no uncommitted changes should show message."""
+        result = runner.invoke(app, ["review", "--diff"])
+        assert result.exit_code == 0
+        assert "No uncommitted changes" in result.stdout
+
+    def test_review_document_not_found(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """review with nonexistent document should fail."""
+        result = runner.invoke(app, ["review", "nonexistent.md"])
+        assert result.exit_code == 1
+        assert "not found" in result.stdout.lower()
 
 
 class TestDoctorCommand:
@@ -532,18 +581,23 @@ class TestDiscoverCommandDetailed:
 class TestCommitCommandDetailed:
     """Detailed tests for commit command verifying actual behavior."""
 
-    def _mock_claude_response(self) -> str:
-        """Return a mock Claude response with commit message and changelog entry."""
-        return """<commit_message>
+    def _mock_claude_response(self, files: list[str] | None = None) -> str:
+        """Return a mock Claude response with commit groups in new format."""
+        file_list = "\n".join(files) if files else "test.txt"
+        return f"""<commit>
+<files>
+{file_list}
+</files>
+<commit_message>
 Add test file
 
 This is a test commit message.
 </commit_message>
-
 <changelog_entry>
 ### Added
 - Test file for unit testing
-</changelog_entry>"""
+</changelog_entry>
+</commit>"""
 
     def test_commit_requires_weld_init(self, runner: CliRunner, temp_git_repo: Path) -> None:
         """commit should fail if weld is not initialized."""
@@ -604,7 +658,10 @@ This is a test commit message.
         test_file = initialized_weld / "unstaged.txt"
         test_file.write_text("content")
 
-        with patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()):
+        with patch(
+            "weld.commands.commit.run_claude",
+            return_value=self._mock_claude_response(files=["unstaged.txt"]),
+        ):
             result = runner.invoke(
                 app, ["commit", "--all", "--skip-transcript", "--skip-changelog"]
             )
@@ -746,7 +803,7 @@ This is a test commit message.
             result = runner.invoke(app, ["commit", "--skip-transcript"])
 
         assert result.exit_code == 23
-        assert "Could not parse commit message" in result.stdout
+        assert "Could not parse commit groups" in result.stdout
         # Should show Claude's response for debugging
         assert "This is not valid XML output" in result.stdout
 
