@@ -112,6 +112,7 @@ class ClaudeConfig(BaseModel):
 
     exec: str = "claude"  # Path to Claude CLI if available
     model: str | None = None  # Default model (e.g., claude-3-opus)
+    timeout: int = 1800  # Default timeout in seconds (30 minutes)
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
 
 
@@ -209,6 +210,7 @@ def write_config_template(weld_dir: Path) -> Path:
         "codex": {"exec": "codex", "sandbox": "read-only"},
         "claude": {
             "exec": "claude",
+            "timeout": 1800,  # 30 minutes for AI operations
             "transcripts": {"exec": "claude-code-transcripts", "visibility": "secret"},
         },
         "git": {"commit_trailer_key": "Claude-Transcript", "include_run_trailer": True},

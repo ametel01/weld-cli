@@ -22,10 +22,10 @@ GIT_TIMEOUT = 30
 CODEX_TIMEOUT = 600  # 10 minutes
 
 #: Timeout for Claude CLI invocations (implementation, review)
-CLAUDE_TIMEOUT = 600  # 10 minutes
+CLAUDE_TIMEOUT = 1800  # 30 minutes
 
 #: Timeout for transcript gist generation via claude-code-transcripts
-TRANSCRIPT_TIMEOUT = 60
+TRANSCRIPT_TIMEOUT = 120
 
 #: Timeout for running configured checks command (tests, linting)
 CHECKS_TIMEOUT = 300  # 5 minutes
