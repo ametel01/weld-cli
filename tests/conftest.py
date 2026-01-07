@@ -11,8 +11,14 @@ from typer.testing import CliRunner
 
 @pytest.fixture
 def runner() -> CliRunner:
-    """Create CLI test runner."""
-    return CliRunner()
+    """Create CLI test runner with colors disabled for consistent output."""
+    return CliRunner(
+        env={
+            "NO_COLOR": "1",
+            "TERM": "dumb",
+            "COLUMNS": "200",
+        },
+    )
 
 
 @pytest.fixture

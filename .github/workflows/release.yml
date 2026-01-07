@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., 0.3.1) - must match pyproject.toml"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -33,19 +39,25 @@ jobs:
           uv run pyright
           uv run pytest -q
 
-      - name: Extract version from tag
+      - name: Extract version
         id: tag
         env:
           REF_NAME: ${{ github.ref_name }}
-        run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Verify pyproject version matches tag
+      - name: Verify pyproject version matches
         env:
           TAG_VERSION: ${{ steps.tag.outputs.version }}
         run: |
           PROJECT_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           if [ "$PROJECT_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Version mismatch: pyproject.toml has $PROJECT_VERSION but tag is v$TAG_VERSION"
+            echo "::error::Version mismatch: pyproject.toml has $PROJECT_VERSION but expected $TAG_VERSION"
             exit 1
           fi
           echo "Version verified: $PROJECT_VERSION"
@@ -69,9 +81,11 @@ jobs:
       - name: Create GitHub Release + upload artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REF_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          gh release create "$REF_NAME" \
-            --title "$REF_NAME" \
+          TAG_NAME="v$VERSION"
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
             --notes-file RELEASE_NOTES.md \
+            --target "$GITHUB_SHA" \
             dist/*
