@@ -1,5 +1,6 @@
 """Discover command implementation."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -7,7 +8,7 @@ import typer
 
 from ..config import load_config
 from ..core import get_weld_dir, log_command, strip_preamble
-from ..core.discover_engine import generate_discover_prompt
+from ..core.discover_engine import generate_discover_prompt, get_discover_dir
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude
 
@@ -54,22 +55,16 @@ def discover(
 ) -> None:
     """Analyze codebase and generate architecture documentation.
 
-    Runs Claude to analyze the codebase and writes the output to --output.
+    If --output is not specified, writes to .weld/discover/{timestamp}.md
     Use --prompt-only to generate the prompt without running Claude.
     """
     if ctx.invoked_subcommand is not None:
         return
 
-    if output is None:
-        out_ctx = get_output_context()
-        out_ctx.error("--output is required")
-        out_ctx.console.print("\nUsage: weld discover --output <path>")
-        raise typer.Exit(1)
-
     _run_discover(output, focus, prompt_only, quiet)
 
 
-def _run_discover(output: Path, focus: str | None, prompt_only: bool, quiet: bool) -> None:
+def _run_discover(output: Path | None, focus: str | None, prompt_only: bool, quiet: bool) -> None:
     """Execute the discover workflow."""
     ctx = get_output_context()
 
@@ -79,8 +74,17 @@ def _run_discover(output: Path, focus: str | None, prompt_only: bool, quiet: boo
         ctx.error("Not a git repository")
         raise typer.Exit(3) from None
 
-    # Get weld directory for history logging (optional - discover can run without init)
+    # Get weld directory for history logging and default output
     weld_dir = get_weld_dir(repo_root)
+
+    # Determine output path
+    if output is None:
+        if not weld_dir.exists():
+            ctx.error("Weld not initialized. Use --output or run 'weld init' first.")
+            raise typer.Exit(1)
+        discover_dir = get_discover_dir(weld_dir)
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output = discover_dir / f"{timestamp}.md"
 
     # Load config from repo root (weld init not required for discover)
     config = load_config(repo_root)

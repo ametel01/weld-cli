@@ -48,10 +48,10 @@ weld init
 weld doctor
 
 # 4. Research a specification (generates prompt, runs Claude)
-weld research specs/my-feature.md --output research.md
+weld research specs/my-feature.md -o research.md
 
 # 5. Generate a plan from your spec
-weld plan specs/my-feature.md --output plan.md
+weld plan specs/my-feature.md -o plan.md
 
 # 6. Execute the plan interactively
 weld implement plan.md
@@ -188,17 +188,18 @@ Exit codes:
 
 ---
 
-### `weld plan <input> --output <path>`
+### `weld plan <input> [--output <path>]`
 
 Generate an implementation plan from a specification.
 
 ```bash
-weld plan specs/feature.md --output plan.md
+weld plan specs/feature.md                     # Writes to .weld/plan/feature-{timestamp}.md
+weld plan specs/feature.md --output plan.md    # Explicit output path
 weld plan specs/feature.md -o plan.md --quiet  # Suppress streaming
 ```
 
 Options:
-- `--output`, `-o` - Path to write the plan (required)
+- `--output`, `-o` - Path to write the plan (optional, defaults to `.weld/plan/`)
 - `--quiet`, `-q` - Suppress streaming output
 
 The command:
@@ -292,17 +293,18 @@ The command:
 
 ---
 
-### `weld research <input> --output <path>`
+### `weld research <input> [--output <path>]`
 
 Research a specification before planning.
 
 ```bash
-weld research specs/feature.md --output research.md
+weld research specs/feature.md                      # Writes to .weld/research/feature-{timestamp}.md
+weld research specs/feature.md --output research.md # Explicit output path
 weld research specs/feature.md -o research.md --quiet
 ```
 
 Options:
-- `--output`, `-o` - Path to write research (required)
+- `--output`, `-o` - Path to write research (optional, defaults to `.weld/research/`)
 - `--quiet`, `-q` - Suppress streaming output
 
 The research prompt guides Claude to analyze:
@@ -312,18 +314,19 @@ The research prompt guides Claude to analyze:
 
 ---
 
-### `weld discover --output <path>`
+### `weld discover [--output <path>]`
 
 Analyze codebase and generate architecture documentation.
 
 ```bash
-weld discover --output docs/architecture.md
+weld discover                                  # Writes to .weld/discover/{timestamp}.md
+weld discover --output docs/architecture.md    # Explicit output path
 weld discover -o docs/arch.md --focus "authentication system"
-weld discover --prompt-only  # Just show the prompt
+weld discover --prompt-only                    # Just show the prompt
 ```
 
 Options:
-- `--output`, `-o` - Path to write discover output (required unless --prompt-only)
+- `--output`, `-o` - Path to write discover output (optional, defaults to `.weld/discover/`)
 - `--focus`, `-f` - Specific areas to focus on
 - `--prompt-only` - Output prompt without running Claude
 - `--quiet`, `-q` - Suppress streaming output

@@ -1,12 +1,28 @@
 """Research command implementation."""
 
+from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from ..core import get_weld_dir, log_command
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude
+
+
+def get_research_dir(weld_dir: Path) -> Path:
+    """Get or create research output directory.
+
+    Args:
+        weld_dir: Path to .weld directory
+
+    Returns:
+        Path to .weld/research/ directory
+    """
+    research_dir = weld_dir / "research"
+    research_dir.mkdir(exist_ok=True)
+    return research_dir
 
 
 def generate_research_prompt(spec_content: str, spec_name: str) -> str:
@@ -64,24 +80,45 @@ and line numbers where applicable.
 
 
 def research(
-    input_file: Path = typer.Argument(..., help="Specification markdown file"),
-    output: Path = typer.Option(..., "--output", "-o", help="Output path for research"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
+    input_file: Annotated[Path, typer.Argument(help="Specification markdown file")],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Output path for research"),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress streaming output"),
+    ] = False,
 ) -> None:
-    """Research a specification before creating a plan."""
+    """Research a specification before creating a plan.
+
+    If --output is not specified, writes to .weld/research/{filename}-{timestamp}.md
+    """
     ctx = get_output_context()
 
     if not input_file.exists():
         ctx.error(f"Input file not found: {input_file}")
         raise typer.Exit(1)
 
-    # Get weld directory for history logging (optional - research can run without init)
+    # Get weld directory for history logging and default output
     try:
         repo_root = get_repo_root()
         weld_dir = get_weld_dir(repo_root)
     except GitError:
         repo_root = None
         weld_dir = None
+
+    # Determine output path
+    if output is None:
+        if weld_dir is None:
+            ctx.error("Not a git repository. Use --output to specify output path.")
+            raise typer.Exit(1)
+        if not weld_dir.exists():
+            ctx.error("Weld not initialized. Use --output or run 'weld init' first.")
+            raise typer.Exit(1)
+        research_dir = get_research_dir(weld_dir)
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output = research_dir / f"{input_file.stem}-{timestamp}.md"
 
     spec_content = input_file.read_text()
     prompt = generate_research_prompt(spec_content, input_file.name)

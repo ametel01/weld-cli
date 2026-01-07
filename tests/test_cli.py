@@ -18,7 +18,7 @@ class TestVersionCommand:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "weld" in result.stdout
-        assert "0.1.0" in result.stdout
+        assert "0.2.0" in result.stdout
 
     def test_version_short_flag(self, runner: CliRunner) -> None:
         """-V should also display version."""
@@ -893,3 +893,125 @@ This is a test commit message.
         updated_changelog = changelog.read_text()
         assert "### Added" in updated_changelog
         assert "- Test file for unit testing" in updated_changelog
+
+
+class TestDefaultOutputPaths:
+    """Tests for default output path behavior when --output is omitted."""
+
+    def test_plan_default_output_in_weld_dir(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """plan without --output should write to .weld/plan/."""
+        spec_file = initialized_weld / "spec.md"
+        spec_file.write_text("# Test Spec")
+
+        with patch("weld.commands.plan.run_claude", return_value="# Plan"):
+            result = runner.invoke(app, ["plan", str(spec_file)])
+
+        assert result.exit_code == 0
+        plan_dir = initialized_weld / ".weld" / "plan"
+        assert plan_dir.exists()
+        plan_files = list(plan_dir.glob("spec-*.md"))
+        assert len(plan_files) == 1
+        assert plan_files[0].read_text() == "# Plan"
+
+    def test_plan_without_weld_init_fails(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """plan without --output should fail if weld not initialized."""
+        spec_file = temp_git_repo / "spec.md"
+        spec_file.write_text("# Test Spec")
+
+        result = runner.invoke(app, ["plan", str(spec_file)])
+
+        assert result.exit_code == 1
+        assert "not initialized" in result.stdout.lower()
+
+    def test_research_default_output_in_weld_dir(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """research without --output should write to .weld/research/."""
+        spec_file = initialized_weld / "spec.md"
+        spec_file.write_text("# Test Spec")
+
+        with patch("weld.commands.research.run_claude", return_value="# Research"):
+            result = runner.invoke(app, ["research", str(spec_file)])
+
+        assert result.exit_code == 0
+        research_dir = initialized_weld / ".weld" / "research"
+        assert research_dir.exists()
+        research_files = list(research_dir.glob("spec-*.md"))
+        assert len(research_files) == 1
+        assert research_files[0].read_text() == "# Research"
+
+    def test_research_without_weld_init_fails(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """research without --output should fail if weld not initialized."""
+        spec_file = temp_git_repo / "spec.md"
+        spec_file.write_text("# Test Spec")
+
+        result = runner.invoke(app, ["research", str(spec_file)])
+
+        assert result.exit_code == 1
+        assert "not initialized" in result.stdout.lower()
+
+    def test_discover_default_output_in_weld_dir(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """discover without --output should write to .weld/discover/."""
+        with patch("weld.commands.discover.run_claude", return_value="# Architecture"):
+            result = runner.invoke(app, ["discover"])
+
+        assert result.exit_code == 0
+        discover_dir = initialized_weld / ".weld" / "discover"
+        assert discover_dir.exists()
+        discover_files = list(discover_dir.glob("*.md"))
+        assert len(discover_files) == 1
+        assert discover_files[0].read_text() == "# Architecture"
+
+    def test_discover_without_weld_init_fails(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """discover without --output should fail if weld not initialized."""
+        result = runner.invoke(app, ["discover"])
+
+        assert result.exit_code == 1
+        assert "not initialized" in result.stdout.lower()
+
+    def test_plan_with_explicit_output_works_without_init(
+        self, runner: CliRunner, temp_git_repo: Path
+    ) -> None:
+        """plan with --output should work without weld init."""
+        spec_file = temp_git_repo / "spec.md"
+        spec_file.write_text("# Test Spec")
+        output_file = temp_git_repo / "plan.md"
+
+        with patch("weld.commands.plan.run_claude", return_value="# Plan"):
+            result = runner.invoke(app, ["plan", str(spec_file), "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        assert output_file.read_text() == "# Plan"
+
+    def test_research_with_explicit_output_works_without_init(
+        self, runner: CliRunner, temp_git_repo: Path
+    ) -> None:
+        """research with --output should work without weld init."""
+        spec_file = temp_git_repo / "spec.md"
+        spec_file.write_text("# Test Spec")
+        output_file = temp_git_repo / "research.md"
+
+        with patch("weld.commands.research.run_claude", return_value="# Research"):
+            result = runner.invoke(app, ["research", str(spec_file), "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        assert output_file.read_text() == "# Research"
+
+    def test_discover_with_explicit_output_works_without_init(
+        self, runner: CliRunner, temp_git_repo: Path
+    ) -> None:
+        """discover with --output should work without weld init."""
+        output_file = temp_git_repo / "architecture.md"
+
+        with patch("weld.commands.discover.run_claude", return_value="# Architecture"):
+            result = runner.invoke(app, ["discover", "-o", str(output_file)])
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        assert output_file.read_text() == "# Architecture"

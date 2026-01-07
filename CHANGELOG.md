@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional `--output` for `weld plan`, `weld research`, and `weld discover` commands
+  - Without `--output`, writes to `.weld/<command>/{filename}-{timestamp}.md`
+  - Requires weld initialization when using default paths
+- `make release VERSION=x.y.z` target for creating GitHub releases from CHANGELOG
+
 ## [0.2.0] - 2026-01-07
 
 ### Added

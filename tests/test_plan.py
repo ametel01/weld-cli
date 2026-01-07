@@ -1,8 +1,10 @@
 """Tests for plan command functionality."""
 
+from pathlib import Path
+
 import pytest
 
-from weld.commands.plan import generate_plan_prompt
+from weld.commands.plan import generate_plan_prompt, get_plan_dir
 
 
 @pytest.mark.unit
@@ -134,3 +136,41 @@ This is a detailed specification.
         assert "## Output Format" in prompt
         assert "phased implementation plan" in prompt
         assert "MUST follow this exact structure" in prompt
+
+
+@pytest.mark.unit
+class TestGetPlanDir:
+    """Tests for get_plan_dir function."""
+
+    def test_creates_plan_dir(self, tmp_path: Path) -> None:
+        """Creates plan directory if it doesn't exist."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+
+        plan_dir = get_plan_dir(weld_dir)
+
+        assert plan_dir.exists()
+        assert plan_dir.is_dir()
+        assert plan_dir.name == "plan"
+
+    def test_returns_existing_plan_dir(self, tmp_path: Path) -> None:
+        """Returns existing plan directory."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        existing = weld_dir / "plan"
+        existing.mkdir()
+        (existing / "test.txt").write_text("existing")
+
+        plan_dir = get_plan_dir(weld_dir)
+
+        assert plan_dir == existing
+        assert (plan_dir / "test.txt").exists()
+
+    def test_plan_dir_path(self, tmp_path: Path) -> None:
+        """Plan dir is at .weld/plan."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+
+        plan_dir = get_plan_dir(weld_dir)
+
+        assert plan_dir == weld_dir / "plan"
