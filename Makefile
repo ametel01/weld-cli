@@ -265,6 +265,29 @@ bump-minor: ## Bump minor version (0.1.0 -> 0.2.0)
 bump-major: ## Bump major version (0.1.0 -> 1.0.0)
 	@$(MAKE) bump PART=major
 
+.PHONY: release
+release: ## Create GitHub release from CHANGELOG (usage: make release VERSION=0.2.0)
+ifndef VERSION
+	@echo -e "$(YELLOW)Usage: make release VERSION=x.y.z$(NC)"
+	@echo ""
+	@echo "This will create a GitHub release for tag v\$$VERSION"
+	@echo "using the corresponding section from CHANGELOG.md"
+	@echo ""
+	@echo "Example:"
+	@echo "  make release VERSION=0.2.0"
+	@exit 1
+else
+	@echo -e "$(BLUE)Creating release v$(VERSION)...$(NC)"
+	@if ! grep -q "## \[$(VERSION)\]" CHANGELOG.md; then \
+		echo -e "$(YELLOW)Error: Version $(VERSION) not found in CHANGELOG.md$(NC)"; \
+		exit 1; \
+	fi
+	gh release create v$(VERSION) \
+		--title "v$(VERSION)" \
+		--notes "$$(awk '/^## \[$(VERSION)\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)"
+	@echo -e "$(GREEN)Release v$(VERSION) created!$(NC)"
+endif
+
 ##@ Help
 
 .PHONY: help
