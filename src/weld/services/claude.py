@@ -190,6 +190,12 @@ def _run_streaming(
                     if text:
                         output_parts.append(text)
                         at_line_start = _write_with_prefix(text, console, at_line_start)
+                        # Each JSON line is a discrete message - ensure newline after each
+                        if not at_line_start:
+                            sys.stdout.write("\n")
+                            sys.stdout.flush()
+                            output_parts.append("\n")
+                            at_line_start = True
 
             # Check if process has exited
             if proc.poll() is not None:
@@ -205,11 +211,18 @@ def _run_streaming(
             if text:
                 output_parts.append(text)
                 at_line_start = _write_with_prefix(text, console, at_line_start)
+                # Remaining buffer is also a discrete message - ensure newline after it
+                if not at_line_start:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    output_parts.append("\n")
+                    at_line_start = True
 
         # Ensure output ends with a newline for clean terminal state
         if not at_line_start:
             sys.stdout.write("\n")
             sys.stdout.flush()
+            output_parts.append("\n")
 
         # Wait for process to complete
         try:

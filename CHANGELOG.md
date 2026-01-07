@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Claude prompts now passed via stdin instead of `-p` argument to avoid OS "Argument list too long" errors on large prompts
+- Claude streaming output now includes newlines in return value between discrete JSON messages, ensuring consistency between displayed output and returned string
 
 ## [0.2.0] - 2026-01-07
 

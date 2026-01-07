@@ -340,17 +340,17 @@ class TestRunClaudeStreaming:
         assert "--verbose" in call_args
 
     def test_streaming_successful_execution(self) -> None:
-        """Streaming mode captures output correctly."""
+        """Streaming mode captures output correctly with newlines between messages."""
         import select as select_module
 
         mock_process = MagicMock()
         mock_process.returncode = 0
         mock_process.stdout.fileno.return_value = 1
 
-        # Simulate streaming output
+        # Simulate streaming output - each JSON line is a separate message
         chunks = [
             '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}\n',
-            '{"type":"assistant","message":{"content":[{"type":"text","text":" World!"}]}}\n',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"World!"}]}}\n',
             "",  # EOF
         ]
         read_call_count = [0]
@@ -378,17 +378,26 @@ class TestRunClaudeStreaming:
 
         mock_process.poll.side_effect = mock_poll
 
+        # Capture stdout writes to verify newline behavior
+        stdout_writes: list[str] = []
+
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
             patch.object(select_module, "select", return_value=([1], [], [])),
             patch("weld.services.claude.Console"),
-            patch("weld.services.claude.sys.stdout.write"),
+            patch("weld.services.claude.sys.stdout.write", side_effect=stdout_writes.append),
             patch("weld.services.claude.sys.stdout.flush"),
         ):
             result = run_claude("test prompt", stream=True)
 
+        # Each JSON line contributes its text to the output with newlines
         assert "Hello" in result
         assert "World!" in result
+        # Return value should contain newlines separating discrete messages
+        assert "Hello\n" in result
+        assert "World!\n" in result
+        # Stdout should have received newlines between messages
+        assert "\n" in stdout_writes, "stdout should receive newlines between messages"
 
     def test_streaming_timeout_terminates_process(self) -> None:
         """Streaming mode terminates process on timeout."""
