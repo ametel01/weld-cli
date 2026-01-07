@@ -54,3 +54,4 @@ site/
 !CLAUDE.md
 !.claude/
 .claude/settings*.json
+.claude/research/
