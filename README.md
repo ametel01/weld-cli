@@ -37,7 +37,7 @@ Get running in under 5 minutes:
 
 ```bash
 # 1. Install weld globally
-git clone <repo-url> && cd weld-cli
+git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
 uv tool install .    # or: pipx install .
 
 # 2. Initialize in your project
@@ -85,11 +85,11 @@ Install weld as a global CLI tool so you can use it in any project:
 
 ```bash
 # Option 1: Using uv (recommended)
-git clone <repo-url> && cd weld-cli
+git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
 uv tool install .
 
 # Option 2: Using pipx
-git clone <repo-url> && cd weld-cli
+git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
 pipx install .
 
 # Verify installation
@@ -109,7 +109,7 @@ weld doctor
 For contributing to weld itself:
 
 ```bash
-git clone <repo-url> && cd weld-cli
+git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
 make setup
 eval $(make venv-eval)
 
