@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed CHANGELOG update potentially overwriting user's carefully staged hunks
 - Fixed silent failure when Claude returns unparseable response (now shows response for debugging)
+- Fixed streaming output prefix printing spurious `claude>` on empty lines when text starts with newline
 
 ### Changed
 - **Major simplification**: Removed run-centric architecture in favor of lightweight prompt-based workflow
