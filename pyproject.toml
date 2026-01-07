@@ -1,13 +1,32 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
 name = "weld"
 version = "0.3.0"
 description = "Human-in-the-loop coding harness: plan, review, iterate, commit with transcript provenance"
+readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+authors = [
+    { name = "Alex Metelli" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
 dependencies = [
   "typer>=0.12",
   "pydantic>=2.6",
@@ -18,6 +37,13 @@ dependencies = [
 
 [project.scripts]
 weld = "weld.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/ametel01/weld-cli"
+Documentation = "https://github.com/ametel01/weld-cli#readme"
+Repository = "https://github.com/ametel01/weld-cli.git"
+Issues = "https://github.com/ametel01/weld-cli/issues"
+Changelog = "https://github.com/ametel01/weld-cli/blob/master/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
