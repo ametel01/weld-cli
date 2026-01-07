@@ -8,6 +8,7 @@ import pytest
 from weld.services.claude import (
     ClaudeError,
     _extract_text_from_stream_json,
+    _write_with_prefix,
     run_claude,
 )
 
@@ -168,6 +169,148 @@ class TestExtractTextFromStreamJson:
         assert _extract_text_from_stream_json(line) is None
 
 
+class TestWriteWithPrefix:
+    """Tests for _write_with_prefix function."""
+
+    def test_simple_text_with_prefix(self) -> None:
+        """Simple text gets prefix at line start."""
+        mock_console = MagicMock()
+        mock_console.file = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("Hello", mock_console, at_line_start=True)
+
+        mock_console.print.assert_called_once()
+        mock_write.assert_called_once_with("Hello")
+        assert result is False  # Not at line start after writing
+
+    def test_text_no_prefix_when_mid_line(self) -> None:
+        """No prefix when not at line start."""
+        mock_console = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("World", mock_console, at_line_start=False)
+
+        mock_console.print.assert_not_called()
+        mock_write.assert_called_once_with("World")
+        assert result is False
+
+    def test_text_with_newline(self) -> None:
+        """Text with newline outputs correctly and tracks state."""
+        mock_console = MagicMock()
+        mock_console.file = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("Hello\nWorld", mock_console, at_line_start=True)
+
+        # Should print prefix twice (once for each line with content)
+        assert mock_console.print.call_count == 2
+        # Should write: "Hello", "\n", "World"
+        assert mock_write.call_count == 3
+        assert result is False  # Ends mid-line after "World"
+
+    def test_text_ending_with_newline(self) -> None:
+        """Text ending with newline leaves us at line start."""
+        mock_console = MagicMock()
+        mock_console.file = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("Hello\n", mock_console, at_line_start=True)
+
+        mock_console.print.assert_called_once()  # Prefix for "Hello" only
+        # Should write: "Hello", "\n"
+        assert mock_write.call_count == 2
+        assert result is True  # At line start after newline
+
+    def test_text_starting_with_newline(self) -> None:
+        """Text starting with newline should not print prefix before empty content."""
+        mock_console = MagicMock()
+        mock_console.file = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("\nHello", mock_console, at_line_start=True)
+
+        # Should print prefix only once (for "Hello", not for empty line)
+        mock_console.print.assert_called_once()
+        # Should write: "\n", "Hello"
+        assert mock_write.call_count == 2
+        assert result is False
+
+    def test_multiple_consecutive_newlines(self) -> None:
+        """Multiple consecutive newlines don't print spurious prefixes."""
+        mock_console = MagicMock()
+        mock_console.file = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("Hi\n\nBye", mock_console, at_line_start=True)
+
+        # Prefix for "Hi" and "Bye" only (not for empty middle line)
+        assert mock_console.print.call_count == 2
+        # Should write: "Hi", "\n", "\n", "Bye"
+        assert mock_write.call_count == 4
+        assert result is False
+
+    def test_empty_string(self) -> None:
+        """Empty string returns unchanged state."""
+        mock_console = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("", mock_console, at_line_start=True)
+
+        mock_console.print.assert_not_called()
+        mock_write.assert_not_called()
+        assert result is True  # State unchanged
+
+    def test_just_newline(self) -> None:
+        """Single newline doesn't print prefix."""
+        mock_console = MagicMock()
+
+        with (
+            patch("weld.services.claude.sys.stdout.write") as mock_write,
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            result = _write_with_prefix("\n", mock_console, at_line_start=True)
+
+        mock_console.print.assert_not_called()  # No content, no prefix
+        mock_write.assert_called_once_with("\n")
+        assert result is True  # At line start after newline
+
+    def test_console_file_flushed(self) -> None:
+        """Console file is flushed after printing prefix."""
+        mock_console = MagicMock()
+        mock_file = MagicMock()
+        mock_console.file = mock_file
+
+        with (
+            patch("weld.services.claude.sys.stdout.write"),
+            patch("weld.services.claude.sys.stdout.flush"),
+        ):
+            _write_with_prefix("Test", mock_console, at_line_start=True)
+
+        mock_file.flush.assert_called_once()
+
+
 class TestRunClaudeStreaming:
     """Tests for run_claude streaming mode."""
 
@@ -185,6 +328,7 @@ class TestRunClaudeStreaming:
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process) as mock_popen,
             patch.object(select_module, "select", return_value=([], [], [])),
+            patch("weld.services.claude.Console"),
         ):
             run_claude("test prompt", stream=True)
 
@@ -235,6 +379,7 @@ class TestRunClaudeStreaming:
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
             patch.object(select_module, "select", return_value=([1], [], [])),
+            patch("weld.services.claude.Console"),
             patch("weld.services.claude.sys.stdout.write"),
             patch("weld.services.claude.sys.stdout.flush"),
         ):
@@ -258,6 +403,7 @@ class TestRunClaudeStreaming:
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
             patch.object(select_module, "select", return_value=([], [], [])),
             patch.object(time_module, "monotonic", side_effect=time_values),
+            patch("weld.services.claude.Console"),
             pytest.raises(ClaudeError, match="timed out after 1 seconds"),
         ):
             run_claude("test prompt", stream=True, timeout=1)
@@ -278,6 +424,7 @@ class TestRunClaudeStreaming:
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
             patch.object(select_module, "select", return_value=([], [], [])),
+            patch("weld.services.claude.Console"),
             pytest.raises(ClaudeError, match="Claude failed"),
         ):
             run_claude("test prompt", stream=True)
@@ -307,6 +454,7 @@ class TestRunClaudeStreaming:
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process) as mock_popen,
             patch.object(select_module, "select", return_value=([], [], [])),
+            patch("weld.services.claude.Console"),
         ):
             run_claude("test prompt", stream=True, model="claude-sonnet-4-20250514")
 
@@ -328,6 +476,7 @@ class TestRunClaudeStreaming:
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process) as mock_popen,
             patch.object(select_module, "select", return_value=([], [], [])),
+            patch("weld.services.claude.Console"),
         ):
             run_claude("test prompt", stream=True, skip_permissions=True)
 
@@ -346,6 +495,7 @@ class TestRunClaudeStreaming:
         with (
             patch("weld.services.claude.subprocess.Popen", return_value=mock_process),
             patch.object(select_module, "select", side_effect=Exception("Unexpected error")),
+            patch("weld.services.claude.Console"),
             pytest.raises(ClaudeError, match="Streaming failed"),
         ):
             run_claude("test prompt", stream=True)

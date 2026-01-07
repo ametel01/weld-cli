@@ -5,7 +5,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rich.console import Console
+
 from ..constants import CLAUDE_TIMEOUT
+
+# Prefix for streaming output
+STREAM_PREFIX = "claude>"
+STREAM_PREFIX_STYLE = "cyan bold"
 
 
 class ClaudeError(Exception):
@@ -51,6 +57,51 @@ def _extract_text_from_stream_json(line: str) -> str | None:
         return None
 
 
+def _write_with_prefix(
+    text: str,
+    console: Console,
+    at_line_start: bool,
+) -> bool:
+    """Write text to stdout with claude> prefix on new lines.
+
+    Args:
+        text: Text to write
+        console: Rich console for styled output
+        at_line_start: Whether we're at the start of a line
+
+    Returns:
+        Whether we end at the start of a new line (after a newline)
+    """
+    if not text:
+        return at_line_start
+
+    # Split text to handle newlines
+    parts = text.split("\n")
+
+    for i, part in enumerate(parts):
+        is_last = i == len(parts) - 1
+
+        # Print prefix only if at start of line AND there's actual content
+        if at_line_start and part:
+            console.print(f"[{STREAM_PREFIX_STYLE}]{STREAM_PREFIX}[/] ", end="")
+            if console.file:
+                console.file.flush()  # Ensure prefix appears before text
+            at_line_start = False
+
+        # Print the text part
+        if part:
+            sys.stdout.write(part)
+            sys.stdout.flush()
+
+        # Handle newline (except for trailing empty part from split)
+        if not is_last:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            at_line_start = True
+
+    return at_line_start
+
+
 def _run_streaming(
     cmd: list[str],
     cwd: Path | None,
@@ -85,6 +136,8 @@ def _run_streaming(
 
     output_parts: list[str] = []
     start_time = time.monotonic()
+    console = Console()
+    at_line_start = True  # Track if we're at the start of a line
 
     try:
         assert proc.stdout is not None
@@ -128,8 +181,7 @@ def _run_streaming(
                     text = _extract_text_from_stream_json(line.strip())
                     if text:
                         output_parts.append(text)
-                        sys.stdout.write(text)
-                        sys.stdout.flush()
+                        at_line_start = _write_with_prefix(text, console, at_line_start)
 
             # Check if process has exited
             if proc.poll() is not None:
@@ -144,8 +196,12 @@ def _run_streaming(
             text = _extract_text_from_stream_json(buffer.strip())
             if text:
                 output_parts.append(text)
-                sys.stdout.write(text)
-                sys.stdout.flush()
+                at_line_start = _write_with_prefix(text, console, at_line_start)
+
+        # Ensure output ends with a newline for clean terminal state
+        if not at_line_start:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
         # Wait for process to complete
         try:
