@@ -29,7 +29,9 @@ class TestRunClaude:
         assert result == "Claude response here"
         mock_run.assert_called_once()
         call_args = mock_run.call_args
-        assert call_args[0][0] == ["claude", "-p", "test prompt", "--output-format", "text"]
+        # Prompt is passed via stdin, not -p argument (to avoid OS arg length limits)
+        assert call_args[0][0] == ["claude", "--output-format", "text"]
+        assert call_args[1]["input"] == "test prompt"
 
     def test_with_model_parameter(self) -> None:
         """Model parameter is passed to Claude CLI."""

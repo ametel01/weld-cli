@@ -106,6 +106,7 @@ def _run_streaming(
     cmd: list[str],
     cwd: Path | None,
     timeout: int,
+    stdin_input: str | None = None,
 ) -> str:
     """Run command with streaming output to stdout.
 
@@ -113,6 +114,7 @@ def _run_streaming(
         cmd: Command and arguments to run
         cwd: Working directory
         timeout: Timeout in seconds
+        stdin_input: Optional input to send via stdin
 
     Returns:
         Full output text
@@ -127,12 +129,18 @@ def _run_streaming(
         proc = subprocess.Popen(
             cmd,
             cwd=cwd,
+            stdin=subprocess.PIPE if stdin_input else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
     except FileNotFoundError:
         raise ClaudeError(f"Claude executable not found: {cmd[0]}") from None
+
+    # Send stdin input if provided, then close stdin
+    if stdin_input and proc.stdin:
+        proc.stdin.write(stdin_input)
+        proc.stdin.close()
 
     output_parts: list[str] = []
     start_time = time.monotonic()
@@ -255,7 +263,8 @@ def run_claude(
     """
     timeout = timeout or CLAUDE_TIMEOUT
 
-    cmd = [exec_path, "-p", prompt, "--output-format", "text"]
+    # Build base command - use stdin for prompt to avoid "Argument list too long" errors
+    cmd = [exec_path, "--output-format", "text"]
     if model:
         cmd.extend(["--model", model])
     if skip_permissions:
@@ -264,16 +273,17 @@ def run_claude(
     try:
         if stream:
             # Use stream-json for real-time streaming
-            stream_cmd = [exec_path, "-p", prompt, "--verbose", "--output-format", "stream-json"]
+            stream_cmd = [exec_path, "--verbose", "--output-format", "stream-json"]
             if model:
                 stream_cmd.extend(["--model", model])
             if skip_permissions:
                 stream_cmd.append("--dangerously-skip-permissions")
-            return _run_streaming(stream_cmd, cwd, timeout)
+            return _run_streaming(stream_cmd, cwd, timeout, stdin_input=prompt)
         else:
             result = subprocess.run(
                 cmd,
                 cwd=cwd,
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
