@@ -79,6 +79,14 @@ def doc_review(
             help="Timeout in seconds for Claude (default: 1800 from config)",
         ),
     ] = None,
+    focus: Annotated[
+        str | None,
+        typer.Option(
+            "--focus",
+            "-f",
+            help="Topic to focus the review on",
+        ),
+    ] = None,
 ) -> None:
     """Review a document against the current codebase state.
 
@@ -155,6 +163,7 @@ def doc_review(
             prompt_only=prompt_only,
             quiet=quiet,
             timeout=effective_timeout,
+            focus=focus,
         )
     else:
         assert document is not None  # Validated above
@@ -169,6 +178,7 @@ def doc_review(
             prompt_only=prompt_only,
             quiet=quiet,
             timeout=effective_timeout,
+            focus=focus,
         )
 
 
@@ -183,6 +193,7 @@ def _run_code_review(
     prompt_only: bool,
     quiet: bool,
     timeout: int,
+    focus: str | None,
 ) -> None:
     """Run code review on git diff."""
     # Get diff content
@@ -220,7 +231,7 @@ def _run_code_review(
     diff_path.write_text(diff_content)
 
     # Generate and write prompt
-    prompt = generate_code_review_prompt(diff_content, apply_mode=apply)
+    prompt = generate_code_review_prompt(diff_content, apply_mode=apply, focus=focus)
     prompt_path = artifact_dir / "prompt.md"
     prompt_path.write_text(prompt)
 
@@ -295,6 +306,7 @@ def _run_doc_review(
     prompt_only: bool,
     quiet: bool,
     timeout: int,
+    focus: str | None,
 ) -> None:
     """Run document review against codebase."""
     # Read document content
@@ -322,7 +334,7 @@ def _run_doc_review(
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate and write prompt
-    prompt = generate_doc_review_prompt(document_content, apply_mode=apply)
+    prompt = generate_doc_review_prompt(document_content, apply_mode=apply, focus=focus)
     prompt_path = artifact_dir / "prompt.md"
     prompt_path.write_text(prompt)
 

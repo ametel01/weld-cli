@@ -381,6 +381,7 @@ Review documents or code changes.
 ```bash
 weld review plan.md                    # Review document accuracy
 weld review plan.md --apply            # Apply corrections in place
+weld review plan.md --focus "security" # Focus review on specific topic
 weld review research.md --prompt-only  # Just show the prompt
 ```
 
@@ -389,12 +390,14 @@ weld review research.md --prompt-only  # Just show the prompt
 weld review --diff                     # Review all uncommitted changes
 weld review --diff --staged            # Review only staged changes
 weld review --diff --apply             # Review and fix all issues directly
+weld review --diff --focus "error handling"  # Focus review on specific topic
 weld review --diff --prompt-only       # Generate prompt without running
 ```
 
 Options:
 - `--diff`, `-d` - Review git diff instead of a document
 - `--staged`, `-s` - Review only staged changes (requires `--diff`)
+- `--focus`, `-f` - Topic to focus the review on
 - `--apply` - Apply corrections/fixes directly
 - `--prompt-only` - Output prompt without running Claude
 - `--quiet`, `-q` - Suppress streaming output

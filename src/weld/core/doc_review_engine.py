@@ -28,6 +28,10 @@ actually exists**.
 If agents are not onboarded with accurate context, they will fabricate.
 This mirrors Memento: without memory, agents invent narratives.
 
+## Focus Area
+
+{focus_area}
+
 ## Document to Review
 
 ```markdown
@@ -143,6 +147,10 @@ Review the provided document, compare it against the current state of the codeba
 If agents are not onboarded with accurate context, they will fabricate.
 This mirrors Memento: without memory, agents invent narratives.
 
+## Focus Area
+
+{focus_area}
+
 ## Document to Correct
 
 ```markdown
@@ -206,6 +214,10 @@ of code changes.
 
 Review the provided git diff and identify issues that could cause problems in production. \
 Focus on substantive issues, not style preferences.
+
+## Focus Area
+
+{focus_area}
 
 ## Diff to Review
 
@@ -320,6 +332,10 @@ directly in the codebase.
 Review the provided git diff, identify issues, and **fix them directly** in the affected files. \
 Apply fixes for all substantive issues found.
 
+## Focus Area
+
+{focus_area}
+
 ## Diff to Review
 
 ```diff
@@ -401,34 +417,48 @@ For each file modified:
 """
 
 
-def generate_doc_review_prompt(document_content: str, apply_mode: bool = False) -> str:
+def generate_doc_review_prompt(
+    document_content: str, apply_mode: bool = False, focus: str | None = None
+) -> str:
     """Generate review prompt for document verification.
 
     Args:
         document_content: Content of the markdown document to review
         apply_mode: If True, generate prompt for correcting the document in place
+        focus: Optional topic to focus the review on
 
     Returns:
         Formatted prompt for AI review
     """
+    focus_area = focus or "Review all aspects of the document comprehensively."
     if apply_mode:
-        return DOC_REVIEW_APPLY_PROMPT_TEMPLATE.format(document_content=document_content)
-    return DOC_REVIEW_PROMPT_TEMPLATE.format(document_content=document_content)
+        return DOC_REVIEW_APPLY_PROMPT_TEMPLATE.format(
+            document_content=document_content, focus_area=focus_area
+        )
+    return DOC_REVIEW_PROMPT_TEMPLATE.format(
+        document_content=document_content, focus_area=focus_area
+    )
 
 
-def generate_code_review_prompt(diff_content: str, apply_mode: bool = False) -> str:
+def generate_code_review_prompt(
+    diff_content: str, apply_mode: bool = False, focus: str | None = None
+) -> str:
     """Generate review prompt for code changes.
 
     Args:
         diff_content: Git diff output to review
         apply_mode: If True, generate prompt for fixing issues directly
+        focus: Optional topic to focus the review on
 
     Returns:
         Formatted prompt for AI code review
     """
+    focus_area = focus or "Review all aspects of the code changes comprehensively."
     if apply_mode:
-        return CODE_REVIEW_APPLY_PROMPT_TEMPLATE.format(diff_content=diff_content)
-    return CODE_REVIEW_PROMPT_TEMPLATE.format(diff_content=diff_content)
+        return CODE_REVIEW_APPLY_PROMPT_TEMPLATE.format(
+            diff_content=diff_content, focus_area=focus_area
+        )
+    return CODE_REVIEW_PROMPT_TEMPLATE.format(diff_content=diff_content, focus_area=focus_area)
 
 
 def get_doc_review_dir(weld_dir: Path) -> Path:
