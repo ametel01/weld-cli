@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from ..config import load_config
 from ..core import get_weld_dir, log_command
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude
@@ -225,6 +226,9 @@ def plan(
     spec_content = input_file.read_text()
     prompt = generate_plan_prompt(spec_content, input_file.name)
 
+    # Load config (falls back to defaults if not initialized)
+    config = load_config(weld_dir) if weld_dir else load_config(input_file.parent)
+
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would generate plan:")
         ctx.console.print(f"  Input: {input_file}")
@@ -236,7 +240,11 @@ def plan(
     ctx.console.print(f"[cyan]Generating plan from {input_file.name}...[/cyan]\n")
 
     try:
-        result = run_claude(prompt=prompt, stream=not quiet)
+        result = run_claude(
+            prompt=prompt,
+            stream=not quiet,
+            max_output_tokens=config.claude.max_output_tokens,
+        )
     except ClaudeError as e:
         ctx.error(f"Claude failed: {e}")
         raise typer.Exit(1) from None

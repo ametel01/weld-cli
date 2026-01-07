@@ -1,6 +1,7 @@
 """Claude CLI integration for weld."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,9 @@ from pathlib import Path
 from rich.console import Console
 
 from ..constants import CLAUDE_TIMEOUT
+
+# Default max output tokens (128K)
+DEFAULT_MAX_OUTPUT_TOKENS = 128000
 
 # Prefix for streaming output
 STREAM_PREFIX = "claude>"
@@ -107,6 +111,7 @@ def _run_streaming(
     cwd: Path | None,
     timeout: int,
     stdin_input: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> str:
     """Run command with streaming output to stdout.
 
@@ -115,6 +120,7 @@ def _run_streaming(
         cwd: Working directory
         timeout: Timeout in seconds
         stdin_input: Optional input to send via stdin
+        env: Environment variables to pass to subprocess
 
     Returns:
         Full output text
@@ -133,6 +139,7 @@ def _run_streaming(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
     except FileNotFoundError:
         raise ClaudeError(f"Claude executable not found: {cmd[0]}") from None
@@ -233,6 +240,16 @@ def _run_streaming(
 
         if proc.returncode != 0:
             stderr = proc.stderr.read() if proc.stderr else ""
+
+            # Check for token limit error and provide helpful message
+            if "exceeded" in stderr.lower() and "token" in stderr.lower():
+                raise ClaudeError(
+                    f"Output token limit exceeded.\n\n"
+                    f"  Fix: Increase [claude].max_output_tokens in .weld/config.toml\n"
+                    f"  Current default: {DEFAULT_MAX_OUTPUT_TOKENS}\n\n"
+                    f"Original error: {stderr}"
+                )
+
             raise ClaudeError(f"Claude failed: {stderr}")
 
         return "".join(output_parts)
@@ -256,6 +273,7 @@ def run_claude(
     timeout: int | None = None,
     stream: bool = False,
     skip_permissions: bool = False,
+    max_output_tokens: int | None = None,
 ) -> str:
     """Run Claude CLI with prompt and return output.
 
@@ -267,6 +285,7 @@ def run_claude(
         timeout: Optional timeout in seconds (default: 600)
         stream: If True, stream output to stdout in real-time
         skip_permissions: If True, add --dangerously-skip-permissions for write operations
+        max_output_tokens: Max output tokens for response. Defaults to 128000.
 
     Returns:
         Claude stdout output
@@ -275,6 +294,11 @@ def run_claude(
         ClaudeError: If claude fails, returns non-zero, or times out
     """
     timeout = timeout or CLAUDE_TIMEOUT
+    max_tokens = max_output_tokens or DEFAULT_MAX_OUTPUT_TOKENS
+
+    # Build environment with max output tokens setting
+    env = dict(os.environ)
+    env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(max_tokens)
 
     # Build base command - use stdin for prompt to avoid "Argument list too long" errors
     cmd = [exec_path, "--output-format", "text"]
@@ -291,7 +315,7 @@ def run_claude(
                 stream_cmd.extend(["--model", model])
             if skip_permissions:
                 stream_cmd.append("--dangerously-skip-permissions")
-            return _run_streaming(stream_cmd, cwd, timeout, stdin_input=prompt)
+            return _run_streaming(stream_cmd, cwd, timeout, stdin_input=prompt, env=env)
         else:
             result = subprocess.run(
                 cmd,
@@ -300,9 +324,21 @@ def run_claude(
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=env,
             )
             if result.returncode != 0:
-                raise ClaudeError(f"Claude failed: {result.stderr}")
+                stderr = result.stderr
+
+                # Check for token limit error and provide helpful message
+                if "exceeded" in stderr.lower() and "token" in stderr.lower():
+                    raise ClaudeError(
+                        f"Output token limit exceeded.\n\n"
+                        f"  Fix: Increase [claude].max_output_tokens in .weld/config.toml\n"
+                        f"  Current setting: {max_tokens}\n\n"
+                        f"Original error: {stderr}"
+                    )
+
+                raise ClaudeError(f"Claude failed: {stderr}")
             return result.stdout
     except subprocess.TimeoutExpired as e:
         raise ClaudeError(f"Claude timed out after {timeout} seconds") from e

@@ -268,6 +268,7 @@ def _run_code_review(
             stream=not quiet,
             timeout=timeout,
             skip_permissions=apply,  # Allow file writes in apply mode
+            max_output_tokens=config.claude.max_output_tokens,
         )
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
@@ -375,6 +376,7 @@ def _run_doc_review(
             stream=not quiet,
             timeout=timeout,
             skip_permissions=apply,  # Allow file writes in apply mode
+            max_output_tokens=config.claude.max_output_tokens,
         )
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")

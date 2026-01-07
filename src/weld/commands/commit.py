@@ -292,6 +292,7 @@ def commit(
             model=config.claude.model,
             cwd=repo_root,
             stream=not quiet,
+            max_output_tokens=config.claude.max_output_tokens,
         )
     except ClaudeError as e:
         ctx.error(f"Failed to generate commit message: {e}")

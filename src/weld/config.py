@@ -113,6 +113,7 @@ class ClaudeConfig(BaseModel):
     exec: str = "claude"  # Path to Claude CLI if available
     model: str | None = None  # Default model (e.g., claude-3-opus)
     timeout: int = 1800  # Default timeout in seconds (30 minutes)
+    max_output_tokens: int = 128000  # Max output tokens for Claude responses
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
 
 
@@ -211,6 +212,7 @@ def write_config_template(weld_dir: Path) -> Path:
         "claude": {
             "exec": "claude",
             "timeout": 1800,  # 30 minutes for AI operations
+            "max_output_tokens": 128000,  # Increase if you hit token limit errors
             "transcripts": {"exec": "claude-code-transcripts", "visibility": "secret"},
         },
         "git": {"commit_trailer_key": "Claude-Transcript", "include_run_trailer": True},

@@ -424,6 +424,7 @@ When complete, confirm the implementation is done.
             stream=not quiet,
             timeout=timeout,
             skip_permissions=True,
+            max_output_tokens=config.claude.max_output_tokens,
         )
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")

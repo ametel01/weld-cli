@@ -490,6 +490,7 @@ name = "your-project"
 exec = "claude"          # Claude CLI path
 model = "claude-sonnet-4-20250514"  # Default model (optional)
 timeout = 1800           # Timeout in seconds for AI operations (30 min default)
+max_output_tokens = 128000  # Max tokens for Claude responses (default: 128K)
 
 [claude.transcripts]
 exec = "claude-code-transcripts"
@@ -497,6 +498,30 @@ visibility = "secret"    # or "public"
 
 [git]
 commit_trailer_key = "Claude-Transcript"
+```
+
+### Output Token Limit
+
+Weld sets Claude's output token limit to **128,000 tokens** by default (via `CLAUDE_CODE_MAX_OUTPUT_TOKENS`). This is sufficient for most operations including reviews of large documents.
+
+**If you encounter a token limit error** like:
+```
+API Error: Claude's response exceeded the output token maximum.
+```
+
+The error message will include a helpful fix:
+```
+Output token limit exceeded.
+
+  Fix: Increase [claude].max_output_tokens in .weld/config.toml
+  Current setting: 128000
+```
+
+To resolve, increase the limit in your config:
+
+```toml
+[claude]
+max_output_tokens = 200000  # Increase for very large documents
 ```
 
 ---

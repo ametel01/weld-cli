@@ -114,6 +114,7 @@ def _run_discover(output: Path | None, focus: str | None, prompt_only: bool, qui
             exec_path=claude_exec,
             cwd=repo_root,
             stream=not quiet,
+            max_output_tokens=config.claude.max_output_tokens,
         )
     except ClaudeError as e:
         ctx.error(f"Claude failed: {e}")
