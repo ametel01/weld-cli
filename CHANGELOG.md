@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- MkDocs documentation site with Material theme
+  - Full command reference and configuration docs
+  - GitHub Actions workflow for automatic deployment to GitHub Pages
+  - Makefile targets: `docs`, `docs-build`, `docs-deploy`, `docs-version`
+  - Versioned documentation support via mike
+
+### Changed
+- Simplified README.md, moved detailed content to documentation site
+
 ## [0.4.1] - 2026-01-07
 
 ### Added
