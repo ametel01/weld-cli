@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
+from weld import __version__
 from weld.cli import app
 
 
@@ -18,7 +19,7 @@ class TestVersionCommand:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "weld" in result.stdout
-        assert "0.2.0" in result.stdout
+        assert __version__ in result.stdout
 
     def test_version_short_flag(self, runner: CliRunner) -> None:
         """-V should also display version."""

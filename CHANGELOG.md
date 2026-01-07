@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-01-07
+
+### Added
+- Automated release workflow (`.github/workflows/release.yml`)
+  - Tag-triggered GitHub Actions workflow for PyPI and GitHub releases
+  - Quality gates (ruff, pyright, pytest) run before publish
+  - Version validation between `pyproject.toml` and git tag
+  - PyPI Trusted Publishing via OIDC (no API tokens required)
+  - Automatic release notes extraction from CHANGELOG.md
+  - GitHub Release creation with wheel/sdist artifacts
+- Release helper scripts in `scripts/`:
+  - `extract_release_notes.py`: Parse CHANGELOG for version section
+  - `assert_unreleased_empty.py`: Validate unreleased section is empty before tagging
+- PyPI packaging metadata per [packaging.python.org](https://packaging.python.org/en/latest/tutorials/packaging-projects/) guidelines
+  - Authors, readme, license-files fields
+  - Classifiers for Python versions, license, and topics
+  - Project URLs (Homepage, Documentation, Repository, Issues, Changelog)
+
 ## [0.3.0] - 2026-01-07
 
 ### Added
@@ -185,7 +203,8 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/user/weld-cli/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/user/weld-cli/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/user/weld-cli/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/user/weld-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/ametel01/weld-cli/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/ametel01/weld-cli/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/ametel01/weld-cli/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/ametel01/weld-cli/releases/tag/v0.1.0
