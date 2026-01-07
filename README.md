@@ -53,13 +53,16 @@ weld research specs/my-feature.md --output research.md
 # 5. Generate a plan from your spec
 weld plan specs/my-feature.md --output plan.md
 
-# 6. Review a document against the codebase
+# 6. Execute the plan interactively
+weld implement plan.md
+
+# 7. Review a document against the codebase
 weld review plan.md --apply
 
-# 7. Review code changes before committing
+# 8. Review code changes before committing
 weld review --diff --staged
 
-# 8. Commit with transcript provenance (auto-generates message)
+# 9. Commit with transcript provenance (auto-generates message)
 weld commit --all
 ```
 
@@ -136,8 +139,9 @@ Weld provides prompts for a structured development workflow:
 2. Interview (optional)  | Refine specification through Q&A
 3. Research              | Deep dive into implementation approach
 4. Planning              | Generate step-by-step implementation plan
-5. Review                | Validate documents against codebase
-6. Commit                | Create commit with transcript link
+5. Implement             | Execute plan steps interactively
+6. Review                | Validate documents against codebase
+7. Commit                | Create commit with transcript link
 ```
 
 ### Key Concepts
@@ -257,6 +261,37 @@ What this step accomplishes.
 
 ---
 
+### `weld implement <plan>`
+
+Interactively execute a phased implementation plan.
+
+```bash
+weld implement plan.md                # Interactive menu to select phase/step
+weld implement plan.md --phase 2      # Start at phase 2
+weld implement plan.md --step 3       # Start at step 3 of current phase
+weld implement plan.md --phase 2 --step 1  # Non-interactive: specific step
+```
+
+Options:
+- `--phase`, `-p` - Start at a specific phase number
+- `--step`, `-s` - Start at a specific step number
+- `--quiet`, `-q` - Suppress streaming output
+
+Features:
+- **Interactive mode**: Arrow-key navigable menu for selecting phases/steps
+- **Non-interactive mode**: Use `--phase` and `--step` flags for CI/automation
+- **Progress tracking**: Steps are marked complete with `[COMPLETE]` in the plan file
+- **Graceful interruption**: Ctrl+C preserves progress (completed steps stay marked)
+
+The command:
+1. Parses the plan to extract phases and steps
+2. Shows an interactive menu (or jumps to specified step)
+3. Generates implementation prompts for each step
+4. Runs Claude to implement the step
+5. Marks the step complete in the plan file
+
+---
+
 ### `weld research <input> --output <path>`
 
 Research a specification before planning.
@@ -356,6 +391,7 @@ Options:
 - `--apply` - Apply corrections/fixes directly
 - `--prompt-only` - Output prompt without running Claude
 - `--quiet`, `-q` - Suppress streaming output
+- `--timeout`, `-t` - Timeout in seconds for Claude (default: 1800 from config)
 
 Document reviews check for:
 - Errors and inaccuracies
@@ -472,6 +508,7 @@ src/weld/
 ├── commands/           # CLI command modules
 │   ├── init.py         # weld init
 │   ├── plan.py         # weld plan
+│   ├── implement.py    # weld implement
 │   ├── research.py     # weld research
 │   ├── discover.py     # weld discover
 │   ├── interview.py    # weld interview
@@ -482,6 +519,7 @@ src/weld/
 ├── core/               # Business logic
 │   ├── history.py      # JSONL command history tracking
 │   ├── weld_dir.py     # .weld directory utilities
+│   ├── plan_parser.py  # Plan parsing and completion tracking
 │   ├── discover_engine.py    # Codebase discovery prompts
 │   ├── interview_engine.py   # Specification refinement
 │   └── doc_review_engine.py  # Document review prompts
@@ -600,6 +638,11 @@ make typecheck      # Run pyright
 - git
 - gh (GitHub CLI, authenticated)
 - claude (Claude Code CLI)
+
+**Python dependencies (installed automatically):**
+- typer, rich - CLI framework
+- pydantic - Data validation
+- simple-term-menu - Interactive menus for `weld implement`
 
 **Optional:**
 - claude-code-transcripts (for transcript gist generation)
