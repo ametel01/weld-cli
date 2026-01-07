@@ -300,11 +300,12 @@ Research a specification before planning.
 ```bash
 weld research specs/feature.md                      # Writes to .weld/research/feature-{timestamp}.md
 weld research specs/feature.md --output research.md # Explicit output path
-weld research specs/feature.md -o research.md --quiet
+weld research specs/feature.md -o research.md --focus "security concerns"
 ```
 
 Options:
 - `--output`, `-o` - Path to write research (optional, defaults to `.weld/research/`)
+- `--focus`, `-f` - Specific areas to focus on
 - `--quiet`, `-q` - Suppress streaming output
 
 The research prompt guides Claude to analyze:

@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `--output` for `weld plan`, `weld research`, and `weld discover` commands
   - Without `--output`, writes to `.weld/<command>/{filename}-{timestamp}.md`
   - Requires weld initialization when using default paths
+- `--focus/-f` option for `weld research` to focus analysis on specific areas
 - `make release VERSION=x.y.z` target for creating GitHub releases from CHANGELOG
+
+### Fixed
+- Claude prompts now passed via stdin instead of `-p` argument to avoid OS "Argument list too long" errors on large prompts
 
 ## [0.2.0] - 2026-01-07
 

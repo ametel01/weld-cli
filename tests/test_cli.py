@@ -160,6 +160,7 @@ class TestResearchCommand:
         result = runner.invoke(app, ["research", "--help"])
         assert result.exit_code == 0
         assert "--output" in result.stdout
+        assert "--focus" in result.stdout
 
     def test_research_missing_file(self, runner: CliRunner, initialized_weld: Path) -> None:
         """research should fail when input file doesn't exist."""
@@ -176,6 +177,27 @@ class TestResearchCommand:
         assert result.exit_code == 0
         assert "DRY RUN" in result.stdout
         assert "Research Request" in result.stdout
+
+    def test_research_focus_in_dry_run(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """research --focus should include focus areas in prompt."""
+        spec_file = initialized_weld / "spec.md"
+        spec_file.write_text("# Test Spec\n\nImplement something.")
+
+        result = runner.invoke(
+            app,
+            [
+                "--dry-run",
+                "research",
+                str(spec_file),
+                "-o",
+                "research.md",
+                "--focus",
+                "security and auth",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Focus Areas" in result.stdout
+        assert "security and auth" in result.stdout
 
 
 class TestCommitCommand:

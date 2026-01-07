@@ -25,16 +25,25 @@ def get_research_dir(weld_dir: Path) -> Path:
     return research_dir
 
 
-def generate_research_prompt(spec_content: str, spec_name: str) -> str:
+def generate_research_prompt(spec_content: str, spec_name: str, focus: str | None = None) -> str:
     """Generate prompt for researching a specification.
 
     Args:
         spec_content: Content of the specification file
         spec_name: Name of the specification file
+        focus: Optional specific areas to focus on
 
     Returns:
         Formatted prompt for Claude
     """
+    focus_section = ""
+    if focus:
+        focus_section = f"""
+## Focus Areas
+
+Pay particular attention to: {focus}
+"""
+
     return f"""# Research Request
 
 You are a senior software architect analyzing a specification for planning.
@@ -44,7 +53,7 @@ You are a senior software architect analyzing a specification for planning.
 {spec_content}
 
 ---
-
+{focus_section}
 ## Research Requirements
 
 Analyze this specification and produce a comprehensive research document
@@ -85,6 +94,10 @@ def research(
         Path | None,
         typer.Option("--output", "-o", help="Output path for research"),
     ] = None,
+    focus: Annotated[
+        str | None,
+        typer.Option("--focus", "-f", help="Specific areas to focus on"),
+    ] = None,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress streaming output"),
@@ -121,7 +134,7 @@ def research(
         output = research_dir / f"{input_file.stem}-{timestamp}.md"
 
     spec_content = input_file.read_text()
-    prompt = generate_research_prompt(spec_content, input_file.name)
+    prompt = generate_research_prompt(spec_content, input_file.name, focus)
 
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would research specification:")

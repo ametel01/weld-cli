@@ -50,6 +50,24 @@ class TestGenerateResearchPrompt:
         assert "Open Questions" in prompt
         assert "Ambiguities" in prompt
 
+    def test_focus_not_included_when_none(self) -> None:
+        """Prompt does not include focus section when focus is None."""
+        prompt = generate_research_prompt("content", "spec.md", focus=None)
+        assert "Focus Areas" not in prompt
+
+    def test_focus_included_when_provided(self) -> None:
+        """Prompt includes focus section when focus is provided."""
+        prompt = generate_research_prompt("content", "spec.md", focus="security and authentication")
+        assert "## Focus Areas" in prompt
+        assert "security and authentication" in prompt
+
+    def test_focus_appears_before_research_requirements(self) -> None:
+        """Focus section appears before Research Requirements."""
+        prompt = generate_research_prompt("content", "spec.md", focus="database design")
+        focus_pos = prompt.find("Focus Areas")
+        requirements_pos = prompt.find("Research Requirements")
+        assert focus_pos < requirements_pos
+
 
 @pytest.mark.unit
 class TestGetResearchDir:
