@@ -40,7 +40,7 @@ weld = "weld.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/ametel01/weld-cli"
-Documentation = "https://github.com/ametel01/weld-cli#readme"
+Documentation = "https://ametel01.github.io/weld-cli/"
 Repository = "https://github.com/ametel01/weld-cli.git"
 Issues = "https://github.com/ametel01/weld-cli/issues"
 Changelog = "https://github.com/ametel01/weld-cli/blob/master/CHANGELOG.md"
@@ -55,6 +55,12 @@ dev = [
   "pre-commit>=3.7",
   "pip-audit>=2.7",
   "detect-secrets>=1.5",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "mkdocs-minify-plugin>=0.8",
+  "mike>=2.1",                    # Version management
 ]
 
 [tool.hatch.build.targets.wheel]

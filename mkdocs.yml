@@ -1,0 +1,167 @@
+# MkDocs configuration for weld-cli documentation
+# https://www.mkdocs.org/
+
+site_name: Weld
+site_description: Human-in-the-loop coding harness with transcript provenance
+site_author: Alex Metelli
+site_url: https://ametel01.github.io/weld-cli/
+
+repo_name: ametel01/weld-cli
+repo_url: https://github.com/ametel01/weld-cli
+edit_uri: edit/master/docs/
+
+# Theme configuration
+theme:
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/weld-logo.png
+  favicon: assets/favicon.ico
+
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    # Navigation
+    - navigation.instant          # XHR-based navigation (SPA-like)
+    - navigation.instant.progress # Loading progress indicator
+    - navigation.tracking         # URL updates with anchor
+    - navigation.tabs             # Top-level sections as tabs
+    - navigation.tabs.sticky      # Tabs stay visible on scroll
+    - navigation.sections         # Render sections as groups
+    - navigation.expand           # Expand all collapsible sections
+    - navigation.path             # Breadcrumb navigation
+    - navigation.top              # Back-to-top button
+    - navigation.footer           # Previous/next links in footer
+
+    # Table of contents
+    - toc.follow                  # TOC follows scroll position
+
+    # Search
+    - search.suggest              # Search suggestions
+    - search.highlight            # Highlight search terms in results
+    - search.share                # Shareable search links
+
+    # Content
+    - content.code.copy           # Copy button on code blocks
+    - content.code.annotate       # Code annotations
+    - content.tabs.link           # Linked content tabs
+    - content.action.edit         # Edit this page link
+    - content.action.view         # View source link
+
+  icon:
+    repo: fontawesome/brands/github
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-\.]+'
+  - minify:
+      minify_html: true
+
+# Markdown extensions
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+  # PyMdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quickstart: quickstart.md
+    - Workflow: workflow.md
+  - Commands:
+    - Overview: commands/index.md
+    - init: commands/init.md
+    - doctor: commands/doctor.md
+    - discover: commands/discover.md
+    - interview: commands/interview.md
+    - research: commands/research.md
+    - plan: commands/plan.md
+    - implement: commands/implement.md
+    - review: commands/review.md
+    - commit: commands/commit.md
+  - Reference:
+    - Configuration: configuration.md
+    - Exit Codes: reference/exit-codes.md
+    - Plan Format: reference/plan-format.md
+  - Troubleshooting: troubleshooting.md
+  - Development:
+    - Overview: development/index.md
+    - Architecture: development/architecture.md
+    - Contributing: development/contributing.md
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ametel01/weld-cli
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/weld-cli/
+
+  version:
+    provider: mike
+    default: stable
+
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX  # Replace with your Google Analytics ID
+
+extra_css:
+  - stylesheets/extra.css
+
+# Copyright
+copyright: Copyright &copy; 2024 Alex Metelli

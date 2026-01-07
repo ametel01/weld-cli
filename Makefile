@@ -139,6 +139,47 @@ ci: check test-cov security ## Run full CI pipeline (quality + tests + security)
 .PHONY: quality
 quality: check test security ## Alias for full quality suite
 
+##@ Documentation
+
+.PHONY: docs
+docs: ## Serve documentation locally with hot-reload
+	@echo -e "$(BLUE)Starting docs server...$(NC)"
+	$(VENV)/bin/mkdocs serve
+
+.PHONY: docs-build
+docs-build: ## Build documentation for deployment
+	@echo -e "$(BLUE)Building documentation...$(NC)"
+	$(VENV)/bin/mkdocs build --strict
+	@echo -e "$(GREEN)Docs built to site/$(NC)"
+
+.PHONY: docs-deploy
+docs-deploy: ## Deploy documentation to GitHub Pages
+	@echo -e "$(BLUE)Deploying to GitHub Pages...$(NC)"
+	$(VENV)/bin/mkdocs gh-deploy --force
+	@echo -e "$(GREEN)Deployed!$(NC)"
+
+.PHONY: docs-version
+docs-version: ## Deploy versioned docs (usage: make docs-version VERSION=0.4.0)
+ifndef VERSION
+	@echo -e "$(YELLOW)Usage: make docs-version VERSION=x.y.z$(NC)"
+	@echo ""
+	@echo "This will deploy versioned documentation using mike"
+	@echo ""
+	@echo "Example:"
+	@echo "  make docs-version VERSION=0.4.0"
+	@exit 1
+else
+	@echo -e "$(BLUE)Deploying docs version $(VERSION)...$(NC)"
+	$(VENV)/bin/mike deploy --push $(VERSION)
+	@echo -e "$(GREEN)Version $(VERSION) deployed!$(NC)"
+endif
+
+.PHONY: docs-install
+docs-install: ## Install documentation dependencies
+	@echo -e "$(BLUE)Installing docs dependencies...$(NC)"
+	$(UV) sync --group docs
+	@echo -e "$(GREEN)Done!$(NC)"
+
 ##@ Build & Package
 
 .PHONY: build
