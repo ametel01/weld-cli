@@ -37,8 +37,7 @@ Get running in under 5 minutes:
 
 ```bash
 # 1. Install weld globally
-git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
-uv tool install .    # or: pipx install .
+uv tool install weld-cli    # or: pipx install weld-cli
 
 # 2. Initialize in your project
 cd /path/to/your-project
@@ -79,18 +78,16 @@ weld commit --all
 - **claude** - Claude Code CLI (AI provider)
 - **claude-code-transcripts** - For transcript gist generation (optional)
 
-### Install Globally (Recommended)
+### Install from PyPI (Recommended)
 
-Install weld as a global CLI tool so you can use it in any project:
+Install weld as a global CLI tool:
 
 ```bash
-# Option 1: Using uv (recommended)
-git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
-uv tool install .
+# Using uv (recommended)
+uv tool install weld-cli
 
-# Option 2: Using pipx
-git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
-pipx install .
+# Or using pipx
+pipx install weld-cli
 
 # Verify installation
 weld --help
@@ -104,19 +101,6 @@ weld init
 weld doctor
 ```
 
-### Install for Development
-
-For contributing to weld itself:
-
-```bash
-git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
-make setup
-eval $(make venv-eval)
-
-# weld is now available in this shell
-weld --help
-```
-
 ### Verify Toolchain
 
 ```bash
@@ -127,6 +111,25 @@ weld doctor
 This validates:
 - **Required**: `git`, `gh` (GitHub CLI authenticated)
 - **Optional**: `claude`, `claude-code-transcripts`
+
+<details>
+<summary><strong>Install from Source (Development)</strong></summary>
+
+For contributing to weld or running the latest unreleased code:
+
+```bash
+git clone https://github.com/ametel01/weld-cli.git && cd weld-cli
+
+# Option 1: Install globally from source
+uv tool install .
+
+# Option 2: Development setup with editable install
+make setup
+eval $(make venv-eval)
+weld --help
+```
+
+</details>
 
 ---
 
