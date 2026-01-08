@@ -643,17 +643,11 @@ This is a test commit message.
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
 
-        # Mock Claude and transcript upload
+        # Mock Claude and skip transcript (no session detected)
         with (
             patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
-            patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
+            patch("weld.commands.commit.detect_current_session", return_value=None),
         ):
-            from weld.services.transcripts import TranscriptResult
-
-            mock_transcript.return_value = TranscriptResult(
-                gist_url="https://gist.github.com/123",
-                raw_output="",
-            )
             result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 0
@@ -668,12 +662,12 @@ This is a test commit message.
 
         with (
             patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
-            patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
+            patch("weld.commands.commit.upload_gist") as mock_upload,
         ):
             result = runner.invoke(app, ["commit", "--skip-transcript"])
 
         assert result.exit_code == 0
-        mock_transcript.assert_not_called()
+        mock_upload.assert_not_called()
 
     def test_commit_stages_all_with_flag(self, runner: CliRunner, initialized_weld: Path) -> None:
         """commit --all should stage all changes before committing."""
@@ -704,12 +698,9 @@ This is a test commit message.
         commit_error = GitError("Pre-commit hook failed")
         with (
             patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
-            patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
+            patch("weld.commands.commit.detect_current_session", return_value=None),
             patch("weld.commands.commit.commit_file", side_effect=commit_error),
         ):
-            from weld.services.transcripts import TranscriptResult
-
-            mock_transcript.return_value = TranscriptResult(gist_url=None, raw_output="")
             result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 22
@@ -719,24 +710,28 @@ This is a test commit message.
         self, runner: CliRunner, initialized_weld: Path
     ) -> None:
         """commit should continue with warning when transcript upload fails."""
-        from weld.services import TranscriptError
+        from weld.services.gist_uploader import GistError
 
         # Create and stage a file
         test_file = initialized_weld / "test.txt"
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
 
+        # Create a fake session file
+        fake_session = initialized_weld / ".claude-session.jsonl"
+        fake_session.write_text("{}\n")
+
         with (
             patch("weld.commands.commit.run_claude", return_value=self._mock_claude_response()),
-            patch(
-                "weld.commands.commit.run_transcript_gist",
-                side_effect=TranscriptError("Network error"),
-            ),
+            patch("weld.commands.commit.detect_current_session", return_value=fake_session),
+            patch("weld.commands.commit.get_session_id", return_value="abc123"),
+            patch("weld.commands.commit.render_transcript", return_value="# Transcript"),
+            patch("weld.commands.commit.upload_gist", side_effect=GistError("Network error")),
         ):
             result = runner.invoke(app, ["commit"])
 
         assert result.exit_code == 0
-        assert "Warning" in result.stdout
+        assert "skipped" in result.stdout.lower()
         assert "Committed:" in result.stdout
 
     def test_commit_skip_changelog_flag(self, runner: CliRunner, initialized_weld: Path) -> None:

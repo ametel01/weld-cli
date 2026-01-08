@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -11,10 +11,13 @@ from weld.cli import app
 from weld.commands.commit import (
     CommitGroup,
     _generate_commit_prompt,
+    _merge_commit_groups,
     _normalize_entry,
     _parse_commit_groups,
     _update_changelog,
+    resolve_files_to_sessions,
 )
+from weld.services.session_tracker import SessionRegistry
 
 # Sample responses for various test scenarios
 MULTI_COMMIT_RESPONSE = """<commit>
@@ -261,6 +264,7 @@ class TestCommitDryRun:
         assert "DRY RUN" in result.stdout
         assert "Stage all: False" in result.stdout
         assert "Auto-split: True" in result.stdout
+        assert "Session-split: True" in result.stdout
 
     def test_dry_run_shows_auto_split_disabled(
         self, runner: CliRunner, initialized_weld: Path
@@ -274,6 +278,19 @@ class TestCommitDryRun:
 
         assert result.exit_code == 0
         assert "Auto-split: False" in result.stdout
+
+    def test_dry_run_shows_session_split_disabled(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Dry run should show Session-split: False when --no-session-split is used."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        result = runner.invoke(app, ["--dry-run", "commit", "--no-session-split"])
+
+        assert result.exit_code == 0
+        assert "Session-split: False" in result.stdout
 
     def test_dry_run_shows_transcript_info(self, runner: CliRunner, initialized_weld: Path) -> None:
         """Dry run should mention transcript upload."""
@@ -354,112 +371,6 @@ class TestCommitNoSplit:
             text=True,
         )
         assert "Add feature implementation" in log_result.stdout
-
-
-@pytest.mark.cli
-class TestCommitEditFlag:
-    """Tests for commit --edit flag."""
-
-    def _single_commit_response(self) -> str:
-        """Return mock Claude response with single commit."""
-        return """<commit>
-<files>
-test.txt
-</files>
-<commit_message>
-Initial commit message
-</commit_message>
-<changelog_entry>
-</changelog_entry>
-</commit>"""
-
-    def test_edit_opens_editor(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """--edit should open the editor for commit message."""
-        test_file = initialized_weld / "test.txt"
-        test_file.write_text("content")
-        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
-
-        # Mock only the editor subprocess call by checking args
-        original_run = subprocess.run
-
-        def mock_editor_only(args, *a, **kw):
-            # Only intercept editor calls (vi, vim, nano, etc.)
-            editors = ("vi", "vim", "nano", "emacs", "code")
-            if isinstance(args, list) and args and args[0] in editors:
-                result = MagicMock()
-                result.returncode = 0
-                return result
-            # Pass through all other subprocess calls (git, etc.)
-            return original_run(args, *a, **kw)
-
-        with (
-            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
-            patch("weld.commands.commit.subprocess.run", mock_editor_only),
-        ):
-            result = runner.invoke(
-                app, ["commit", "--edit", "--skip-transcript", "--skip-changelog"]
-            )
-
-        assert result.exit_code == 0
-        assert "Committed:" in result.stdout
-
-    def test_edit_editor_failure_exits(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """--edit should exit if editor returns non-zero."""
-        test_file = initialized_weld / "test.txt"
-        test_file.write_text("content")
-        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
-
-        original_run = subprocess.run
-
-        def mock_editor_fail(args, *a, **kw):
-            editors = ("vi", "vim", "nano", "emacs", "code")
-            if isinstance(args, list) and args and args[0] in editors:
-                result = MagicMock()
-                result.returncode = 1
-                return result
-            return original_run(args, *a, **kw)
-
-        with (
-            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
-            patch("weld.commands.commit.subprocess.run", mock_editor_fail),
-        ):
-            result = runner.invoke(
-                app, ["commit", "--edit", "--skip-transcript", "--skip-changelog"]
-            )
-
-        assert result.exit_code == 24
-        assert "Editor exited" in result.stdout
-
-    def test_edit_empty_message_exits(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """--edit should exit if user clears the commit message."""
-        test_file = initialized_weld / "test.txt"
-        test_file.write_text("content")
-        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
-
-        original_run = subprocess.run
-
-        def mock_editor_clear(args, *a, **kw):
-            editors = ("vi", "vim", "nano", "emacs", "code")
-            if isinstance(args, list) and args and args[0] in editors:
-                # Clear the file content to simulate user deleting message
-                if len(args) > 1:
-                    edit_path = Path(args[1])
-                    edit_path.write_text("")
-                result = MagicMock()
-                result.returncode = 0
-                return result
-            return original_run(args, *a, **kw)
-
-        with (
-            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
-            patch("weld.commands.commit.subprocess.run", mock_editor_clear),
-        ):
-            result = runner.invoke(
-                app, ["commit", "--edit", "--skip-transcript", "--skip-changelog"]
-            )
-
-        assert result.exit_code == 24
-        assert "empty" in result.stdout.lower()
 
 
 @pytest.mark.cli
@@ -595,8 +506,8 @@ class TestCommitNoDiffContent:
 
 
 @pytest.mark.cli
-class TestCommitTranscriptGistNoUrl:
-    """Tests for commit when transcript gist returns no URL."""
+class TestCommitTranscriptUpload:
+    """Tests for commit transcript upload behavior."""
 
     def _single_commit_response(self) -> str:
         """Return mock Claude response."""
@@ -611,23 +522,47 @@ Test commit
 </changelog_entry>
 </commit>"""
 
-    def test_warns_when_gist_url_is_none(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """Should show warning when transcript gist URL is None."""
+    def test_commits_without_transcript_when_no_session(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should commit without transcript when no Claude session detected."""
         test_file = initialized_weld / "test.txt"
         test_file.write_text("content")
         subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
 
         with (
             patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
-            patch("weld.commands.commit.run_transcript_gist") as mock_transcript,
+            # No session detected
+            patch("weld.commands.commit.detect_current_session", return_value=None),
         ):
-            from weld.services.transcripts import TranscriptResult
-
-            mock_transcript.return_value = TranscriptResult(gist_url=None, raw_output="")
             result = runner.invoke(app, ["commit", "--skip-changelog"])
 
         assert result.exit_code == 0
-        assert "Could not get transcript gist URL" in result.stdout
+        assert "Committed:" in result.stdout
+
+    def test_warns_when_gist_upload_fails(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should show warning when transcript gist upload fails."""
+        from weld.services.gist_uploader import GistError
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        # Create a fake session file path
+        fake_session = initialized_weld / ".claude-session.jsonl"
+        fake_session.write_text("{}\n")
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.detect_current_session", return_value=fake_session),
+            patch("weld.commands.commit.get_session_id", return_value="abc123"),
+            patch("weld.commands.commit.render_transcript", return_value="# Transcript"),
+            patch("weld.commands.commit.upload_gist", side_effect=GistError("Auth failed")),
+        ):
+            result = runner.invoke(app, ["commit", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Transcript upload skipped" in result.stdout
         assert "Committed:" in result.stdout
 
 
@@ -652,3 +587,194 @@ class TestCommitGroup:
         group = CommitGroup(message="Test", files=["file.py"])
 
         assert group.changelog_entry == ""
+
+
+@pytest.mark.unit
+class TestMergeCommitGroups:
+    """Tests for _merge_commit_groups function."""
+
+    def test_merges_multiple_groups(self) -> None:
+        """Should merge multiple groups into one."""
+        groups = [
+            CommitGroup("Add feature", ["src/feature.py"], "### Added\n- Feature"),
+            CommitGroup("Add tests", ["tests/test_feature.py"], "### Added\n- Tests"),
+        ]
+
+        result = _merge_commit_groups(groups)
+
+        assert result.message == "Add feature"  # Uses first message
+        assert result.files == ["src/feature.py", "tests/test_feature.py"]
+        assert result.changelog_entry == "### Added\n- Feature\n\n### Added\n- Tests"
+
+    def test_preserves_first_message(self) -> None:
+        """Should preserve the first group's message."""
+        groups = [
+            CommitGroup("First message", ["file1.py"], ""),
+            CommitGroup("Second message", ["file2.py"], ""),
+        ]
+
+        result = _merge_commit_groups(groups)
+
+        assert result.message == "First message"
+
+    def test_handles_empty_changelog_entries(self) -> None:
+        """Should skip empty changelog entries when merging."""
+        groups = [
+            CommitGroup("Message", ["file1.py"], "### Added\n- Entry"),
+            CommitGroup("Message", ["file2.py"], ""),
+            CommitGroup("Message", ["file3.py"], "### Fixed\n- Bug"),
+        ]
+
+        result = _merge_commit_groups(groups)
+
+        assert result.changelog_entry == "### Added\n- Entry\n\n### Fixed\n- Bug"
+
+
+@pytest.mark.unit
+class TestResolveFilesToSessions:
+    """Tests for resolve_files_to_sessions function."""
+
+    def _create_mock_registry(self, tmp_path: Path) -> "SessionRegistry":
+        """Create a mock registry with test sessions."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        registry_path = tmp_path / "registry.jsonl"
+        registry = SessionRegistry(registry_path)
+
+        # Session 1: Created file1.py and file2.py
+        session1 = TrackedSession(
+            session_id="session-1-uuid",
+            session_file="/home/user/.claude/session1.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["src/file1.py", "src/file2.py"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+
+        # Session 2: Modified file2.py and created file3.py
+        session2 = TrackedSession(
+            session_id="session-2-uuid",
+            session_file="/home/user/.claude/session2.jsonl",
+            first_seen=datetime(2024, 1, 2, 10, 0, 0),
+            last_activity=datetime(2024, 1, 2, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 2, 10, 30, 0),
+                    files_created=["src/file3.py"],
+                    files_modified=["src/file2.py"],
+                    completed=True,
+                )
+            ],
+        )
+
+        registry._sessions["session-1-uuid"] = session1
+        registry._sessions["session-2-uuid"] = session2
+        return registry
+
+    def test_maps_files_to_correct_sessions(self, tmp_path: Path) -> None:
+        """Should map files to the sessions that created/modified them."""
+        registry = self._create_mock_registry(tmp_path)
+
+        result = resolve_files_to_sessions(
+            ["src/file1.py", "src/file3.py"],
+            registry,
+        )
+
+        assert "session-1-uuid" in result
+        assert result["session-1-uuid"] == ["src/file1.py"]
+        assert "session-2-uuid" in result
+        assert result["session-2-uuid"] == ["src/file3.py"]
+
+    def test_most_recent_session_wins(self, tmp_path: Path) -> None:
+        """When multiple sessions touched a file, most recent wins."""
+        registry = self._create_mock_registry(tmp_path)
+
+        # file2.py was created by session1, then modified by session2
+        result = resolve_files_to_sessions(["src/file2.py"], registry)
+
+        # Session 2 modified it last, so it should be attributed to session 2
+        assert result == {"session-2-uuid": ["src/file2.py"]}
+
+    def test_untracked_files_grouped_separately(self, tmp_path: Path) -> None:
+        """Files not in any session should be grouped under _untracked."""
+        registry = self._create_mock_registry(tmp_path)
+
+        result = resolve_files_to_sessions(
+            ["src/file1.py", "README.md", "docs/guide.md"],
+            registry,
+        )
+
+        assert result["session-1-uuid"] == ["src/file1.py"]
+        assert "_untracked" in result
+        assert set(result["_untracked"]) == {"README.md", "docs/guide.md"}
+
+    def test_empty_staged_files_returns_empty_dict(self, tmp_path: Path) -> None:
+        """Should return empty dict when no files are staged."""
+        registry = self._create_mock_registry(tmp_path)
+
+        result = resolve_files_to_sessions([], registry)
+
+        assert result == {}
+
+    def test_empty_registry_returns_all_untracked(self, tmp_path: Path) -> None:
+        """All files should be untracked when registry is empty."""
+        from weld.services.session_tracker import SessionRegistry
+
+        registry_path = tmp_path / "registry.jsonl"
+        registry = SessionRegistry(registry_path)
+
+        result = resolve_files_to_sessions(["file1.py", "file2.py"], registry)
+
+        assert result == {"_untracked": ["file1.py", "file2.py"]}
+
+    def test_handles_multiple_activities_in_session(self, tmp_path: Path) -> None:
+        """Should correctly handle sessions with multiple activities."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        registry_path = tmp_path / "registry.jsonl"
+        registry = SessionRegistry(registry_path)
+
+        session = TrackedSession(
+            session_id="multi-activity-session",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 12, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="research",
+                    timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                    files_created=["research.md"],
+                    files_modified=[],
+                    completed=True,
+                ),
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 11, 0, 0),
+                    files_created=["src/feature.py"],
+                    files_modified=["research.md"],
+                    completed=True,
+                ),
+            ],
+        )
+        registry._sessions["multi-activity-session"] = session
+
+        result = resolve_files_to_sessions(
+            ["research.md", "src/feature.py"],
+            registry,
+        )
+
+        assert result == {"multi-activity-session": ["research.md", "src/feature.py"]}

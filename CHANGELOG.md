@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session models: `SessionActivity`, `TrackedSession` in `weld.models`
 - Session services: `session_detector`, `session_tracker`, `transcript_renderer`, `gist_uploader`
 - `get_sessions_dir()` helper in `weld.core.weld_dir`
+- Session-based commit grouping: `weld commit` now groups files by originating Claude session
+  - Each session gets its own commit with transcript attached
+  - `--no-session-split` flag to disable session-based grouping
 - MkDocs documentation site with Material theme
   - Full command reference and configuration docs
   - GitHub Actions workflow for automatic deployment to GitHub Pages
@@ -34,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `enabled` field to toggle transcript generation
   - Removed `exec` field (no longer needed with native implementation)
 - Simplified README.md, moved detailed content to documentation site
+- `weld commit` now uses native transcript rendering instead of external binary
+
+### Removed
+- `--edit/-e` flag from `weld commit` (use `git commit --amend` to edit after)
 
 ## [0.4.1] - 2026-01-07
 
