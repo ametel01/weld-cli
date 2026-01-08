@@ -10,7 +10,7 @@ from ..config import load_config
 from ..core import get_weld_dir, log_command, strip_preamble
 from ..core.discover_engine import generate_discover_prompt, get_discover_dir
 from ..output import get_output_context
-from ..services import ClaudeError, GitError, get_repo_root, run_claude
+from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
 
 discover_app = typer.Typer(
     help="Analyze codebase and generate architecture documentation",
@@ -52,6 +52,10 @@ def discover(
             help="Suppress Claude output (only show result)",
         ),
     ] = False,
+    track: Annotated[
+        bool,
+        typer.Option("--track", help="Track session activity for this command"),
+    ] = False,
 ) -> None:
     """Analyze codebase and generate architecture documentation.
 
@@ -61,10 +65,12 @@ def discover(
     if ctx.invoked_subcommand is not None:
         return
 
-    _run_discover(output, focus, prompt_only, quiet)
+    _run_discover(output, focus, prompt_only, quiet, track)
 
 
-def _run_discover(output: Path | None, focus: str | None, prompt_only: bool, quiet: bool) -> None:
+def _run_discover(
+    output: Path | None, focus: str | None, prompt_only: bool, quiet: bool, track: bool
+) -> None:
     """Execute the discover workflow."""
     ctx = get_output_context()
 
@@ -108,14 +114,21 @@ def _run_discover(output: Path | None, focus: str | None, prompt_only: bool, qui
 
     claude_exec = config.claude.exec if config.claude else "claude"
 
-    try:
-        result = run_claude(
+    def _run() -> str:
+        return run_claude(
             prompt=prompt,
             exec_path=claude_exec,
             cwd=repo_root,
             stream=not quiet,
             max_output_tokens=config.claude.max_output_tokens,
         )
+
+    try:
+        if track and weld_dir.exists():
+            with track_session_activity(weld_dir, repo_root, "discover"):
+                result = _run()
+        else:
+            result = _run()
     except ClaudeError as e:
         ctx.error(f"Claude failed: {e}")
         raise typer.Exit(1) from None

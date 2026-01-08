@@ -374,12 +374,11 @@ def commit(
                 ctx.console.print("[yellow]Could not update CHANGELOG.md[/yellow]")
 
         # Upload transcript for the LAST commit only
-        if is_last and not skip_transcript:
+        if is_last and not skip_transcript and config.transcripts.enabled:
             ctx.console.print("[cyan]Uploading transcript...[/cyan]")
             try:
                 result = run_transcript_gist(
-                    exec_path=config.claude.transcripts.exec,
-                    visibility=config.claude.transcripts.visibility,
+                    visibility=config.transcripts.visibility,
                     cwd=repo_root,
                 )
                 if result.gist_url:

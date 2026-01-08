@@ -15,7 +15,14 @@ from ..config import WeldConfig, load_config
 from ..core import generate_code_review_prompt, get_weld_dir, strip_preamble
 from ..core.doc_review_engine import generate_doc_review_prompt, get_doc_review_dir
 from ..output import OutputContext, get_output_context
-from ..services import ClaudeError, GitError, get_diff, get_repo_root, run_claude
+from ..services import (
+    ClaudeError,
+    GitError,
+    get_diff,
+    get_repo_root,
+    run_claude,
+    track_session_activity,
+)
 
 
 def doc_review(
@@ -87,6 +94,10 @@ def doc_review(
             help="Topic to focus the review on",
         ),
     ] = None,
+    track: Annotated[
+        bool,
+        typer.Option("--track", help="Track session activity for this command"),
+    ] = False,
 ) -> None:
     """Review a document against the current codebase state.
 
@@ -164,6 +175,7 @@ def doc_review(
             quiet=quiet,
             timeout=effective_timeout,
             focus=focus,
+            track=track,
         )
     else:
         assert document is not None  # Validated above
@@ -179,6 +191,7 @@ def doc_review(
             quiet=quiet,
             timeout=effective_timeout,
             focus=focus,
+            track=track,
         )
 
 
@@ -194,6 +207,7 @@ def _run_code_review(
     quiet: bool,
     timeout: int,
     focus: str | None,
+    track: bool,
 ) -> None:
     """Run code review on git diff."""
     # Get diff content
@@ -260,8 +274,8 @@ def _run_code_review(
     # Get claude config from weld config
     claude_exec = config.claude.exec if config.claude else "claude"
 
-    try:
-        result = run_claude(
+    def _run() -> str:
+        return run_claude(
             prompt=prompt,
             exec_path=claude_exec,
             cwd=repo_root,
@@ -270,6 +284,13 @@ def _run_code_review(
             skip_permissions=apply,  # Allow file writes in apply mode
             max_output_tokens=config.claude.max_output_tokens,
         )
+
+    try:
+        if track:
+            with track_session_activity(weld_dir, repo_root, "review"):
+                result = _run()
+        else:
+            result = _run()
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
         raise typer.Exit(1) from None
@@ -308,6 +329,7 @@ def _run_doc_review(
     quiet: bool,
     timeout: int,
     focus: str | None,
+    track: bool,
 ) -> None:
     """Run document review against codebase."""
     # Read document content
@@ -368,8 +390,8 @@ def _run_doc_review(
     # Get claude config from weld config
     claude_exec = config.claude.exec if config.claude else "claude"
 
-    try:
-        result = run_claude(
+    def _run() -> str:
+        return run_claude(
             prompt=prompt,
             exec_path=claude_exec,
             cwd=repo_root,
@@ -378,6 +400,13 @@ def _run_doc_review(
             skip_permissions=apply,  # Allow file writes in apply mode
             max_output_tokens=config.claude.max_output_tokens,
         )
+
+    try:
+        if track:
+            with track_session_activity(weld_dir, repo_root, "review"):
+                result = _run()
+        else:
+            result = _run()
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
         raise typer.Exit(1) from None

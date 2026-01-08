@@ -29,7 +29,7 @@ from .plan_parser import (
     parse_plan,
     validate_plan,
 )
-from .weld_dir import get_weld_dir
+from .weld_dir import get_sessions_dir, get_weld_dir
 
 __all__ = [
     "HistoryEntry",
@@ -44,6 +44,7 @@ __all__ = [
     "get_discover_dir",
     "get_doc_review_dir",
     "get_history_path",
+    "get_sessions_dir",
     "get_weld_dir",
     "is_complete",
     "log_command",

@@ -3,6 +3,7 @@
 This package defines the data structures used throughout weld for:
 - Discover metadata (DiscoverMeta)
 - Review issues and results (Issue, Issues)
+- Session tracking (SessionActivity, TrackedSession)
 
 All models are Pydantic BaseModel subclasses, enabling:
 - Automatic JSON serialization/deserialization
@@ -12,9 +13,12 @@ All models are Pydantic BaseModel subclasses, enabling:
 
 from .discover import DiscoverMeta
 from .issues import Issue, Issues
+from .session import SessionActivity, TrackedSession
 
 __all__ = [
     "DiscoverMeta",
     "Issue",
     "Issues",
+    "SessionActivity",
+    "TrackedSession",
 ]

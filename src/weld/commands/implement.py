@@ -22,7 +22,7 @@ from ..config import WeldConfig, load_config
 from ..core import get_weld_dir, mark_phase_complete, mark_step_complete, validate_plan
 from ..core.plan_parser import Phase, Plan, Step
 from ..output import OutputContext, get_output_context
-from ..services import ClaudeError, GitError, get_repo_root, run_claude
+from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
 
 
 class GracefulExit(Exception):
@@ -166,6 +166,7 @@ def implement(
             phase_number=phase,
             config=config,
             repo_root=repo_root,
+            weld_dir=weld_dir,
             quiet=quiet,
             timeout=effective_timeout,
         )
@@ -176,6 +177,7 @@ def implement(
         plan=plan,
         config=config,
         repo_root=repo_root,
+        weld_dir=weld_dir,
         quiet=quiet,
         timeout=effective_timeout,
     )
@@ -187,6 +189,7 @@ def _implement_interactive(
     plan: Plan,
     config: WeldConfig,
     repo_root: Path,
+    weld_dir: Path,
     quiet: bool,
     timeout: int,
 ) -> int:
@@ -252,6 +255,7 @@ def _implement_interactive(
                     step=step,
                     config=config,
                     repo_root=repo_root,
+                    weld_dir=weld_dir,
                     quiet=quiet,
                     timeout=timeout,
                 )
@@ -267,6 +271,7 @@ def _implement_interactive(
                     phase=phase,
                     config=config,
                     repo_root=repo_root,
+                    weld_dir=weld_dir,
                     quiet=quiet,
                     timeout=timeout,
                 )
@@ -289,6 +294,7 @@ def _implement_non_interactive(
     phase_number: int | None,
     config: WeldConfig,
     repo_root: Path,
+    weld_dir: Path,
     quiet: bool,
     timeout: int,
 ) -> int:
@@ -314,6 +320,7 @@ def _implement_non_interactive(
             step=step,
             config=config,
             repo_root=repo_root,
+            weld_dir=weld_dir,
             quiet=quiet,
             timeout=timeout,
         )
@@ -332,6 +339,7 @@ def _implement_non_interactive(
             phase=phase,
             config=config,
             repo_root=repo_root,
+            weld_dir=weld_dir,
             quiet=quiet,
             timeout=timeout,
         )
@@ -391,6 +399,7 @@ def _execute_step(
     step: Step,
     config: WeldConfig,
     repo_root: Path,
+    weld_dir: Path,
     quiet: bool,
     timeout: int,
 ) -> bool:
@@ -417,15 +426,16 @@ When complete, confirm the implementation is done.
     ctx.console.print(f"\n[bold]Implementing Step {step.number}: {step.title}[/bold]\n")
 
     try:
-        run_claude(
-            prompt=prompt,
-            exec_path=config.claude.exec,
-            cwd=repo_root,
-            stream=not quiet,
-            timeout=timeout,
-            skip_permissions=True,
-            max_output_tokens=config.claude.max_output_tokens,
-        )
+        with track_session_activity(weld_dir, repo_root, "implement"):
+            run_claude(
+                prompt=prompt,
+                exec_path=config.claude.exec,
+                cwd=repo_root,
+                stream=not quiet,
+                timeout=timeout,
+                skip_permissions=True,
+                max_output_tokens=config.claude.max_output_tokens,
+            )
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
         return False
@@ -449,6 +459,7 @@ def _execute_phase_steps(
     phase: Phase,
     config: WeldConfig,
     repo_root: Path,
+    weld_dir: Path,
     quiet: bool,
     timeout: int,
 ) -> bool:
@@ -473,6 +484,7 @@ def _execute_phase_steps(
             step=step,
             config=config,
             repo_root=repo_root,
+            weld_dir=weld_dir,
             quiet=quiet,
             timeout=timeout,
         )

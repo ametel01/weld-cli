@@ -9,7 +9,7 @@ import typer
 from ..config import load_config
 from ..core import get_weld_dir, log_command
 from ..output import get_output_context
-from ..services import ClaudeError, GitError, get_repo_root, run_claude
+from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
 
 
 def get_research_dir(weld_dir: Path) -> Path:
@@ -103,6 +103,10 @@ def research(
         bool,
         typer.Option("--quiet", "-q", help="Suppress streaming output"),
     ] = False,
+    track: Annotated[
+        bool,
+        typer.Option("--track", help="Track session activity for this command"),
+    ] = False,
 ) -> None:
     """Research a specification before creating a plan.
 
@@ -150,12 +154,19 @@ def research(
 
     ctx.console.print(f"[cyan]Researching {input_file.name}...[/cyan]\n")
 
-    try:
-        result = run_claude(
+    def _run() -> str:
+        return run_claude(
             prompt=prompt,
             stream=not quiet,
             max_output_tokens=config.claude.max_output_tokens,
         )
+
+    try:
+        if track and weld_dir and repo_root:
+            with track_session_activity(weld_dir, repo_root, "research"):
+                result = _run()
+        else:
+            result = _run()
     except ClaudeError as e:
         ctx.error(f"Claude failed: {e}")
         raise typer.Exit(1) from None
