@@ -1,11 +1,14 @@
 """Configuration management for weld."""
 
+import logging
 import tomllib
 from enum import Enum
 from pathlib import Path
 
 import tomli_w
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class TaskType(str, Enum):
@@ -101,10 +104,13 @@ class CodexConfig(BaseModel):
 
 
 class TranscriptsConfig(BaseModel):
-    """Configuration for transcript generation."""
+    """Configuration for transcript generation.
 
-    exec: str = "claude-code-transcripts"
-    visibility: str = "secret"
+    Transcripts are rendered from Claude session files and uploaded as GitHub Gists.
+    """
+
+    enabled: bool = True
+    visibility: str = "secret"  # "secret" or "public"
 
 
 class ClaudeConfig(BaseModel):
@@ -114,7 +120,6 @@ class ClaudeConfig(BaseModel):
     model: str | None = None  # Default model (e.g., claude-3-opus)
     timeout: int = 1800  # Default timeout in seconds (30 minutes)
     max_output_tokens: int = 128000  # Max output tokens for Claude responses
-    transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
 
 
 class GitConfig(BaseModel):
@@ -147,6 +152,7 @@ class WeldConfig(BaseModel):
     git: GitConfig = Field(default_factory=GitConfig)
     loop: LoopConfig = Field(default_factory=LoopConfig)
     task_models: TaskModelsConfig = Field(default_factory=TaskModelsConfig)
+    transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
 
     def get_task_model(self, task: TaskType) -> ModelConfig:
         """Get effective model config for a task.
@@ -174,19 +180,39 @@ class WeldConfig(BaseModel):
 
 
 def load_config(weld_dir: Path) -> WeldConfig:
-    """Load config from .weld/config.toml.
+    """Load config from .weld/config.toml with migration for old format.
 
     Args:
         weld_dir: Path to .weld directory
 
     Returns:
         Loaded configuration, or defaults if config.toml doesn't exist
+
+    Note:
+        Automatically migrates old claude.transcripts config to top-level transcripts.
     """
     config_path = weld_dir / "config.toml"
     if not config_path.exists():
         return WeldConfig()
+
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
+
+    # Migration: old claude.transcripts → top-level transcripts
+    if "claude" in data and "transcripts" in data.get("claude", {}):
+        old_transcripts = data["claude"].pop("transcripts")
+        logger.info("Migrating claude.transcripts to top-level transcripts config")
+
+        if "transcripts" not in data:
+            data["transcripts"] = {}
+
+        # Map old fields to new structure
+        if "visibility" in old_transcripts:
+            data["transcripts"]["visibility"] = old_transcripts["visibility"]
+        # Note: 'exec' field is no longer used (native implementation)
+        if "exec" in old_transcripts:
+            logger.info("Ignoring claude.transcripts.exec (no longer used)")
+
     return WeldConfig.model_validate(data)
 
 
@@ -213,7 +239,10 @@ def write_config_template(weld_dir: Path) -> Path:
             "exec": "claude",
             "timeout": 1800,  # 30 minutes for AI operations
             "max_output_tokens": 128000,  # Increase if you hit token limit errors
-            "transcripts": {"exec": "claude-code-transcripts", "visibility": "secret"},
+        },
+        "transcripts": {
+            "enabled": True,  # Set to False to disable transcript generation
+            "visibility": "secret",  # "secret" or "public" gist
         },
         "git": {"commit_trailer_key": "Claude-Transcript", "include_run_trailer": True},
         "loop": {"max_iterations": 5, "fail_on_blockers_only": True},
