@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Native transcript generation (replaces external `claude-code-transcripts` binary)
+  - Session detection: Automatically finds Claude Code sessions from `~/.claude/projects/`
+  - Session tracking: Records file changes during weld commands via `--track` flag
+  - Transcript rendering: Converts Claude JSONL sessions to markdown with:
+    - Secret redaction (API keys, tokens, credentials)
+    - Content truncation (tool results, thinking blocks)
+    - Size limits (per-message and total)
+  - Gist upload: Publishes transcripts to GitHub Gists via `gh` CLI
+- `--track` flag for `plan`, `research`, `discover`, `review`, and `interview` commands
+  - Enables session activity tracking for transcript generation
+  - `implement` command always tracks by default
+- Session models: `SessionActivity`, `TrackedSession` in `weld.models`
+- Session services: `session_detector`, `session_tracker`, `transcript_renderer`, `gist_uploader`
+- `get_sessions_dir()` helper in `weld.core.weld_dir`
 - MkDocs documentation site with Material theme
   - Full command reference and configuration docs
   - GitHub Actions workflow for automatic deployment to GitHub Pages
@@ -15,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Versioned documentation support via mike
 
 ### Changed
+- Transcript configuration moved from `[claude.transcripts]` to top-level `[transcripts]`
+  - Automatic migration from old config format
+  - New `enabled` field to toggle transcript generation
+  - Removed `exec` field (no longer needed with native implementation)
 - Simplified README.md, moved detailed content to documentation site
 
 ## [0.4.1] - 2026-01-07
