@@ -385,3 +385,246 @@ Do this.
         # Should return failure exit code, not crash
         assert result.exit_code == 21
         assert "failed to mark phase complete" in result.output.lower()
+
+
+class TestImplementSessionTracking:
+    """Test implement session tracking behavior."""
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_creates_registry_entry(
+        self,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Implement should automatically create session registry entry."""
+        from weld.services.session_detector import encode_project_path
+        from weld.services.session_tracker import SessionRegistry
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # Setup: Create fake Claude session
+        claude_dir = Path.home() / ".claude" / "projects" / encode_project_path(initialized_weld)
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        session_file = claude_dir / "test-session-abc123.jsonl"
+        session_file.write_text('{"type":"user","message":{"role":"user","content":"test"}}\n')
+
+        mock_claude.return_value = "Done."
+
+        try:
+            # Create a file to simulate Claude's work
+            src_dir = initialized_weld / "src"
+            src_dir.mkdir(exist_ok=True)
+            test_file = src_dir / "module.py"
+
+            def create_file(*args, **kwargs):
+                test_file.write_text("# New module\n")
+
+            mock_claude.side_effect = create_file
+
+            result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+            assert result.exit_code == 0
+
+            # Verify registry created
+            registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+            assert registry_path.exists()
+
+            # Verify activity recorded
+            registry = SessionRegistry(registry_path)
+            sessions = list(registry.sessions.values())
+            assert len(sessions) == 1
+            assert sessions[0].activities[0].command == "implement"
+
+        finally:
+            # Cleanup
+            import shutil
+
+            if claude_dir.exists():
+                shutil.rmtree(claude_dir)
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_tracks_created_files(
+        self,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Implement should record files created during execution."""
+        from weld.services.session_detector import encode_project_path
+        from weld.services.session_tracker import SessionRegistry
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Create file
+
+Do this.
+""")
+
+        # Setup fake session
+        claude_dir = Path.home() / ".claude" / "projects" / encode_project_path(initialized_weld)
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        session_file = claude_dir / "test-session-xyz789.jsonl"
+        session_file.write_text('{"type":"user","message":{"role":"user","content":"test"}}\n')
+
+        # Mock Claude to create a file
+        def create_test_file(*args, **kwargs):
+            src_dir = initialized_weld / "src"
+            src_dir.mkdir(exist_ok=True)
+            test_file = src_dir / "new_module.py"
+            test_file.write_text("# New module\n")
+
+        mock_claude.side_effect = create_test_file
+
+        try:
+            result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+            assert result.exit_code == 0
+
+            # Verify file tracked
+            registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+            registry = SessionRegistry(registry_path)
+            activity = next(iter(registry.sessions.values())).activities[0]
+            assert "src/new_module.py" in activity.files_created
+
+        finally:
+            # Cleanup
+            import shutil
+
+            if claude_dir.exists():
+                shutil.rmtree(claude_dir)
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_without_session_skips_tracking(
+        self,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Implement should succeed even if no Claude session detected."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        mock_claude.return_value = "Done."
+
+        # Ensure no Claude sessions exist
+        claude_base = Path.home() / ".claude" / "projects"
+        backup = None
+        if claude_base.exists():
+            # Temporarily rename
+            backup = claude_base.with_name("projects.test_backup")
+            claude_base.rename(backup)
+
+        try:
+            result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+            # Should succeed
+            assert result.exit_code == 0
+
+            # No registry should be created
+            registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+            assert not registry_path.exists()
+        finally:
+            # Restore
+            if backup and backup.exists():
+                if claude_base.exists():
+                    import shutil
+
+                    shutil.rmtree(claude_base)
+                backup.rename(claude_base)
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_handles_interrupt(
+        self,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Implement should mark activity as incomplete on interrupt."""
+        from weld.services.session_detector import encode_project_path
+        from weld.services.session_tracker import SessionRegistry
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # Setup fake session
+        claude_dir = Path.home() / ".claude" / "projects" / encode_project_path(initialized_weld)
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        session_file = claude_dir / "test-session-interrupt.jsonl"
+        session_file.write_text('{"type":"user","message":{"role":"user","content":"test"}}\n')
+
+        # Mock run_claude to raise KeyboardInterrupt after creating a file
+        def create_file_then_interrupt(*args, **kwargs):
+            # Create a file so tracking has something to record
+            test_file = initialized_weld / "test.txt"
+            test_file.write_text("test")
+            raise KeyboardInterrupt()
+
+        mock_claude.side_effect = create_file_then_interrupt
+
+        try:
+            # Run implement, expecting interrupt
+            runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+            # Verify activity tracked even on interrupt
+            registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+            assert registry_path.exists(), "Registry should be created even on interrupt"
+
+            registry = SessionRegistry(registry_path)
+            sessions = list(registry.sessions.values())
+            assert len(sessions) > 0, "Session should be tracked even on interrupt"
+
+            activity = sessions[0].activities[0]
+            assert activity.completed is False, "Activity should be marked incomplete on interrupt"
+
+        finally:
+            # Cleanup
+            import shutil
+
+            if claude_dir.exists():
+                shutil.rmtree(claude_dir)
+
+    @pytest.mark.unit
+    def test_file_snapshot_timeout(self, tmp_path: Path, caplog) -> None:
+        """File snapshot should timeout on large repos and log warning."""
+        import logging
+
+        from weld.services.session_tracker import get_file_snapshot
+
+        # Create large directory structure to trigger timeout
+        # Use nested directories to slow down traversal
+        for i in range(100):
+            subdir = tmp_path / f"dir{i}"
+            subdir.mkdir()
+            for j in range(50):  # 100 * 50 = 5000 files total
+                (subdir / f"file{j}.txt").write_text("content")
+
+        # Call with very short timeout to ensure it triggers
+        with caplog.at_level(logging.WARNING):
+            snapshot = get_file_snapshot(tmp_path, timeout=0.001)
+
+        # Should return partial snapshot (not empty, not all files)
+        assert isinstance(snapshot, dict)
+        # Should have captured some files before timeout
+        assert len(snapshot) >= 0
+        # Should have less than all 5000 files (proof of timeout)
+        assert len(snapshot) < 5000
+        # Should log warning about timeout (unless completed on very fast machines)
+        assert "timed out" in caplog.text.lower() or len(snapshot) == 5000

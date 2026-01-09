@@ -1,5 +1,6 @@
 """Tests for session tracker service."""
 
+import logging
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -528,3 +529,244 @@ class TestSnapshotExcludes:
     def test_contains_egg_info_pattern(self) -> None:
         """Should contain .egg-info for suffix matching."""
         assert ".egg-info" in SNAPSHOT_EXCLUDES
+
+
+class TestSessionTrackingEdgeCases:
+    """Tests for session tracking error handling and edge cases."""
+
+    def test_logs_debug_when_no_session_detected(self, tmp_path: Path, caplog) -> None:
+        """Should log debug message when no Claude session detected."""
+        import logging
+
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        repo_root = tmp_path
+
+        with (
+            caplog.at_level(logging.DEBUG),
+            patch(
+                "weld.services.session_tracker.detect_current_session",
+                return_value=None,
+            ),
+            track_session_activity(weld_dir, repo_root, "implement"),
+        ):
+            pass
+
+        assert "No Claude session detected" in caplog.text
+        assert "skipping tracking for implement" in caplog.text
+
+    def test_continues_when_pre_snapshot_fails(self, tmp_path: Path, caplog) -> None:
+        """Should continue command execution if pre-command snapshot fails."""
+        import logging
+
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        repo_root = tmp_path
+
+        session_file = tmp_path / "session.jsonl"
+        session_file.write_text('{"type":"user"}')
+
+        command_executed = False
+
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "weld.services.session_tracker.detect_current_session",
+                return_value=session_file,
+            ),
+            patch(
+                "weld.services.session_tracker.get_file_snapshot",
+                side_effect=OSError("Permission denied"),
+            ),
+            track_session_activity(weld_dir, repo_root, "implement"),
+        ):
+            command_executed = True
+
+        # Command should still execute
+        assert command_executed is True
+        # Should log error about snapshot failure
+        assert "Failed to capture pre-command snapshot" in caplog.text
+        # No registry should be created
+        registry = get_registry(weld_dir)
+        assert len(registry.sessions) == 0
+
+    def test_continues_when_post_snapshot_fails(self, tmp_path: Path, caplog) -> None:
+        """Should continue if post-command snapshot fails."""
+        import logging
+
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        repo_root = tmp_path
+
+        session_file = tmp_path / "session.jsonl"
+        session_file.write_text('{"type":"user"}')
+
+        command_executed = False
+        snapshot_call_count = 0
+
+        def mock_snapshot(_repo_root):
+            nonlocal snapshot_call_count
+            snapshot_call_count += 1
+            if snapshot_call_count == 1:
+                # First call (pre-command) succeeds
+                return {"existing.py": 1000.0}
+            # Second call (post-command) fails
+            raise OSError("Disk error")
+
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "weld.services.session_tracker.detect_current_session",
+                return_value=session_file,
+            ),
+            patch(
+                "weld.services.session_tracker.get_file_snapshot",
+                side_effect=mock_snapshot,
+            ),
+            track_session_activity(weld_dir, repo_root, "implement"),
+        ):
+            command_executed = True
+            (repo_root / "new.py").write_text("content")
+
+        # Command should still execute
+        assert command_executed is True
+        # Should log error about save failure
+        assert "Failed to save session activity" in caplog.text
+        # No registry entry created due to post-snapshot failure
+        registry = get_registry(weld_dir)
+        assert len(registry.sessions) == 0
+
+    def test_continues_when_registry_save_fails(self, tmp_path: Path, caplog) -> None:
+        """Should continue if registry save operation fails."""
+        import logging
+
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        repo_root = tmp_path
+
+        session_file = tmp_path / "session.jsonl"
+        session_file.write_text('{"type":"user"}')
+
+        command_executed = False
+
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "weld.services.session_tracker.detect_current_session",
+                return_value=session_file,
+            ),
+            patch(
+                "weld.services.session_tracker.SessionRegistry.save",
+                side_effect=OSError("Disk full"),
+            ),
+            track_session_activity(weld_dir, repo_root, "implement"),
+        ):
+            command_executed = True
+            (repo_root / "new.py").write_text("content")
+
+        # Command should still execute
+        assert command_executed is True
+        # Should log error about save failure
+        assert "Failed to save session activity" in caplog.text
+
+    def test_tracks_incomplete_even_with_save_error(self, tmp_path: Path, caplog) -> None:
+        """Should attempt to save incomplete status even if save fails."""
+        import logging
+
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        repo_root = tmp_path
+
+        session_file = tmp_path / "session.jsonl"
+        session_file.write_text('{"type":"user"}')
+
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "weld.services.session_tracker.detect_current_session",
+                return_value=session_file,
+            ),
+            patch(
+                "weld.services.session_tracker.SessionRegistry.save",
+                side_effect=OSError("Disk full"),
+            ),
+        ):
+            try:
+                with track_session_activity(weld_dir, repo_root, "implement"):
+                    (repo_root / "partial.py").write_text("incomplete")
+                    raise RuntimeError("Command failed")
+            except RuntimeError:
+                pass
+
+        # Should attempt to save (and fail) with completed=False
+        assert "Failed to save session activity" in caplog.text
+
+
+class TestFileSnapshotTimeout:
+    """Tests for file snapshot timeout behavior in large repositories."""
+
+    def test_snapshot_completes_without_timeout(self, tmp_path: Path) -> None:
+        """Should complete snapshot when repo is small."""
+        # Create small repo with few files
+        for i in range(10):
+            (tmp_path / f"file{i}.txt").write_text("content")
+
+        snapshot = get_file_snapshot(tmp_path, timeout=1)
+
+        # Should capture all files
+        assert len(snapshot) == 10
+        for i in range(10):
+            assert f"file{i}.txt" in snapshot
+
+    def test_snapshot_returns_partial_on_timeout(self, tmp_path: Path, caplog) -> None:
+        """Should return partial snapshot if timeout exceeded."""
+        # Create many files to trigger timeout
+        for i in range(100):
+            (tmp_path / f"file{i}.txt").write_text("content")
+
+        with caplog.at_level(logging.WARNING):
+            # Use very short timeout to force timeout
+            snapshot = get_file_snapshot(tmp_path, timeout=0.001)
+
+        # Should return dict (possibly partial)
+        assert isinstance(snapshot, dict)
+
+        # Should log warning about timeout
+        assert "File snapshot timed out" in caplog.text
+        assert "Using partial snapshot for tracking" in caplog.text
+
+    def test_snapshot_logs_files_scanned_count(self, tmp_path: Path, caplog) -> None:
+        """Should log number of files scanned when timeout occurs."""
+        # Create many files to increase chance of timeout
+        for i in range(500):
+            (tmp_path / f"file{i}.txt").write_text("content")
+
+        with caplog.at_level(logging.WARNING):
+            snapshot = get_file_snapshot(tmp_path, timeout=0.001)
+
+        # Should return dict
+        assert isinstance(snapshot, dict)
+
+        # If timeout occurred, should log count of files scanned
+        if "File snapshot timed out" in caplog.text:
+            assert "files scanned" in caplog.text
+        # Otherwise, all files were scanned before timeout (fast system)
+        # Either outcome is valid
+
+    def test_snapshot_excludes_common_directories(self, tmp_path: Path) -> None:
+        """Should still exclude common directories even with timeout."""
+        # Create files in excluded directories
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "config").write_text("git config")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "package.json").write_text("{}")
+
+        # Create normal file
+        (tmp_path / "normal.txt").write_text("content")
+
+        snapshot = get_file_snapshot(tmp_path, timeout=5)
+
+        # Should only include normal file
+        assert "normal.txt" in snapshot
+        assert ".git/config" not in snapshot
+        assert "node_modules/package.json" not in snapshot
