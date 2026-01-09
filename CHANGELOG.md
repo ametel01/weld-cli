@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-01-09
+
 ### Added
 - Interactive review prompt after step completion in `weld implement` command
   - Prompts user to review changes with optional auto-fixing via `weld review --diff [--apply]`
@@ -14,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Always available (independent of --auto-commit flag)
 
 ### Fixed
-- Interactive menu cursor position in `weld implement` - now points to first incomplete step instead of always starting at the top
+- Interactive menu cursor position in `weld implement` - now automatically positions on first incomplete step
+- Makefile `bin-install` target now forces package rebuild with `--force` flag to pick up source changes
 - **Critical**: EOFError handling in auto-commit prompt (now handles non-interactive environments)
 - **Critical**: File I/O error handling in review prompt (disk full/permission errors no longer crash)
 - **Critical**: Exception handling for review prompt generation
@@ -298,7 +301,8 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ametel01/weld-cli/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ametel01/weld-cli/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ametel01/weld-cli/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ametel01/weld-cli/compare/v0.3.1...v0.4.0
