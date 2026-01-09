@@ -244,6 +244,27 @@ visibility = "secret"
         assert config.transcripts.visibility == "secret"
         assert "no longer used" in caplog.text
 
+    def test_migrates_enabled_field(self, tmp_path: Path) -> None:
+        """load_config should migrate enabled field from claude.transcripts."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        config_file.write_text("""
+[claude.transcripts]
+enabled = false
+visibility = "secret"
+""")
+        config = load_config(weld_dir)
+
+        # Both fields should be migrated
+        assert config.transcripts.enabled is False
+        assert config.transcripts.visibility == "secret"
+
+        # Verify file was updated (migration persisted)
+        content = config_file.read_text()
+        assert "[transcripts]" in content
+        assert "[claude.transcripts]" not in content
+
     def test_new_format_takes_precedence(self, tmp_path: Path) -> None:
         """When both old and new format exist, migration updates new format."""
         weld_dir = tmp_path / ".weld"
@@ -270,6 +291,161 @@ visibility = "secret"
         config = load_config(weld_dir)
         assert config.transcripts.enabled is True
         assert config.transcripts.visibility == "secret"
+
+    def test_migration_creates_backup_file(self, tmp_path: Path) -> None:
+        """load_config should create .toml.bak backup when migrating."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        config_file.write_text("""
+[claude.transcripts]
+visibility = "public"
+""")
+        backup_file = weld_dir / "config.toml.bak"
+        assert not backup_file.exists()
+
+        # Load config - should trigger migration
+        config = load_config(weld_dir)
+
+        # Backup should be created
+        assert backup_file.exists()
+        # Backup should contain original content
+        assert "[claude.transcripts]" in backup_file.read_text()
+        assert config.transcripts.visibility == "public"
+
+    def test_migration_saves_to_disk(self, tmp_path: Path) -> None:
+        """load_config should save migrated config to disk."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        config_file.write_text("""
+[project]
+name = "test"
+
+[claude.transcripts]
+visibility = "public"
+""")
+
+        # Load config - should trigger migration
+        load_config(weld_dir)
+
+        # Read file again to verify persistence
+        migrated_content = config_file.read_text()
+        # Should have new format
+        assert "[transcripts]" in migrated_content
+        assert "visibility" in migrated_content
+        # Should NOT have old format
+        assert "[claude.transcripts]" not in migrated_content
+
+    def test_no_backup_when_no_migration_needed(self, tmp_path: Path) -> None:
+        """load_config should not create backup when config is already new format."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        config_file.write_text("""
+[transcripts]
+visibility = "public"
+""")
+        backup_file = weld_dir / "config.toml.bak"
+
+        # Load config - no migration needed
+        load_config(weld_dir)
+
+        # No backup should be created
+        assert not backup_file.exists()
+
+    def test_migration_rollback_on_write_failure(self, tmp_path: Path, monkeypatch) -> None:
+        """load_config should restore backup if migration write fails."""
+        import tomli_w
+
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        original_content = """
+[claude.transcripts]
+visibility = "public"
+"""
+        config_file.write_text(original_content)
+
+        # Mock tomli_w.dump to raise an error
+        def mock_dump_error(*args, **kwargs):
+            raise OSError("Disk full")
+
+        monkeypatch.setattr(tomli_w, "dump", mock_dump_error)
+
+        # Load config should raise error but restore backup
+        with pytest.raises(RuntimeError, match="Config migration failed, restored backup"):
+            load_config(weld_dir)
+
+        # Original file should be restored
+        assert config_file.read_text() == original_content
+        # Backup should still exist
+        backup_file = weld_dir / "config.toml.bak"
+        assert backup_file.exists()
+
+    def test_migration_preserves_other_config(self, tmp_path: Path) -> None:
+        """Migration should not affect other config sections."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        config_file.write_text("""
+[project]
+name = "test-project"
+
+[claude]
+exec = "claude"
+model = "opus"
+
+[claude.transcripts]
+visibility = "public"
+
+[codex]
+exec = "codex"
+
+[checks]
+lint = "ruff check ."
+
+[git]
+commit_trailer_key = "Claude-Transcript"
+
+[loop]
+max_iterations = 5
+""")
+
+        config = load_config(weld_dir)
+
+        # Verify all sections preserved
+        assert config.project.name == "test-project"
+        assert config.claude.exec == "claude"
+        assert config.claude.model == "opus"
+        assert config.codex.exec == "codex"
+        assert config.checks.lint == "ruff check ."
+        assert config.git.commit_trailer_key == "Claude-Transcript"
+        assert config.loop.max_iterations == 5
+        # And transcripts migrated correctly
+        assert config.transcripts.visibility == "public"
+
+    def test_migration_idempotent(self, tmp_path: Path) -> None:
+        """Running migration twice should be safe."""
+        weld_dir = tmp_path / ".weld"
+        weld_dir.mkdir()
+        config_file = weld_dir / "config.toml"
+        config_file.write_text("""
+[claude.transcripts]
+visibility = "secret"
+""")
+
+        # First migration
+        config1 = load_config(weld_dir)
+        content1 = config_file.read_text()
+
+        # Second migration (should be no-op)
+        config2 = load_config(weld_dir)
+        content2 = config_file.read_text()
+
+        # Content should be identical
+        assert content1 == content2
+        assert config1.transcripts.visibility == config2.transcripts.visibility
 
 
 class TestWriteConfigTemplate:

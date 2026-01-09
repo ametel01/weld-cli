@@ -179,8 +179,71 @@ class WeldConfig(BaseModel):
             return model_cfg
 
 
+def _migrate_config(config_dict: dict) -> tuple[dict, bool]:
+    """Apply migrations to config dict.
+
+    Returns:
+        Tuple of (migrated_config, was_modified)
+    """
+    modified = False
+
+    # Migration 1: [claude.transcripts] → [transcripts]
+    if "claude" in config_dict and "transcripts" in config_dict.get("claude", {}):
+        old_transcripts = config_dict["claude"].pop("transcripts")
+        logger.info("Migrating claude.transcripts to top-level transcripts config")
+
+        if "transcripts" not in config_dict:
+            config_dict["transcripts"] = {}
+
+        # Map old fields to new structure
+        if "visibility" in old_transcripts:
+            config_dict["transcripts"]["visibility"] = old_transcripts["visibility"]
+        if "enabled" in old_transcripts:
+            config_dict["transcripts"]["enabled"] = old_transcripts["enabled"]
+        # Note: 'exec' field is no longer used (native implementation)
+        if "exec" in old_transcripts:
+            logger.info("Ignoring claude.transcripts.exec (no longer used)")
+
+        modified = True
+
+    return config_dict, modified
+
+
+def _save_config(config_path: Path, config_dict: dict) -> None:
+    """Save config dict to TOML file with backup.
+
+    Creates a backup file (.toml.bak) before writing. If write fails,
+    the backup is restored automatically.
+
+    Args:
+        config_path: Path to config file
+        config_dict: Configuration dictionary to save
+
+    Raises:
+        RuntimeError: If save fails (after restoring backup)
+    """
+    import shutil
+
+    backup_path = config_path.with_suffix(".toml.bak")
+
+    # Create backup
+    if config_path.exists():
+        shutil.copy2(config_path, backup_path)
+
+    # Write new config
+    try:
+        with open(config_path, "wb") as f:
+            tomli_w.dump(config_dict, f)
+        logger.info(f"Config migrated, backup saved to {backup_path.name}")
+    except Exception as e:
+        # Restore backup on failure
+        if backup_path.exists():
+            shutil.copy2(backup_path, config_path)
+        raise RuntimeError(f"Config migration failed, restored backup: {e}") from e
+
+
 def load_config(weld_dir: Path) -> WeldConfig:
-    """Load config from .weld/config.toml with migration for old format.
+    """Load config from .weld/config.toml with auto-migration.
 
     Args:
         weld_dir: Path to .weld directory
@@ -190,30 +253,23 @@ def load_config(weld_dir: Path) -> WeldConfig:
 
     Note:
         Automatically migrates old claude.transcripts config to top-level transcripts.
+        Creates a backup file (.toml.bak) when migration is applied.
     """
     config_path = weld_dir / "config.toml"
     if not config_path.exists():
         return WeldConfig()
 
     with open(config_path, "rb") as f:
-        data = tomllib.load(f)
+        config_dict = tomllib.load(f)
 
-    # Migration: old claude.transcripts → top-level transcripts
-    if "claude" in data and "transcripts" in data.get("claude", {}):
-        old_transcripts = data["claude"].pop("transcripts")
-        logger.info("Migrating claude.transcripts to top-level transcripts config")
+    # Apply migrations
+    config_dict, modified = _migrate_config(config_dict)
 
-        if "transcripts" not in data:
-            data["transcripts"] = {}
+    # Save if modified
+    if modified:
+        _save_config(config_path, config_dict)
 
-        # Map old fields to new structure
-        if "visibility" in old_transcripts:
-            data["transcripts"]["visibility"] = old_transcripts["visibility"]
-        # Note: 'exec' field is no longer used (native implementation)
-        if "exec" in old_transcripts:
-            logger.info("Ignoring claude.transcripts.exec (no longer used)")
-
-    return WeldConfig.model_validate(data)
+    return WeldConfig.model_validate(config_dict)
 
 
 def write_config_template(weld_dir: Path) -> Path:
