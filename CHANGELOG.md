@@ -10,15 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Native transcript generation (replaces external `claude-code-transcripts` binary)
   - Session detection: Automatically finds Claude Code sessions from `~/.claude/projects/`
-  - Session tracking: Records file changes during weld commands via `--track` flag
+  - Session tracking: Records file changes during weld commands
   - Transcript rendering: Converts Claude JSONL sessions to markdown with:
     - Secret redaction (API keys, tokens, credentials)
     - Content truncation (tool results, thinking blocks)
     - Size limits (per-message and total)
   - Gist upload: Publishes transcripts to GitHub Gists via `gh` CLI
-- `--track` flag for `plan`, `research`, `discover`, `review`, and `interview` commands
-  - Enables session activity tracking for transcript generation
-  - `implement` command always tracks by default
+- Automatic session tracking in `weld implement` command for commit provenance
+- Config migration for `[claude.transcripts]` → `[transcripts]` format
+- File snapshot timeout protection for large repositories
 - Session models: `SessionActivity`, `TrackedSession` in `weld.models`
 - Session services: `session_detector`, `session_tracker`, `transcript_renderer`, `gist_uploader`
 - `get_sessions_dir()` helper in `weld.core.weld_dir`
@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed `exec` field (no longer needed with native implementation)
 - Simplified README.md, moved detailed content to documentation site
 - `weld commit` now uses native transcript rendering instead of external binary
+- `weld implement` now automatically tracks file changes (no flag required)
+- Session-based commits fully functional with implement workflow
+- Registry pruning after successful commits to keep registry clean
+
+### Fixed
+- Session tracking gracefully handles missing Claude sessions
+- File snapshot performance improved for large repositories (5s timeout)
+- Config migration creates backup and safely rolls back on errors
 
 ### Removed
 - `--edit/-e` flag from `weld commit` (use `git commit --amend` to edit after)
