@@ -192,7 +192,7 @@ build: ## Build the package
 bin-install: ## Install weld globally as a CLI tool
 	@echo -e "$(BLUE)Installing weld globally...$(NC)"
 	$(UV) tool uninstall weld 2>/dev/null || true
-	$(UV) tool install .
+	$(UV) tool install --force .
 	@echo -e "$(GREEN)weld installed! Run 'weld --help' to verify.$(NC)"
 
 .PHONY: bin-uninstall
