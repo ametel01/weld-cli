@@ -16,7 +16,6 @@ REQUIRED_TOOLS = [
 OPTIONAL_TOOLS = [
     ("codex", "codex --version"),
     ("claude", "claude --version"),
-    ("claude-code-transcripts", "claude-code-transcripts --version"),
 ]
 
 

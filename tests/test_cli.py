@@ -344,11 +344,10 @@ class TestInitCommandDetailed:
         with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
             runner.invoke(app, ["init"])
 
-        # init checks: git, gh, codex, claude-code-transcripts
+        # init checks: git, gh, codex
         assert "git" in checked_tools
         assert "gh" in checked_tools
         assert "codex" in checked_tools
-        assert "claude-code-transcripts" in checked_tools
 
     def test_init_creates_weld_directory(self, runner: CliRunner, temp_git_repo: Path) -> None:
         """init should create .weld directory."""
@@ -396,24 +395,64 @@ class TestInitCommandDetailed:
         assert "codex" in result.stdout.lower()
         assert "not found" in result.stdout.lower()
 
-    def test_init_fails_with_missing_transcripts(
+    def test_init_creates_gitignore_if_missing(
         self, runner: CliRunner, temp_git_repo: Path
     ) -> None:
-        """init should fail when claude-code-transcripts is not installed."""
+        """init should create .gitignore with .weld/ exclusions if it doesn't exist."""
 
         def mock_subprocess_run(
             cmd: list[str], **kwargs: object
         ) -> subprocess.CompletedProcess[str]:
-            if cmd[0] == "claude-code-transcripts":
-                raise FileNotFoundError("claude-code-transcripts not found")
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+        with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
+            runner.invoke(app, ["init"])
+
+        gitignore = temp_git_repo / ".gitignore"
+        assert gitignore.exists()
+        content = gitignore.read_text()
+        assert ".weld/*" in content
+        assert "!.weld/config.toml" in content
+
+    def test_init_updates_existing_gitignore(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """init should update existing .gitignore with .weld/ exclusions."""
+        gitignore = temp_git_repo / ".gitignore"
+        gitignore.write_text("node_modules/\n*.log\n")
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+        with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
+            runner.invoke(app, ["init"])
+
+        content = gitignore.read_text()
+        assert "node_modules/" in content
+        assert "*.log" in content
+        assert ".weld/*" in content
+        assert "!.weld/config.toml" in content
+
+    def test_init_skips_duplicate_gitignore_entries(
+        self, runner: CliRunner, temp_git_repo: Path
+    ) -> None:
+        """init should not duplicate .weld/ entries if they already exist."""
+        gitignore = temp_git_repo / ".gitignore"
+        gitignore.write_text(".weld/*\n!.weld/config.toml\n")
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
         with patch("weld.commands.init.subprocess.run", side_effect=mock_subprocess_run):
             result = runner.invoke(app, ["init"])
 
-        assert result.exit_code == 2
-        assert "claude-code-transcripts" in result.stdout.lower()
-        assert "not found" in result.stdout.lower()
+        content = gitignore.read_text()
+        # Count occurrences - should appear only once
+        assert content.count(".weld/*") == 1
+        assert content.count("!.weld/config.toml") == 1
+        assert "already excludes .weld/" in result.stdout
 
 
 class TestPlanCommandDetailed:

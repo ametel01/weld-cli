@@ -2,6 +2,15 @@
 
 Configuration lives in `.weld/config.toml`, created by `weld init`.
 
+## Version Control
+
+**Only `.weld/config.toml` should be committed** to version control. All other `.weld/` files are excluded via `.gitignore` (automatically configured during `weld init`):
+
+- ✓ **Tracked**: `.weld/config.toml` (project configuration)
+- ✗ **Ignored**: `.weld/sessions/`, `.weld/reviews/`, `.weld/commit/history.jsonl`, etc. (local metadata)
+
+This ensures team members share configuration while keeping local session data and review artifacts private.
+
 ## Full Configuration Reference
 
 ```toml
@@ -14,9 +23,9 @@ model = "claude-sonnet-4-20250514" # Default model (optional)
 timeout = 1800                     # Timeout in seconds (30 min default)
 max_output_tokens = 128000         # Max tokens for responses (128K default)
 
-[claude.transcripts]
-exec = "claude-code-transcripts"
-visibility = "secret"              # or "public"
+[transcripts]
+enabled = true                     # Enable transcript generation
+visibility = "secret"              # Gist visibility: "secret" or "public"
 
 [git]
 commit_trailer_key = "Claude-Transcript"
@@ -39,11 +48,11 @@ commit_trailer_key = "Claude-Transcript"
 | `timeout` | integer | `1800` | Timeout in seconds for AI operations |
 | `max_output_tokens` | integer | `128000` | Maximum output tokens for responses |
 
-### `[claude.transcripts]`
+### `[transcripts]`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `exec` | string | `"claude-code-transcripts"` | Path to transcripts CLI |
+| `enabled` | boolean | `true` | Enable transcript generation |
 | `visibility` | string | `"secret"` | Gist visibility: `"secret"` or `"public"` |
 
 ### `[git]`

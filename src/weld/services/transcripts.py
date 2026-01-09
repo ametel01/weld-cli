@@ -1,4 +1,8 @@
-"""Transcript gist generation for weld."""
+"""Legacy transcript tool wrapper (deprecated).
+
+This module wraps the external claude-code-transcripts tool.
+For native transcript generation, see transcript_renderer.py and gist_uploader.py.
+"""
 
 import re
 import subprocess
@@ -10,7 +14,7 @@ from ..constants import TRANSCRIPT_TIMEOUT
 
 
 class TranscriptResult(BaseModel):
-    """Result from claude-code-transcripts."""
+    """Result from external transcript tool (legacy)."""
 
     gist_url: str | None = None
     preview_url: str | None = None
@@ -30,13 +34,16 @@ def run_transcript_gist(
     cwd: Path | None = None,
     timeout: int | None = None,
 ) -> TranscriptResult:
-    """Run transcript tool to create gist.
+    """Run external transcript tool to create gist (legacy, deprecated).
+
+    This function wraps the external claude-code-transcripts tool.
+    For native transcript generation, use transcript_renderer and gist_uploader instead.
 
     Args:
-        exec_path: Path to claude-code-transcripts executable
+        exec_path: Path to external transcript tool executable
         visibility: Gist visibility ("secret" or "public")
         cwd: Working directory
-        timeout: Optional timeout in seconds (default: 60)
+        timeout: Optional timeout in seconds (default: 120)
 
     Returns:
         TranscriptResult with parsed URLs and warnings

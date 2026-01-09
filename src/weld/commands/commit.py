@@ -1,5 +1,6 @@
 """Commit command implementation."""
 
+import contextlib
 import re
 import tempfile
 from datetime import datetime
@@ -33,6 +34,28 @@ from ..services.gist_uploader import (
 from ..services.session_detector import detect_current_session, get_session_id
 from ..services.session_tracker import SessionRegistry, get_registry
 from ..services.transcript_renderer import render_transcript
+
+
+def _should_exclude_from_commit(file_path: str) -> bool:
+    """Check if a file should be excluded from commits.
+
+    Excludes .weld/ metadata files while keeping config.toml.
+    This prevents internal tracking files from being committed.
+
+    Args:
+        file_path: Relative file path from repo root
+
+    Returns:
+        True if file should be excluded, False otherwise
+    """
+    # Normalize path separators
+    normalized = file_path.replace("\\", "/")
+
+    # Exclude .weld/ files except config.toml
+    if normalized.startswith(".weld/"):
+        return normalized != ".weld/config.toml"
+
+    return False
 
 
 def resolve_files_to_sessions(
@@ -680,6 +703,27 @@ def commit(
         raise typer.Exit(20) from None
 
     staged_files = get_staged_files(cwd=repo_root)
+
+    # Filter out .weld/ metadata files (keep only config.toml)
+    excluded_files = [f for f in staged_files if _should_exclude_from_commit(f)]
+
+    # Unstage excluded files and warn user
+    if excluded_files:
+        ctx.console.print(
+            f"[yellow]Excluding {len(excluded_files)} .weld/ metadata file(s) from commit[/yellow]"
+        )
+        # Unstage the excluded files
+        for f in excluded_files:
+            # File might not be staged, ignore errors
+            with contextlib.suppress(GitError):
+                run_git("restore", "--staged", f, cwd=repo_root)
+
+        # Refresh staged files list after unstaging
+        staged_files = get_staged_files(cwd=repo_root)
+
+    if not staged_files:
+        ctx.error("No files to commit after filtering .weld/ metadata")
+        raise typer.Exit(20) from None
 
     # Read current changelog for context
     changelog_path = repo_root / "CHANGELOG.md"

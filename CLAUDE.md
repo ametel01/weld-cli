@@ -109,6 +109,13 @@ Interactive plan execution with atomic checkpointing:
 3. Execute selected step, checkpoint progress
 4. Graceful Ctrl+C handling preserves completed steps
 
+**Auto-Commit Feature (`--auto-commit`)**:
+- Prompts user to commit changes after each step completes
+- Automatically stages all changes and creates session-based commits
+- Non-blocking: commit failures don't stop the implement flow
+- Skips prompt if no changes detected
+- Usage: `weld implement plan.md --auto-commit`
+
 ### Session Tracking
 
 Weld automatically tracks file changes during `weld implement` commands,
@@ -152,6 +159,27 @@ Key sections:
 - `[loop]`: Implement-review-fix loop settings
 
 Config migration: Old `[claude.transcripts]` auto-migrates to top-level `[transcripts]`
+
+### Version Control
+
+`weld init` automatically configures `.gitignore` to exclude `.weld/` metadata:
+
+```gitignore
+# Weld metadata (keep config.toml only)
+.weld/*
+!.weld/config.toml
+```
+
+**Tracked**: Only `.weld/config.toml` (team-shared configuration)
+**Ignored**: All other `.weld/` content (local sessions, reviews, history, etc.)
+
+This prevents committing:
+- Session tracking metadata (`.weld/sessions/registry.jsonl`)
+- Review artifacts (`.weld/reviews/*/`)
+- Command history (`.weld/commit/history.jsonl`)
+- Backup files (`.weld/config.toml.bak`)
+
+If `.gitignore` already contains `.weld/` patterns, `weld init` skips updating it.
 
 ## Git Commits
 

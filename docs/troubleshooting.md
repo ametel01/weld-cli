@@ -95,11 +95,18 @@ chmod -R u+w .weld/
 **Symptom**: Commit fails with exit code 21.
 
 **Solution**:
-1. Ensure `claude-code-transcripts` is installed
+1. Check that `gh` CLI is installed and authenticated
 2. Or skip transcript generation:
 
 ```bash
 weld commit --skip-transcript
+```
+
+3. Or disable transcripts in `.weld/config.toml`:
+
+```toml
+[transcripts]
+enabled = false
 ```
 
 ### JSON Output Parsing Errors

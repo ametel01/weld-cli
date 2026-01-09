@@ -14,6 +14,7 @@ from weld.commands.commit import (
     _merge_commit_groups,
     _normalize_entry,
     _parse_commit_groups,
+    _should_exclude_from_commit,
     _update_changelog,
     resolve_files_to_sessions,
 )
@@ -778,3 +779,34 @@ class TestResolveFilesToSessions:
         )
 
         assert result == {"multi-activity-session": ["research.md", "src/feature.py"]}
+
+
+@pytest.mark.unit
+class TestShouldExcludeFromCommit:
+    """Tests for _should_exclude_from_commit file filtering."""
+
+    def test_excludes_weld_metadata_files(self) -> None:
+        """Should exclude .weld/ metadata files."""
+        assert _should_exclude_from_commit(".weld/commit/history.jsonl") is True
+        assert _should_exclude_from_commit(".weld/sessions/registry.jsonl") is True
+        assert _should_exclude_from_commit(".weld/reviews/20240101/diff.patch") is True
+
+    def test_includes_weld_config_toml(self) -> None:
+        """Should include .weld/config.toml (team configuration)."""
+        assert _should_exclude_from_commit(".weld/config.toml") is False
+
+    def test_includes_normal_files(self) -> None:
+        """Should include all non-.weld/ files."""
+        assert _should_exclude_from_commit("src/main.py") is False
+        assert _should_exclude_from_commit(".gitignore") is False
+        assert _should_exclude_from_commit("README.md") is False
+        assert _should_exclude_from_commit("tests/test_foo.py") is False
+
+    def test_handles_windows_path_separators(self) -> None:
+        """Should normalize Windows path separators."""
+        assert _should_exclude_from_commit(".weld\\commit\\history.jsonl") is True
+        assert _should_exclude_from_commit(".weld\\config.toml") is False
+
+    def test_excludes_backup_files(self) -> None:
+        """Should exclude backup files in .weld/."""
+        assert _should_exclude_from_commit(".weld/config.toml.bak") is True

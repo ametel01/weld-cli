@@ -23,8 +23,8 @@ Validates that all required and optional tools are available and properly config
 
 | Tool | Purpose |
 |------|---------|
+| `codex` | Codex CLI for AI operations |
 | `claude` | Claude Code CLI for AI operations |
-| `claude-code-transcripts` | Transcript gist generation |
 
 ## Exit Codes
 

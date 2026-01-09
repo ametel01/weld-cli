@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Each step execution is an independent Claude CLI invocation with fresh context
   - No conversational memory between steps
   - Session tracking is for commit grouping, not conversational context
+- `--auto-commit` flag for `weld implement` command
+  - Prompts user to commit changes after each step completes successfully
+  - Automatically stages all changes (like `weld commit --all`)
+  - Creates session-based commits with transcript attachment
+  - Non-blocking: commit failures don't stop the implement flow
+  - Skips prompt if no changes detected during the step
+  - Manual session recording ensures transcripts are included in mid-execution commits
 
 ### Changed
 - Transcript configuration moved from `[claude.transcripts]` to top-level `[transcripts]`
@@ -49,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `weld implement` now automatically tracks file changes (no flag required)
 - Session-based commits fully functional with implement workflow
 - Registry pruning after successful commits to keep registry clean
+- Makefile `bump-*` targets now automatically run `uv sync` after version update
 
 ### Fixed
 - Session tracking gracefully handles missing Claude sessions

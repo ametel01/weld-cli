@@ -9,7 +9,6 @@
 | **git** | Yes | Version control |
 | **gh** | Yes | GitHub CLI (authenticated) |
 | **claude** | Yes | Claude Code CLI (AI provider) |
-| **claude-code-transcripts** | No | Transcript gist generation |
 
 ## Install from PyPI (Recommended)
 
@@ -46,7 +45,7 @@ weld doctor
 
 This validates:
 - **Required**: `git`, `gh` (GitHub CLI authenticated)
-- **Optional**: `claude`, `claude-code-transcripts`
+- **Optional**: `claude`, `codex`
 
 ## Install from Source
 
