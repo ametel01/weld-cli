@@ -156,7 +156,7 @@ Config migration: Old `[claude.transcripts]` auto-migrates to top-level `[transc
 ## Git Commits
 
 - Never mention Claude Code in commit messages
-- Never include the generated footer or Co-Authored-By trailer
+- NEVER include the generated footer or Co-Authored-By trailer
 - Use imperative mood ("Add feature" not "Added feature")
 - Keep commits small and focused
 - Update CHANGELOG.md before committing (use Keep a Changelog format with [Unreleased] section)
