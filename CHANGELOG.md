@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Always available (independent of --auto-commit flag)
 
 ### Fixed
+- Interactive menu cursor position in `weld implement` - now points to first incomplete step instead of always starting at the top
 - **Critical**: EOFError handling in auto-commit prompt (now handles non-interactive environments)
 - **Critical**: File I/O error handling in review prompt (disk full/permission errors no longer crash)
 - **Critical**: Exception handling for review prompt generation

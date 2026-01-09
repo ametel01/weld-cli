@@ -387,6 +387,126 @@ Do this.
         assert "failed to mark phase complete" in result.output.lower()
 
 
+class TestFindFirstIncompleteIndex:
+    """Test _find_first_incomplete_index helper function."""
+
+    @pytest.mark.unit
+    def test_finds_first_incomplete_step(self) -> None:
+        """Should find first incomplete step, not phase header."""
+        from weld.commands.implement import _find_first_incomplete_index
+        from weld.core.plan_parser import Phase, Step
+
+        # Phase with first step complete, second incomplete
+        phase = Phase(
+            number=1,
+            title="Test Phase",
+            content="",
+            line_number=0,
+            is_complete=False,  # Phase not complete yet
+        )
+        step1 = Step(
+            number="1.1",
+            title="First Step",
+            content="",
+            line_number=1,
+            is_complete=True,  # Complete
+        )
+        step2 = Step(
+            number="1.2",
+            title="Second Step",
+            content="",
+            line_number=3,
+            is_complete=False,  # Incomplete
+        )
+        phase.steps = [step1, step2]
+
+        items = [
+            (phase, None),  # Index 0: Phase header (incomplete)
+            (phase, step1),  # Index 1: Step 1.1 (complete)
+            (phase, step2),  # Index 2: Step 1.2 (incomplete)
+        ]
+
+        # Should return index 2 (first incomplete step), not 0 (incomplete phase header)
+        assert _find_first_incomplete_index(items) == 2
+
+    @pytest.mark.unit
+    def test_finds_incomplete_phase_without_steps(self) -> None:
+        """Should find phase header if it has no steps and is incomplete."""
+        from weld.commands.implement import _find_first_incomplete_index
+        from weld.core.plan_parser import Phase, Step
+
+        # Standalone phase with no steps
+        phase = Phase(
+            number=1,
+            title="Standalone Phase",
+            content="Do something",
+            line_number=0,
+            is_complete=False,
+            steps=[],  # No steps
+        )
+
+        items: list[tuple[Phase, Step | None]] = [(phase, None)]
+
+        # Should return index 0 (standalone phase)
+        assert _find_first_incomplete_index(items) == 0
+
+    @pytest.mark.unit
+    def test_returns_zero_when_all_complete(self) -> None:
+        """Should return 0 when all items are complete."""
+        from weld.commands.implement import _find_first_incomplete_index
+        from weld.core.plan_parser import Phase, Step
+
+        phase = Phase(
+            number=1,
+            title="Complete Phase",
+            content="",
+            line_number=0,
+            is_complete=True,
+        )
+        step = Step(
+            number="1.1",
+            title="Complete Step",
+            content="",
+            line_number=1,
+            is_complete=True,
+        )
+        phase.steps = [step]
+
+        items = [
+            (phase, None),
+            (phase, step),
+        ]
+
+        # Should return 0 (fallback) when everything is complete
+        assert _find_first_incomplete_index(items) == 0
+
+    @pytest.mark.unit
+    def test_skips_multiple_completed_items(self) -> None:
+        """Should skip multiple completed items to find first incomplete."""
+        from weld.commands.implement import _find_first_incomplete_index
+        from weld.core.plan_parser import Phase, Step
+
+        phase1 = Phase(number=1, title="Phase 1", content="", line_number=0, is_complete=True)
+        step1_1 = Step(number="1.1", title="Step 1.1", content="", line_number=1, is_complete=True)
+        step1_2 = Step(number="1.2", title="Step 1.2", content="", line_number=2, is_complete=True)
+        phase1.steps = [step1_1, step1_2]
+
+        phase2 = Phase(number=2, title="Phase 2", content="", line_number=4, is_complete=False)
+        step2_1 = Step(number="2.1", title="Step 2.1", content="", line_number=5, is_complete=False)
+        phase2.steps = [step2_1]
+
+        items = [
+            (phase1, None),  # Index 0: Complete
+            (phase1, step1_1),  # Index 1: Complete
+            (phase1, step1_2),  # Index 2: Complete
+            (phase2, None),  # Index 3: Incomplete phase header
+            (phase2, step2_1),  # Index 4: Incomplete step
+        ]
+
+        # Should return index 4 (first incomplete step), not 3 (phase header)
+        assert _find_first_incomplete_index(items) == 4
+
+
 class TestImplementSessionTracking:
     """Test implement session tracking behavior."""
 

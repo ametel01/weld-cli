@@ -428,11 +428,16 @@ def _build_menu_display(plan: Plan) -> list[str]:
 
 
 def _find_first_incomplete_index(items: list[tuple[Phase, Step | None]]) -> int:
-    """Find index of first incomplete item for initial cursor position."""
+    """Find index of first incomplete item for initial cursor position.
+
+    Prioritizes incomplete steps over phase headers. Only selects a phase
+    header if it has no steps (standalone phase) and is incomplete.
+    """
     for i, (phase, step) in enumerate(items):
-        if step and not step.is_complete:
+        if step is not None and not step.is_complete:
             return i
-        if step is None and not phase.is_complete:
+        if step is None and len(phase.steps) == 0 and not phase.is_complete:
+            # Only select phase header if it has no steps (standalone phase)
             return i
     return 0
 
