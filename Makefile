@@ -199,6 +199,11 @@ bin-install: ## Install weld globally as a CLI tool
 bin-uninstall: ## Uninstall weld global CLI tool and clean cache
 	@echo -e "$(BLUE)Uninstalling weld...$(NC)"
 	$(UV) tool uninstall weld 2>/dev/null || true
+	@WELD_BIN=$$(which weld 2>/dev/null); \
+	if [ -n "$$WELD_BIN" ]; then \
+		echo -e "$(YELLOW)Removing binary at $$WELD_BIN...$(NC)"; \
+		rm -f "$$WELD_BIN"; \
+	fi
 	$(UV) cache clean --force
 	@echo -e "$(GREEN)weld uninstalled and cache cleaned.$(NC)"
 
@@ -286,6 +291,8 @@ else
 	sed -i "s/^version = \"$(CURRENT_VERSION)\"/version = \"$$NEW_VERSION\"/" pyproject.toml; \
 	sed -i "s/^__version__ = \"$(CURRENT_VERSION)\"/__version__ = \"$$NEW_VERSION\"/" src/weld/__init__.py; \
 	echo -e "$(GREEN)Updated version to $$NEW_VERSION$(NC)"; \
+	echo ""; \
+	$(UV) sync; \
 	echo ""; \
 	echo "Files modified:"; \
 	echo "  - pyproject.toml"; \
