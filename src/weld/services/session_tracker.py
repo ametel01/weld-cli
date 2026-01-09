@@ -14,6 +14,7 @@ Design notes:
 import contextlib
 import json
 import logging
+import time
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +47,9 @@ SNAPSHOT_EXCLUDES = {
     ".coverage",
     "htmlcov",
 }
+
+# Timeout for file snapshots in large repositories (seconds)
+FILE_SNAPSHOT_TIMEOUT = 5
 
 
 class SessionRegistry:
@@ -129,6 +133,13 @@ class SessionRegistry:
             files_modified: List of relative paths to files modified
             completed: Whether the command completed successfully
         """
+        # Validate session file exists (warn if not)
+        if not Path(session_file).exists():
+            logger.warning(
+                f"Session file not found: {session_file}. "
+                "Transcript may not be available for commit."
+            )
+
         now = datetime.now(UTC)
         activity = SessionActivity(
             command=command,
@@ -208,20 +219,35 @@ def _should_exclude_path(path: Path) -> bool:
     return False
 
 
-def get_file_snapshot(repo_root: Path) -> dict[str, float]:
+def get_file_snapshot(repo_root: Path, timeout: float = FILE_SNAPSHOT_TIMEOUT) -> dict[str, float]:
     """Get {relative_path: mtime} for all files in repo.
 
     Excludes common build/cache directories for performance.
     For a 50K file repo, this avoids scanning irrelevant directories.
 
+    Uses a timeout to prevent blocking on extremely large repositories.
+    Returns partial snapshot if timeout is exceeded (best-effort tracking).
+
     Args:
         repo_root: Path to repository root
+        timeout: Maximum time in seconds (default 5s, accepts float)
 
     Returns:
-        Dict mapping relative file paths to modification times
+        Dict mapping relative file paths to modification times.
+        Returns partial snapshot if timeout exceeded.
     """
+    start = time.time()
     snapshot = {}
+
     for f in repo_root.rglob("*"):
+        # Check for timeout to prevent blocking on large repos
+        if time.time() - start > timeout:
+            logger.warning(
+                f"File snapshot timed out after {timeout}s ({len(snapshot)} files scanned). "
+                "Using partial snapshot for tracking."
+            )
+            break
+
         # Skip excluded directories early for performance
         if _should_exclude_path(f):
             continue
@@ -231,6 +257,7 @@ def get_file_snapshot(repo_root: Path) -> dict[str, float]:
                 snapshot[rel] = f.stat().st_mtime
             except (OSError, ValueError):
                 pass
+
     return snapshot
 
 
@@ -267,6 +294,7 @@ def track_session_activity(
 
     Records activity to registry if changes were made.
     Handles interruptions by marking activity as incomplete.
+    Gracefully handles tracking failures without breaking the command.
 
     Args:
         weld_dir: Path to .weld directory
@@ -278,27 +306,48 @@ def track_session_activity(
     """
     session_file = detect_current_session(repo_root)
     if not session_file:
+        logger.debug(f"No Claude session detected, skipping tracking for {command}")
         yield  # No session to track
         return
 
-    before = get_file_snapshot(repo_root)
-    completed = False
+    # Try to capture pre-command snapshot
+    before = None
+    try:
+        before = get_file_snapshot(repo_root)
+    except (OSError, PermissionError, ValueError) as e:
+        logger.error(f"Failed to capture pre-command snapshot: {e}")
+        yield  # Run command anyway
+        return
 
+    # Run command and track completion status
+    completed = False
     try:
         yield
         completed = True
     finally:
-        after = get_file_snapshot(repo_root)
-        created, modified = compute_changes(before, after)
+        # Try to save tracking data, but don't let failures break the command
+        try:
+            after = get_file_snapshot(repo_root)
+            created, modified = compute_changes(before, after)
 
-        # Only record if changes were made
-        if created or modified:
-            registry = get_registry(weld_dir)
-            registry.record_activity(
-                session_id=get_session_id(session_file),
-                session_file=str(session_file),
-                command=command,
-                files_created=created,
-                files_modified=modified,
-                completed=completed,
-            )
+            # Only record if changes were made
+            if created or modified:
+                session_id = get_session_id(session_file)
+                registry = get_registry(weld_dir)
+                registry.record_activity(
+                    session_id=session_id,
+                    session_file=str(session_file),
+                    command=command,
+                    files_created=created,
+                    files_modified=modified,
+                    completed=completed,
+                )
+                logger.debug(
+                    f"Tracked {len(created)} created, {len(modified)} modified files "
+                    f"for session {session_id[:8]}... (command: {command}, completed: {completed})"
+                )
+        except (OSError, PermissionError, ValidationError, json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to save session activity: {e}")
+        except Exception as e:
+            # Unexpected errors - log with warning to help debugging
+            logger.error(f"Unexpected error saving session activity: {type(e).__name__}: {e}")
