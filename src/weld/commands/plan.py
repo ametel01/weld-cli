@@ -38,11 +38,29 @@ def generate_plan_prompt(spec_content: str, spec_name: str) -> str:
     """
     return f"""# Implementation Plan Request
 
-Read the following specification carefully and create an implementation plan.
+Read the following specification carefully, explore the codebase, and create an implementation plan.
 
 ## Specification: {spec_name}
 
 {spec_content}
+
+---
+
+## Planning Process
+
+Before creating the plan, you MUST:
+
+1. **Explore the codebase structure**: Use your tools to understand the project layout,
+   key directories, and architectural patterns
+2. **Identify relevant files**: Find existing files that need modification or that serve
+   as reference implementations
+3. **Understand existing patterns**: Review how similar features are implemented in
+   the codebase
+4. **Reference actual code locations**: Ground your plan in specific files, functions,
+   and line numbers that exist
+
+Your plan should reference concrete existing code locations and follow established
+patterns in the codebase.
 
 ---
 
@@ -243,9 +261,13 @@ def plan(
 
     ctx.console.print(f"[cyan]Generating plan from {input_file.name}...[/cyan]\n")
 
+    claude_exec = config.claude.exec if config.claude else "claude"
+
     def _run() -> str:
         return run_claude(
             prompt=prompt,
+            exec_path=claude_exec,
+            cwd=repo_root,
             stream=not quiet,
             max_output_tokens=config.claude.max_output_tokens,
         )

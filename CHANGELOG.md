@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Educates users about when and how to compact context
   - Explains what to compact (decisions, constraints) vs. what not to (logs, traces)
   - Helps convert exploration into a one-time cost instead of recurring tax
+- Codebase exploration guidance in `weld plan` prompts
+  - Instructs Claude to explore the codebase structure before planning
+  - Requires identification of relevant files and existing patterns
+  - Grounds plans in concrete code locations and line numbers
 
 ### Changed
 - Transcript configuration moved from `[claude.transcripts]` to top-level `[transcripts]`
