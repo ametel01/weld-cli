@@ -30,14 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - GitHub Actions workflow for automatic deployment to GitHub Pages
   - Makefile targets: `docs`, `docs-build`, `docs-deploy`, `docs-version`
   - Versioned documentation support via mike
-- Intentional compaction guidance in `weld implement` prompts
-  - Educates users about when and how to compact context
-  - Explains what to compact (decisions, constraints) vs. what not to (logs, traces)
-  - Helps convert exploration into a one-time cost instead of recurring tax
 - Codebase exploration guidance in `weld plan` prompts
   - Instructs Claude to explore the codebase structure before planning
   - Requires identification of relevant files and existing patterns
   - Grounds plans in concrete code locations and line numbers
+- Documentation clarifying `weld implement` session behavior
+  - Each step execution is an independent Claude CLI invocation with fresh context
+  - No conversational memory between steps
+  - Session tracking is for commit grouping, not conversational context
 
 ### Changed
 - Transcript configuration moved from `[claude.transcripts]` to top-level `[transcripts]`

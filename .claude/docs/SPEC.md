@@ -247,6 +247,41 @@ What this step accomplishes
 - **Automatically tracks file changes for session-based commits**
 - Graceful interruption: Ctrl+C saves progress
 
+**Important: No Conversational Context Between Steps**
+
+Each step execution is an independent Claude CLI invocation with NO shared conversational
+context:
+
+- When a step is executed, `run_claude()` spawns a fresh Claude process with a prompt
+  containing only that step's specification
+- Each Claude invocation is stateless - it has no memory of previous steps
+- The interactive menu loop is just the `weld implement` process continuing, not a
+  continued Claude conversation
+- Step prompts must be self-contained because each execution starts fresh
+
+**Session Tracking vs. Conversational Context**
+
+The distinction between session tracking and conversational context is critical:
+
+- **Session tracking** (`track_session_activity()`): Wraps the entire `weld implement`
+  command to record file changes for commit grouping. All steps share one session ID
+  for commit provenance purposes.
+- **Conversational context**: Does NOT exist between steps. Each `run_claude()` call
+  is independent with no shared state.
+
+**Example:** When implementing a 3-step plan:
+```
+weld implement plan.md
+├─ Step 1 execution: Fresh Claude CLI process → completes → exits
+├─ Menu displays
+├─ Step 2 execution: NEW fresh Claude CLI process → completes → exits
+├─ Menu displays
+└─ Step 3 execution: NEW fresh Claude CLI process → completes → exits
+```
+
+All three executions are tracked under one session ID (for commit grouping), but each
+is a separate, independent Claude invocation with no conversational memory.
+
 **Exit codes:**
 - `0` - Success
 - `1` - Plan file not found or invalid

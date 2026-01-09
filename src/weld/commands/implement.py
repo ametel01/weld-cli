@@ -416,32 +416,6 @@ Implement the above specification. After implementation:
 3. Do not implement future steps or phases
 
 When complete, confirm the implementation is done.
-
-## Intentional Compaction
-
-If the conversation becomes long or contains significant exploration, consider using
-intentional compaction:
-
-**What is Intentional Compaction?**
-Deliberate compression of context into a minimal, high-signal representation.
-Instead of dragging an ever-growing conversation forward:
-1. Summarize the current state into a markdown artifact
-2. Review and validate it
-3. Use /compact or start a fresh context seeded with that artifact
-
-**What to compact:**
-- Relevant files and line ranges
-- Verified architectural behavior
-- Decisions already made
-- Explicit constraints and non-goals
-
-**What not to compact:**
-- Raw logs
-- Tool traces
-- Full file contents
-- Repetitive error explanations
-
-Compaction converts exploration into a one-time cost instead of a recurring tax.
 """
 
     ctx.console.print(f"\n[bold]Implementing Step {step.number}: {step.title}[/bold]\n")
