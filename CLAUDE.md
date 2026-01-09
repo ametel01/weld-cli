@@ -116,6 +116,14 @@ Interactive plan execution with atomic checkpointing:
 - Skips prompt if no changes detected
 - Usage: `weld implement plan.md --auto-commit`
 
+**Review Prompt Feature**:
+- After each step completes, prompts: "Review changes from step X?"
+- If yes, prompts: "Apply fixes directly to files?"
+- Runs `weld review --diff [--apply]` accordingly
+- Non-blocking: review failures don't stop implement flow
+- Always available (independent of --auto-commit flag)
+- Saves review artifacts to `.weld/reviews/{timestamp}/`
+
 ### Session Tracking
 
 Weld automatically tracks file changes during `weld implement` commands,

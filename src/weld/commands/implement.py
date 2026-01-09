@@ -11,6 +11,7 @@ via --step or --phase flags for CI/automation.
 import contextlib
 import signal
 import sys
+from datetime import datetime
 from pathlib import Path
 from types import FrameType
 from typing import Annotated
@@ -21,12 +22,20 @@ from rich.prompt import Confirm
 from simple_term_menu import TerminalMenu
 
 from ..config import WeldConfig, load_config
-from ..core import get_weld_dir, mark_phase_complete, mark_step_complete, validate_plan
+from ..core import (
+    generate_code_review_prompt,
+    get_doc_review_dir,
+    get_weld_dir,
+    mark_phase_complete,
+    mark_step_complete,
+    validate_plan,
+)
 from ..core.plan_parser import Phase, Plan, Step
 from ..output import OutputContext, get_output_context
 from ..services import (
     ClaudeError,
     GitError,
+    get_diff,
     get_repo_root,
     get_staged_files,
     get_status_porcelain,
@@ -479,7 +488,8 @@ def _prompt_and_commit_step(
             f"\nCommit changes from step {step.number}?",
             default=False,
         )
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
+        # EOFError occurs in non-interactive environments (tests, CI)
         ctx.console.print("\n[yellow]Skipping commit[/yellow]")
         return
 
@@ -491,6 +501,7 @@ def _prompt_and_commit_step(
         stage_all(cwd=repo_root)
     except GitError as e:
         ctx.console.print(f"[yellow]Failed to stage changes: {e}[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
         return
 
     # Get staged files and filter out .weld/ files except config.toml
@@ -498,6 +509,7 @@ def _prompt_and_commit_step(
         staged_files = get_staged_files(cwd=repo_root)
     except GitError as e:
         ctx.console.print(f"[yellow]Failed to get staged files: {e}[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
         return
 
     # Identify and unstage excluded files
@@ -516,10 +528,12 @@ def _prompt_and_commit_step(
             staged_files = get_staged_files(cwd=repo_root)
         except GitError as e:
             ctx.console.print(f"[yellow]Failed to refresh staged files: {e}[/yellow]")
+            ctx.console.print("[dim]Continuing with next step...[/dim]")
             return
 
     if not staged_files:
         ctx.console.print("[yellow]No files to commit after filtering[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
         return
 
     # Ensure current session is recorded in registry for transcript upload
@@ -566,6 +580,152 @@ def _prompt_and_commit_step(
     except Exception as e:
         ctx.console.print(f"[yellow]Commit failed: {e}[/yellow]")
         ctx.console.print("[dim]Continuing with next step...[/dim]")
+
+
+def _prompt_and_review_step(
+    ctx: OutputContext,
+    step: Step,
+    config: WeldConfig,
+    repo_root: Path,
+    weld_dir: Path,
+) -> None:
+    """Prompt user to review changes from completed step.
+
+    Presents two-level prompt:
+    1. "Review changes from step {step.number}?" (yes/no, default=False)
+    2. If yes: "Apply fixes directly to files?" (yes/no, default=False)
+
+    Then runs appropriate review:
+    - Apply yes: review with auto-fix enabled
+    - Apply no: review findings only
+
+    Args:
+        ctx: Output context for console/JSON/dry-run
+        step: The step that just completed
+        config: Weld configuration
+        repo_root: Repository root path
+        weld_dir: .weld directory path
+
+    Non-blocking: errors don't abort implement flow.
+
+    Security: When apply_mode is enabled, Claude runs with skip_permissions=True,
+    allowing it to modify any file in the repository without additional prompts.
+    """
+    # Dry run: just announce intent
+    if ctx.dry_run:
+        ctx.console.print(
+            f"[cyan][DRY RUN][/cyan] Would prompt to review changes after step {step.number}"
+        )
+        return
+
+    # First prompt: Review yes/no
+    try:
+        should_review = Confirm.ask(
+            f"\nReview changes from step {step.number}?",
+            default=False,
+        )
+    except (KeyboardInterrupt, EOFError):
+        # EOFError occurs in non-interactive environments (tests, CI)
+        ctx.console.print("\n[yellow]Skipping review[/yellow]")
+        return
+
+    if not should_review:
+        return
+
+    # Second prompt: Apply fixes yes/no
+    try:
+        should_apply = Confirm.ask(
+            "Apply fixes directly to files?",
+            default=False,
+        )
+    except (KeyboardInterrupt, EOFError):
+        # EOFError occurs in non-interactive environments (tests, CI)
+        ctx.console.print("\n[yellow]Skipping review[/yellow]")
+        return
+
+    # Get diff content
+    try:
+        diff_content = get_diff(staged=False, cwd=repo_root)
+    except GitError as e:
+        ctx.console.print(f"[yellow]Failed to get diff: {e}[/yellow]")
+        return
+
+    if not diff_content.strip():
+        ctx.console.print("[dim]No changes to review[/dim]")
+        return
+
+    # Generate review prompt
+    try:
+        prompt = generate_code_review_prompt(diff_content, apply_mode=should_apply)
+    except Exception as e:
+        ctx.console.print(f"[yellow]Failed to generate review prompt: {e}[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
+        return
+
+    # Create artifact directory
+    mode_suffix = "fix" if should_apply else "review"
+    step_safe = str(step.number).replace(".", "-")
+    review_id = datetime.now().strftime(f"%Y%m%d-%H%M%S-code-{mode_suffix}-step{step_safe}")
+
+    review_dir = get_doc_review_dir(weld_dir)
+    artifact_dir = review_dir / review_id
+
+    # Save prompt and diff artifacts
+    try:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "prompt.md").write_text(prompt)
+        (artifact_dir / "diff.patch").write_text(diff_content)
+    except OSError as e:
+        ctx.console.print(f"[yellow]Failed to save review artifacts: {e}[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
+        return
+
+    # Run Claude for review
+    mode_label = "Reviewing and fixing" if should_apply else "Reviewing"
+    ctx.console.print(Panel(f"[bold]{mode_label} step {step.number} changes[/bold]", style="blue"))
+
+    # Get config values with defaults
+    exec_path = getattr(config.claude, "exec", "claude")
+    model = getattr(config.claude, "model", None)
+    timeout = getattr(config.claude, "timeout", 300)
+    max_tokens = getattr(config.claude, "max_output_tokens", None)
+
+    try:
+        result = run_claude(
+            prompt=prompt,
+            exec_path=exec_path,
+            model=model,
+            cwd=repo_root,
+            stream=True,  # Show Claude's work
+            timeout=timeout,
+            skip_permissions=should_apply,  # Allow writes if applying
+            max_output_tokens=max_tokens,
+        )
+    except ClaudeError as e:
+        ctx.console.print(f"[yellow]Review failed: {e}[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
+        return
+
+    # Validate result
+    if not result or not result.strip():
+        ctx.console.print("[yellow]Review produced no output[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
+        return
+
+    # Save results
+    result_name = "fixes.md" if should_apply else "findings.md"
+    try:
+        (artifact_dir / result_name).write_text(result)
+    except OSError as e:
+        ctx.console.print(f"[yellow]Failed to save results: {e}[/yellow]")
+        ctx.console.print("[dim]Continuing with next step...[/dim]")
+        return
+
+    if should_apply:
+        ctx.console.print("[green]✓ Fixes applied[/green]")
+    else:
+        ctx.console.print("[green]✓ Review complete[/green]")
+    ctx.console.print(f"[dim]Results: .weld/reviews/{review_id}/{result_name}[/dim]")
 
 
 def _execute_step(
@@ -624,6 +784,15 @@ When complete, confirm the implementation is done.
         return False
 
     ctx.console.print(f"[green]✓ Step {step.number} marked complete[/green]")
+
+    # Prompt for review (always available, opt-in)
+    _prompt_and_review_step(
+        ctx=ctx,
+        step=step,
+        config=config,
+        repo_root=repo_root,
+        weld_dir=weld_dir,
+    )
 
     # Auto-commit if enabled
     if auto_commit and registry is not None:

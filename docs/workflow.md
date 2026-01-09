@@ -93,9 +93,19 @@ Execute the plan step by step:
 weld implement plan.md
 ```
 
-### 7. Review Your Changes
+After each step completes, you'll be prompted to review changes:
 
-Before committing, review the diff:
+```
+Review changes from step 1.1? [y/N]:
+```
+
+This optional review prompt lets you catch issues early. You can choose to:
+- Review only (get a list of findings)
+- Review and apply fixes automatically
+
+### 7. Review Your Changes (Optional)
+
+If you skipped the per-step review prompts, you can review all changes before committing:
 
 ```bash
 weld review --diff --staged

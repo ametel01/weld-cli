@@ -121,6 +121,67 @@ weld implement plan.md --auto-commit
 weld implement plan.md --step 1.1 --auto-commit
 ```
 
+## Review Prompt
+
+After each step completes, you'll be prompted to review the changes made during that step.
+
+### How It Works
+
+1. After a step is marked complete, weld checks for uncommitted changes
+2. If changes exist, you're prompted: `Review changes from step X.X? (y/n)` (default: No)
+3. If you answer yes, you're prompted: `Apply fixes directly to files? (y/n)` (default: No)
+4. weld runs `weld review --diff` (or `--diff --apply` if you chose yes for fixes):
+   - Generates a diff of all uncommitted changes
+   - Sends to Claude for review
+   - Saves findings to `.weld/reviews/{timestamp}/`
+5. If you answer no or press Ctrl+C, the prompt is skipped and execution continues
+
+### Features
+
+- **Always available**: Independent of `--auto-commit` flag
+- **Non-blocking**: Review failures don't stop the implement flow
+- **Two-stage confirmation**: Separate prompts for review and auto-fix
+- **Safe defaults**: Both prompts default to "No" for safety
+- **Artifact preservation**: All reviews saved to `.weld/reviews/` with timestamps
+- **Optional auto-fix**: Choose whether Claude should apply fixes directly or just report issues
+
+### Security Note
+
+When you choose to apply fixes directly, Claude runs with `skip_permissions=True`, allowing it to modify any file in the repository without additional prompts. Only enable this if you trust the review process.
+
+### Example Usage
+
+```bash
+# Standard workflow with review prompts
+weld implement plan.md
+
+# After step completes:
+✓ Step 1.1 marked complete
+
+Review changes from step 1.1? [y/N]: y
+Apply fixes directly to files? [y/N]: n
+
+┌──────────────────────────────────┐
+│ Reviewing step 1.1 changes       │
+└──────────────────────────────────┘
+
+claude> Found 2 style issues...
+
+✓ Review complete
+Results: .weld/reviews/20260109-143022-code-review-step1-1/findings.md
+```
+
+### Review Artifacts
+
+Each review creates a timestamped directory in `.weld/reviews/`:
+
+```
+.weld/reviews/20260109-143022-code-review-step1-1/
+├── prompt.md      # The prompt sent to Claude
+├── diff.patch     # The diff that was reviewed
+└── findings.md    # Claude's review findings (or fixes.md if auto-fix was used)
+```
+
 ## Session Management
 
 ### How Claude Execution Works Per Step
