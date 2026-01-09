@@ -74,22 +74,15 @@ def implement(
         ),
     ] = None,
 ) -> None:
-    """Implement phases and steps from a plan file.
+    """Execute plan phases and steps with AI assistance.
 
-    INTERACTIVE MODE (default):
-    Displays an arrow-key navigable menu to select which phase or step
-    to implement. Claude executes the selected item, then marks it
-    **COMPLETE** in the plan file. Loop continues until all complete or quit.
+    File changes are automatically tracked for commit grouping.
+    When you run 'weld commit', files will be grouped by the Claude
+    Code session that created them, with transcript URLs attached.
 
-    NON-INTERACTIVE MODE (--step or --phase):
-    Implements a specific step or all steps in a phase without menu.
-    Suitable for CI/automation and scripting.
-
-    Examples:
-        weld implement PLAN.md                    # Interactive menu
-        weld implement PLAN.md --step 1.1         # Single step
-        weld implement PLAN.md --phase 2          # All steps in phase 2
-        weld implement PLAN.md --step 1.1 --quiet # No streaming output
+    Use --step to execute a specific step (e.g., --step 1.2)
+    Use --phase to execute all steps in a phase (e.g., --phase 1)
+    Without options, shows interactive menu to select phase/step.
     """
     ctx = get_output_context()
 
@@ -158,12 +151,25 @@ def implement(
 
     # --- Route to interactive or non-interactive mode ---
 
-    if step is not None or phase is not None:
-        exit_code = _implement_non_interactive(
+    # Always track implement command
+    with track_session_activity(weld_dir, repo_root, "implement"):
+        if step is not None or phase is not None:
+            exit_code = _implement_non_interactive(
+                ctx=ctx,
+                plan=plan,
+                step_number=step,
+                phase_number=phase,
+                config=config,
+                repo_root=repo_root,
+                weld_dir=weld_dir,
+                quiet=quiet,
+                timeout=effective_timeout,
+            )
+            raise typer.Exit(exit_code)
+
+        exit_code = _implement_interactive(
             ctx=ctx,
             plan=plan,
-            step_number=step,
-            phase_number=phase,
             config=config,
             repo_root=repo_root,
             weld_dir=weld_dir,
@@ -171,17 +177,6 @@ def implement(
             timeout=effective_timeout,
         )
         raise typer.Exit(exit_code)
-
-    exit_code = _implement_interactive(
-        ctx=ctx,
-        plan=plan,
-        config=config,
-        repo_root=repo_root,
-        weld_dir=weld_dir,
-        quiet=quiet,
-        timeout=effective_timeout,
-    )
-    raise typer.Exit(exit_code)
 
 
 def _implement_interactive(
@@ -426,16 +421,15 @@ When complete, confirm the implementation is done.
     ctx.console.print(f"\n[bold]Implementing Step {step.number}: {step.title}[/bold]\n")
 
     try:
-        with track_session_activity(weld_dir, repo_root, "implement"):
-            run_claude(
-                prompt=prompt,
-                exec_path=config.claude.exec,
-                cwd=repo_root,
-                stream=not quiet,
-                timeout=timeout,
-                skip_permissions=True,
-                max_output_tokens=config.claude.max_output_tokens,
-            )
+        run_claude(
+            prompt=prompt,
+            exec_path=config.claude.exec,
+            cwd=repo_root,
+            stream=not quiet,
+            timeout=timeout,
+            skip_permissions=True,
+            max_output_tokens=config.claude.max_output_tokens,
+        )
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
         return False
