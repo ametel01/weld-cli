@@ -21,6 +21,8 @@ weld implement <plan> [OPTIONS]
 | `--phase` | `-p` | Start at a specific phase number |
 | `--step` | `-s` | Start at a specific step number |
 | `--quiet` | `-q` | Suppress streaming output |
+| `--auto-commit` | | Prompt to commit changes after each step completes |
+| `--timeout` | `-t` | Timeout in seconds for Claude (default: from config) |
 
 ## Description
 
@@ -65,12 +67,58 @@ weld implement plan.md --step 3
 weld implement plan.md --phase 2 --step 1
 ```
 
+### With auto-commit
+
+```bash
+weld implement plan.md --auto-commit
+```
+
+After each step completes, you'll be prompted:
+
+```
+Commit changes from step 1.1? (y/n)
+```
+
+If you answer yes, all changes are staged and committed automatically using session-based
+grouping (same as `weld commit --all`).
+
 ## Progress Tracking
 
 When a step is completed, it's marked in the plan file:
 
 ```markdown
 ### Step 1: Create data models [COMPLETE]
+```
+
+## Auto-Commit
+
+The `--auto-commit` flag enables automatic commit prompts after each step completes successfully.
+
+### How It Works
+
+1. After a step is marked complete, weld checks for uncommitted changes
+2. If changes exist, you're prompted: `Commit changes from step X.X? (y/n)`
+3. If you answer yes:
+   - All changes are staged (`git add --all`)
+   - A session-based commit is created with transcript
+   - Files are grouped by their originating Claude Code session
+4. If you answer no or press Ctrl+C, the prompt is skipped and execution continues
+
+### Features
+
+- **Non-blocking**: Commit failures don't stop the implement flow
+- **Session-aware**: Uses the same session-based grouping as `weld commit`
+- **Smart detection**: Skips prompt if no changes were made during the step
+- **Dry-run compatible**: Shows what would happen without actually committing
+
+### Example Usage
+
+```bash
+# Enable auto-commit in interactive mode
+weld implement plan.md --auto-commit
+
+# Works in non-interactive mode too
+weld implement plan.md --step 1.1 --auto-commit
 ```
 
 ## Session Management
