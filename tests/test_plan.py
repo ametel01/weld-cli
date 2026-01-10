@@ -37,9 +37,8 @@ class TestGeneratePlanPrompt:
     def test_includes_phase_structure(self) -> None:
         """Prompt includes phase structure description."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "### Phase Structure" in prompt
+        assert "**Phase template:**" in prompt
         assert "## Phase <number>:" in prompt
-        assert "delivers runnable capability" in prompt
 
     def test_includes_phase_validation(self) -> None:
         """Prompt includes phase-level validation section."""
@@ -50,9 +49,8 @@ class TestGeneratePlanPrompt:
     def test_includes_step_structure(self) -> None:
         """Prompt includes step structure description."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "### Step Structure" in prompt
+        assert "**Step template (step numbers restart at 1 for each phase):**" in prompt
         assert "### Step <number>:" in prompt
-        assert "Step numbers restart at 1 within each phase" in prompt
 
     def test_includes_step_sections(self) -> None:
         """Prompt includes required step sections."""
@@ -76,23 +74,23 @@ class TestGeneratePlanPrompt:
         prompt = generate_plan_prompt("content", "spec.md")
         # Phase 2 should have Step 1, not Step 3
         assert "## Phase 2:" in prompt
-        # Verify the note about step numbering is present
-        assert "Step numbering restarts at 1 for each phase" in prompt
+        # Phase 2 has a complete Step 1 example
+        assert "### Step 1: Create user service" in prompt
 
     def test_includes_guidelines(self) -> None:
         """Prompt includes guidelines section."""
         prompt = generate_plan_prompt("content", "spec.md")
         assert "## Guidelines" in prompt
         assert "Logical milestones" in prompt
-        assert "Completable/testable" in prompt
+        assert "completable and testable" in prompt
         assert "Phase Validation" in prompt
 
     def test_includes_step_guidelines(self) -> None:
         """Prompt includes step guidelines in Guidelines section."""
         prompt = generate_plan_prompt("content", "spec.md")
         assert "- Steps:" in prompt
-        assert "Restart at 1 per phase" in prompt
-        assert "Atomic, verifiable" in prompt
+        assert "restart at 1 for each phase" in prompt
+        assert "atomic and independently verifiable" in prompt
 
     def test_spec_appears_in_specification_section(self) -> None:
         """Specification content appears under Specification header."""
@@ -132,7 +130,7 @@ This is a detailed specification.
         prompt = generate_plan_prompt("content", "spec.md")
         assert "## Output Format" in prompt
         assert "phased implementation plan" in prompt
-        assert "following these rules" in prompt
+        assert "using EXACTLY this structure" in prompt
 
 
 @pytest.mark.unit

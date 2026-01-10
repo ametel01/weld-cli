@@ -92,30 +92,31 @@ patterns in the codebase.
 
 ## Output Format
 
-Create a phased implementation plan following these rules:
+Create a phased implementation plan using EXACTLY this structure.
 
-### Phase Structure
+**Required sections for every step (use these exact headings, do not rename or omit):**
+- `#### Goal` - What this step accomplishes
+- `#### Files` - Specific files to create or modify
+- `#### Validation` - Bash command to verify the step works
+- `#### Failure modes` - What could go wrong and how to detect it
 
-Divide into discrete phases. Each builds on previous, delivers runnable capability:
+**Phase template:**
 
 ## Phase <number>: <Title>
 
-Brief description of what this phase accomplishes and its prerequisites.
+Brief description of what this phase accomplishes.
 
 ### Phase Validation
 ```bash
-# Command(s) to verify the entire phase is complete and working
+# Command(s) to verify the entire phase is complete
 ```
 
-### Step Structure
-
-Within each phase, break down the work into discrete, incremental steps. Each step must be
-atomic and verifiable. Step numbers restart at 1 within each phase. Use this exact format:
+**Step template (step numbers restart at 1 for each phase):**
 
 ### Step <number>: <Title>
 
 #### Goal
-Brief description of what this step accomplishes.
+What this step accomplishes.
 
 #### Files
 - `path/to/file.py` - What changes to make
@@ -132,7 +133,7 @@ Brief description of what this step accomplishes.
 
 ## Example
 
-Here is a brief example showing the structure (your plan should be more detailed):
+Here is a complete example showing the required structure:
 
 ## Phase 1: Data Models
 
@@ -188,19 +189,32 @@ Implement the business logic using the data models from Phase 1.
 pytest tests/test_core.py -v
 ```
 
-### Step 1: Implement user service
+### Step 1: Create user service
 
-(Note: Step numbering restarts at 1 for each phase)
+#### Goal
+Implement UserService with CRUD operations using the User model.
 
-...
+#### Files
+- `src/services/user_service.py` - Create UserService class
+
+#### Validation
+```bash
+pytest tests/test_user_service.py -v
+```
+
+#### Failure modes
+- Import errors if User model path incorrect
+- Method signature mismatches with expected interface
 
 ---
 
 ## Guidelines
 
-- Phases: Logical milestones, numbered from 1. Completable/testable. Include Phase Validation.
-- Steps: Restart at 1 per phase. Atomic, verifiable. Reference files/functions/lines.
-- Dependencies: List inputs/outputs per step. Order by prerequisite.
+- Phases: Logical milestones, numbered from 1. Each phase completable and testable.
+  Always include Phase Validation.
+- Steps: Numbers restart at 1 for each phase. Each step atomic and independently verifiable.
+  Reference specific files and line numbers.
+- Dependencies: List inputs and outputs per step. Order by prerequisite.
 """
 
 

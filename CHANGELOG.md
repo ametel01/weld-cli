@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `weld plan` now produces more consistent output following `docs/reference/plan-format.md`
+  - Clearer template structure reduces Claude deviations from required format
+  - Complete Phase 2 example ensures all phases get proper Goal/Files/Validation/Failure modes sections
+
 ## [0.7.0] - 2026-01-11
 
 ### Added
