@@ -146,8 +146,7 @@ class TestPlanCommand:
         # Verify Phase/Step structure is in output
         assert "## Phase <number>:" in result.stdout
         assert "### Step <number>:" in result.stdout
-        assert "**Phase guidelines:**" in result.stdout
-        assert "**Step guidelines:**" in result.stdout
+        assert "## Guidelines" in result.stdout
         # Verify concrete example is included
         assert "## Example" in result.stdout
         assert "## Phase 1: Data Models" in result.stdout

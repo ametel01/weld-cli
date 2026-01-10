@@ -64,24 +64,39 @@ patterns in the codebase.
 
 ---
 
-## Planning Principles
+## Planning Rules
 
-Planning is the highest-leverage activity. A good plan:
-- Lists exact steps
-- References concrete files and snippets
-- Specifies validation after each change
-- Makes failure modes obvious
+1. **Monotonic phases**: Phases ordered by dependency. No forward references.
+   Later phases never require artifacts not built earlier.
 
-A solid plan dramatically constrains agent behavior.
+2. **Discrete steps**: Single clear outcome per step, independently verifiable.
+
+3. **Artifact-driven**: Every step produces concrete artifact (code, interface,
+   schema, config, test). Forbid vague actions ("work on", "improve", "handle").
+
+4. **Explicit dependencies**: Each step lists inputs and outputs.
+
+5. **Vertical slices**: Each phase delivers end-to-end capability.
+   Avoid "all infra first, all logic later". System runnable early.
+
+6. **Invariants first**: Establish data models, state machines, invariants before features.
+
+7. **Test parallelism**: Every functional step has paired validation.
+
+8. **Rollback safety**: System builds and runs after each phase. Each phase shippable.
+
+9. **Bounded scope**: Phase defines explicit "in" and "out". Clear completion criteria.
+
+10. **Execution ready**: Imperative language ("Create", "Add", "Implement").
+    Each step maps to concrete code change. No research-only placeholders.
 
 ## Output Format
 
-Create a phased implementation plan. The plan MUST follow this exact structure:
+Create a phased implementation plan following these rules:
 
 ### Phase Structure
 
-Divide the implementation into discrete, incremental phases. Each phase builds on the previous
-one and represents a logical milestone. Use this exact format for phase headers:
+Divide into discrete phases. Each builds on previous, delivers runnable capability:
 
 ## Phase <number>: <Title>
 
@@ -183,20 +198,9 @@ pytest tests/test_core.py -v
 
 ## Guidelines
 
-**Phase guidelines:**
-- Each phase should be a logical milestone (e.g., "Phase 1: Data Models", "Phase 2: Core Logic")
-- Phases are incremental - each builds on the foundation of previous phases
-- A phase should be completable and testable before moving to the next
-- Include a Phase Validation section with commands to verify the entire phase works
-- Number phases sequentially starting from 1
-
-**Step guidelines:**
-- Step numbers restart at 1 within each new phase
-- Each step should be independently verifiable
-- Steps should be atomic and focused
-- Order steps by dependency (do prerequisites first)
-- Reference specific files, functions, and line numbers where possible
-- Include concrete validation commands for each step
+- Phases: Logical milestones, numbered from 1. Completable/testable. Include Phase Validation.
+- Steps: Restart at 1 per phase. Atomic, verifiable. Reference files/functions/lines.
+- Dependencies: List inputs/outputs per step. Order by prerequisite.
 """
 
 
