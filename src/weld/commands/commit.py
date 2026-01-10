@@ -10,6 +10,7 @@ import typer
 
 from ..config import WeldConfig, load_config
 from ..core import get_weld_dir, log_command
+from ..models.session import TrackedSession
 from ..output import OutputContext, get_output_context
 from ..services import (
     GitError,
@@ -515,6 +516,7 @@ def _commit_with_fallback_transcript(
     config: WeldConfig,
     repo_root: Path,
     weld_dir: Path,
+    registry: SessionRegistry,
     skip_transcript: bool,
     skip_changelog: bool,
     quiet: bool,
@@ -533,15 +535,46 @@ def _commit_with_fallback_transcript(
         config: Weld configuration
         repo_root: Repository root path
         weld_dir: .weld directory path
+        registry: Session registry for finding matching sessions
         skip_transcript: Whether to skip transcript upload
         skip_changelog: Whether to skip changelog update
         quiet: Whether to suppress streaming output
         no_split: Whether to force single commit
         changelog_unreleased: Current changelog unreleased section content
     """
-    # Detect most recent session for transcript (before committing)
-    most_recent_session = detect_current_session(repo_root)
-    session_id = get_session_id(most_recent_session) if most_recent_session else None
+    # Find ALL sessions that contributed to the staged files
+    # This allows us to attach multiple transcripts (e.g., implement + review)
+    # to the same commit for full context
+    matching_sessions: list[tuple[TrackedSession, int]] = []
+
+    for session in registry.sessions.values():
+        matched_files = 0
+        for activity in session.activities:
+            for f in activity.files_created + activity.files_modified:
+                if f in staged_files:
+                    matched_files += 1
+
+        if matched_files > 0:
+            matching_sessions.append((session, matched_files))
+
+    # Sort by number of matches (highest first) for better display
+    matching_sessions.sort(key=lambda x: x[1], reverse=True)
+
+    if matching_sessions:
+        ctx.console.print("[dim]Found sessions matching staged files:[/dim]")
+        for session, count in matching_sessions:
+            # Determine session type from activities
+            commands = {activity.command for activity in session.activities}
+            cmd_label = ", ".join(sorted(commands))
+            ctx.console.print(
+                f"[dim]  - {session.session_id[:8]} ({cmd_label}): "
+                f"{count}/{len(staged_files)} files[/dim]"
+            )
+    else:
+        ctx.console.print(
+            "[dim]No tracked sessions match staged files, "
+            "will use most recent session if available[/dim]"
+        )
 
     # Generate commit groups using Claude
     diff = get_diff(staged=True, cwd=repo_root)
@@ -583,7 +616,7 @@ def _commit_with_fallback_transcript(
     unstage_all(cwd=repo_root)
 
     created_commits: list[str] = []
-    last_gist_url = None
+    all_gist_urls: list[str] = []
 
     for i, group in enumerate(commit_groups):
         is_last = i == len(commit_groups) - 1
@@ -604,26 +637,83 @@ def _commit_with_fallback_transcript(
             else:
                 ctx.console.print("[yellow]Could not update CHANGELOG.md[/yellow]")
 
-        # Attach transcript to LAST commit only
-        if is_last and not skip_transcript and most_recent_session and config.transcripts.enabled:
-            ctx.console.print("[cyan]Uploading transcript...[/cyan]")
-            try:
-                transcript = render_transcript(most_recent_session, config.project.name)
-                result = upload_gist(
-                    content=transcript,
-                    filename=generate_transcript_filename(config.project.name, session_id or ""),
-                    description=generate_gist_description(
-                        config.project.name, commit_msg.split("\n")[0]
-                    ),
-                    public=config.transcripts.visibility == "public",
-                    cwd=repo_root,
+        # Attach transcripts to LAST commit only
+        # Upload one gist per matching session (e.g., implement + review)
+        if is_last and not skip_transcript and config.transcripts.enabled:
+            gist_urls: list[str] = []
+
+            # Upload transcripts for all matching sessions
+            if matching_sessions:
+                ctx.console.print(
+                    f"[cyan]Uploading {len(matching_sessions)} transcript(s)...[/cyan]"
                 )
-                last_gist_url = result.gist_url
-                commit_msg = f"{commit_msg}\n\n{config.git.commit_trailer_key}: {last_gist_url}"
-            except GistError as e:
-                ctx.console.print(f"[yellow]Transcript upload skipped: {e}[/yellow]")
-            except FileNotFoundError:
-                ctx.console.print("[yellow]Session file not found, skipping transcript[/yellow]")
+                for session, _count in matching_sessions:
+                    session_file_path = Path(session.session_file)
+                    if not session_file_path.exists():
+                        ctx.console.print(
+                            f"[yellow]Session file not found for {session.session_id[:8]}, "
+                            "skipping transcript[/yellow]"
+                        )
+                        continue
+
+                    try:
+                        # Get command label for gist filename/description
+                        commands = {activity.command for activity in session.activities}
+                        cmd_label = "-".join(sorted(commands))
+
+                        transcript = render_transcript(session_file_path, config.project.name)
+                        first_line = commit_msg.split("\n")[0]
+                        result = upload_gist(
+                            content=transcript,
+                            filename=generate_transcript_filename(
+                                config.project.name,
+                                f"{session.session_id}-{cmd_label}",
+                            ),
+                            description=generate_gist_description(
+                                config.project.name,
+                                f"{first_line} ({cmd_label})",
+                            ),
+                            public=config.transcripts.visibility == "public",
+                            cwd=repo_root,
+                        )
+                        gist_urls.append(result.gist_url)
+                        ctx.console.print(
+                            f"[dim]  ✓ {session.session_id[:8]} ({cmd_label}): "
+                            f"{result.gist_url}[/dim]"
+                        )
+                    except GistError as e:
+                        ctx.console.print(
+                            f"[yellow]Transcript upload failed for {session.session_id[:8]}: "
+                            f"{e}[/yellow]"
+                        )
+            else:
+                # Fallback: use most recent session if no matches
+                most_recent_session = detect_current_session(repo_root)
+                if most_recent_session:
+                    ctx.console.print(
+                        "[cyan]Uploading transcript from most recent session...[/cyan]"
+                    )
+                    try:
+                        session_id = get_session_id(most_recent_session)
+                        transcript = render_transcript(most_recent_session, config.project.name)
+                        result = upload_gist(
+                            content=transcript,
+                            filename=generate_transcript_filename(config.project.name, session_id),
+                            description=generate_gist_description(
+                                config.project.name, commit_msg.split("\n")[0]
+                            ),
+                            public=config.transcripts.visibility == "public",
+                            cwd=repo_root,
+                        )
+                        gist_urls.append(result.gist_url)
+                    except (GistError, FileNotFoundError) as e:
+                        ctx.console.print(f"[yellow]Transcript upload skipped: {e}[/yellow]")
+
+            # Add all gist URLs as trailers
+            if gist_urls:
+                trailers = "\n".join(f"{config.git.commit_trailer_key}: {url}" for url in gist_urls)
+                commit_msg = f"{commit_msg}\n\n{trailers}"
+                all_gist_urls.extend(gist_urls)
 
         # Create commit
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -648,8 +738,13 @@ def _commit_with_fallback_transcript(
         log_command(weld_dir, "commit", first_line, sha)
 
     ctx.console.print(f"\n[green]✓ Created {len(created_commits)} commit(s)[/green]")
-    if last_gist_url:
-        ctx.console.print(f"  Transcript: {last_gist_url}")
+    if all_gist_urls:
+        if len(all_gist_urls) == 1:
+            ctx.console.print(f"  Transcript: {all_gist_urls[0]}")
+        else:
+            ctx.console.print(f"  Transcripts ({len(all_gist_urls)}):")
+            for url in all_gist_urls:
+                ctx.console.print(f"    - {url}")
 
 
 def commit(
@@ -813,6 +908,7 @@ def commit(
             config=config,
             repo_root=repo_root,
             weld_dir=weld_dir,
+            registry=registry,
             skip_transcript=skip_transcript,
             skip_changelog=skip_changelog,
             quiet=quiet,

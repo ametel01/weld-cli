@@ -448,7 +448,8 @@ def _prompt_and_commit_step(
     config: WeldConfig,
     repo_root: Path,
     weld_dir: Path,
-    registry: SessionRegistry,
+    registry: SessionRegistry | None,
+    session_file: Path | None = None,
 ) -> None:
     """Prompt user to commit changes from completed step.
 
@@ -461,7 +462,8 @@ def _prompt_and_commit_step(
         config: Weld configuration
         repo_root: Repository root path
         weld_dir: .weld directory path
-        registry: Session registry for session-based commits
+        registry: Session registry for session-based commits (None if auto-commit disabled)
+        session_file: Optional session file to use for transcript (if None, auto-detects)
 
     Implementation notes:
     - Skips prompt if no changes detected
@@ -469,6 +471,11 @@ def _prompt_and_commit_step(
     - Continues on errors (doesn't abort implement flow)
     - Respects dry-run mode
     """
+    # Guard: registry is required for commit functionality
+    if registry is None:
+        ctx.console.print("[yellow]Auto-commit requires registry (should not reach here)[/yellow]")
+        return
+
     # Check for uncommitted changes
     try:
         status = get_status_porcelain(cwd=repo_root)
@@ -544,7 +551,10 @@ def _prompt_and_commit_step(
     # Ensure current session is recorded in registry for transcript upload
     # This is necessary because track_session_activity() only records at the end,
     # but we need the session in the registry now for _commit_by_sessions() to work
-    session_file = detect_current_session(repo_root)
+    # Use provided session_file (captured before review ran) to avoid using review session,
+    # or detect current session if not provided (fallback for backwards compatibility)
+    if session_file is None:
+        session_file = detect_current_session(repo_root)
     if session_file:
         try:
             session_id = get_session_id(session_file)
@@ -790,6 +800,15 @@ When complete, confirm the implementation is done.
 
     ctx.console.print(f"[green]✓ Step {step.number} marked complete[/green]")
 
+    # Capture current session before review (review might create new session)
+    # This ensures we use the implementation session for transcripts, not the review session
+    current_session = detect_current_session(repo_root)
+    if current_session is None and auto_commit and registry is not None:
+        ctx.console.print(
+            "[yellow]Warning: Could not detect Claude session for transcript generation[/yellow]"
+        )
+        ctx.console.print("[dim]Commit will proceed without session-specific transcript[/dim]")
+
     # Prompt for review (always available, opt-in)
     _prompt_and_review_step(
         ctx=ctx,
@@ -808,6 +827,7 @@ When complete, confirm the implementation is done.
             repo_root=repo_root,
             weld_dir=weld_dir,
             registry=registry,
+            session_file=current_session,
         )
 
     return True
