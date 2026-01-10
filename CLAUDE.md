@@ -196,6 +196,8 @@ If `.gitignore` already contains `.weld/` patterns, `weld init` skips updating i
 - Use imperative mood ("Add feature" not "Added feature")
 - Keep commits small and focused
 - Update CHANGELOG.md before committing (use Keep a Changelog format with [Unreleased] section)
+  - Only include user-facing changes (new features, bug fixes, breaking changes)
+  - Exclude: test refactors, internal code changes, CI/build updates, documentation typos
 
 ## Code Quality
 
