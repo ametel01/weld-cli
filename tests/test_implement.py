@@ -386,6 +386,125 @@ Do this.
         assert result.exit_code == 21
         assert "failed to mark phase complete" in result.output.lower()
 
+    @pytest.mark.cli
+    @patch("weld.commands.implement.Confirm")
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_error_recovery_with_changes_accepted(
+        self,
+        mock_claude: MagicMock,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """When Claude fails but files changed, prompts user and marks complete if accepted."""
+        from weld.services import ClaudeError
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # Mock Claude to create a file then fail
+        def create_file_then_fail(*args, **kwargs):
+            test_file = initialized_weld / "new_file.py"
+            test_file.write_text("# New file\n")
+            raise ClaudeError("Claude crashed internally")
+
+        mock_claude.side_effect = create_file_then_fail
+        # User confirms to mark complete, but declines review prompts
+        mock_confirm.ask.side_effect = [True, False, False]  # complete=yes, review=no
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+        # Should succeed because user confirmed
+        assert result.exit_code == 0
+        # Should show warning about changes and prompt
+        assert "files were modified" in result.output.lower()
+        # Verify Confirm.ask was called with correct prompts
+        assert mock_confirm.ask.call_count >= 1
+        first_call_args = mock_confirm.ask.call_args_list[0][0][0]
+        assert "work appears complete" in first_call_args.lower()
+        # Step should be marked complete
+        updated = plan_file.read_text()
+        assert "### Step 1.1: Do something **COMPLETE**" in updated
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.Confirm")
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_error_recovery_with_changes_declined(
+        self,
+        mock_claude: MagicMock,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """When Claude fails but files changed, prompts user; doesn't mark complete if declined."""
+        from weld.services import ClaudeError
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # Mock Claude to create a file then fail
+        def create_file_then_fail(*args, **kwargs):
+            test_file = initialized_weld / "new_file.py"
+            test_file.write_text("# New file\n")
+            raise ClaudeError("Claude crashed internally")
+
+        mock_claude.side_effect = create_file_then_fail
+        # User declines to mark complete
+        mock_confirm.ask.return_value = False
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+        # Should fail because user declined
+        assert result.exit_code == 21
+        # Should prompt about changes
+        assert "files were modified" in result.output.lower()
+        # Step should NOT be marked complete
+        updated = plan_file.read_text()
+        assert "### Step 1.1: Do something **COMPLETE**" not in updated
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.Confirm")
+    @patch("weld.commands.implement.run_claude")
+    def test_implement_error_recovery_no_changes(
+        self,
+        mock_claude: MagicMock,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """When Claude fails with no file changes, doesn't prompt and returns error."""
+        from weld.services import ClaudeError
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # Mock Claude to fail without creating files
+        mock_claude.side_effect = ClaudeError("Connection timeout")
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+        # Should fail
+        assert result.exit_code == 21
+        assert "claude failed" in result.output.lower()
+        # Should NOT prompt user (no changes detected)
+        assert "work appears complete" not in result.output.lower()
+        mock_confirm.ask.assert_not_called()
+        # Step should NOT be marked complete
+        updated = plan_file.read_text()
+        assert "### Step 1.1: Do something **COMPLETE**" not in updated
+
 
 class TestFindFirstIncompleteIndex:
     """Test _find_first_incomplete_index helper function."""

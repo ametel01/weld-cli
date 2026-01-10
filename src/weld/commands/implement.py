@@ -58,6 +58,24 @@ def _handle_interrupt(signum: int, frame: FrameType | None) -> None:
     raise GracefulExit()
 
 
+def _has_file_changes(repo_root: Path, baseline_status: str) -> bool:
+    """Check if any files have changed since baseline status.
+
+    Args:
+        repo_root: Repository root path
+        baseline_status: Git status output from before execution
+
+    Returns:
+        True if files were created/modified/deleted, False otherwise
+    """
+    try:
+        current_status = get_status_porcelain(cwd=repo_root)
+        return current_status != baseline_status
+    except GitError:
+        # If we can't get status, assume changes happened to be safe
+        return True
+
+
 def implement(
     plan_file: Annotated[
         Path,
@@ -102,6 +120,13 @@ def implement(
         typer.Option(
             "--auto-commit",
             help="Prompt to commit changes after each step completes",
+        ),
+    ] = False,
+    no_review: Annotated[
+        bool,
+        typer.Option(
+            "--no-review",
+            help="Skip post-step review prompt (workaround for Claude CLI bugs)",
         ),
     ] = False,
 ) -> None:
@@ -196,6 +221,7 @@ def implement(
                 quiet=quiet,
                 timeout=effective_timeout,
                 auto_commit=auto_commit,
+                no_review=no_review,
             )
             raise typer.Exit(exit_code)
 
@@ -208,6 +234,7 @@ def implement(
             quiet=quiet,
             timeout=effective_timeout,
             auto_commit=auto_commit,
+            no_review=no_review,
         )
         raise typer.Exit(exit_code)
 
@@ -221,6 +248,7 @@ def _implement_interactive(
     quiet: bool,
     timeout: int,
     auto_commit: bool = False,
+    no_review: bool = False,
 ) -> int:
     """Run interactive implementation loop with menu.
 
@@ -291,6 +319,7 @@ def _implement_interactive(
                     quiet=quiet,
                     timeout=timeout,
                     auto_commit=auto_commit,
+                    no_review=no_review,
                     registry=registry,
                 )
                 if not success:
@@ -309,6 +338,7 @@ def _implement_interactive(
                     quiet=quiet,
                     timeout=timeout,
                     auto_commit=auto_commit,
+                    no_review=no_review,
                     registry=registry,
                 )
                 if not success:
@@ -334,6 +364,7 @@ def _implement_non_interactive(
     quiet: bool,
     timeout: int,
     auto_commit: bool = False,
+    no_review: bool = False,
 ) -> int:
     """Non-interactive implementation of specific step or phase.
 
@@ -364,6 +395,7 @@ def _implement_non_interactive(
             quiet=quiet,
             timeout=timeout,
             auto_commit=auto_commit,
+            no_review=no_review,
             registry=registry,
         )
         return 0 if success else 21
@@ -753,11 +785,15 @@ def _execute_step(
     quiet: bool,
     timeout: int,
     auto_commit: bool = False,
+    no_review: bool = False,
     registry: SessionRegistry | None = None,
 ) -> bool:
     """Execute Claude to implement a single step.
 
     Marks step complete on success. Returns True if succeeded.
+
+    Smart error recovery: If Claude crashes after making file changes,
+    prompts user to mark step complete anyway.
     """
     prompt = f"""## Implement Step {step.number}: {step.title}
 
@@ -767,16 +803,39 @@ def _execute_step(
 
 ## Instructions
 
-Implement the above specification. After implementation:
-1. Verify changes work by running any validation commands shown
-2. Keep changes focused on this specific step only
-3. Do not implement future steps or phases
+**IMPORTANT - Check if already complete:**
+Before implementing, examine the codebase to determine if this step's requirements
+are already satisfied.
+
+If you determine the step is already complete:
+1. Check git status (`git status --porcelain`)
+2. If worktree is clean (no changes):
+   - Simply confirm the step is complete - DO NOT run tests or validation commands
+   - State: "Step already complete, no changes needed"
+3. If worktree is dirty (uncommitted changes):
+   - Review the changes to ensure they satisfy the step requirements
+   - If satisfied, state: "Step requirements met by uncommitted changes"
+   - DO NOT run tests again - assume changes are valid
+
+If the step is NOT complete:
+1. Implement the specification
+2. Verify changes work by running any validation commands shown
+3. Keep changes focused on this specific step only
+4. Do not implement future steps or phases
 
 When complete, confirm the implementation is done.
 """
 
     ctx.console.print(f"\n[bold]Implementing Step {step.number}: {step.title}[/bold]\n")
 
+    # Capture baseline state for error recovery
+    try:
+        baseline_status = get_status_porcelain(cwd=repo_root)
+    except GitError:
+        baseline_status = ""
+
+    # Execute Claude
+    claude_succeeded = True
     try:
         run_claude(
             prompt=prompt,
@@ -789,48 +848,73 @@ When complete, confirm the implementation is done.
         )
     except ClaudeError as e:
         ctx.console.print(f"\n[red]Error: Claude failed: {e}[/red]")
+        claude_succeeded = False
+
+        # Check if work was done despite error
+        if _has_file_changes(repo_root, baseline_status):
+            ctx.console.print("\n[yellow]Files were modified before Claude crashed.[/yellow]")
+            try:
+                should_mark_complete = Confirm.ask(
+                    "Work appears complete. Mark step as done?",
+                    default=True,
+                )
+            except (KeyboardInterrupt, EOFError):
+                ctx.console.print("\n[yellow]Skipping step completion[/yellow]")
+                return False
+
+            if not should_mark_complete:
+                return False
+            # User confirmed - proceed to mark complete
+            claude_succeeded = True
+        else:
+            # No changes detected - genuine failure
+            return False
+
+    # Mark step complete (either Claude succeeded or user confirmed recovery)
+    if claude_succeeded:
+        try:
+            mark_step_complete(plan, step)
+        except ValueError as e:
+            ctx.error(f"Failed to mark step complete: {e}")
+            return False
+
+        ctx.console.print(f"[green]✓ Step {step.number} marked complete[/green]")
+
+        # Capture current session before review (review might create new session)
+        # This ensures we use the implementation session for transcripts, not the review session
+        current_session = detect_current_session(repo_root)
+        if current_session is None and auto_commit and registry is not None:
+            ctx.console.print(
+                "[yellow]Warning: Could not detect Claude session for transcripts[/yellow]"
+            )
+            ctx.console.print("[dim]Commit will proceed without session transcript[/dim]")
+
+        # Prompt for review (always available, opt-in, unless --no-review)
+        if not no_review:
+            _prompt_and_review_step(
+                ctx=ctx,
+                step=step,
+                config=config,
+                repo_root=repo_root,
+                weld_dir=weld_dir,
+            )
+
+        # Auto-commit if enabled
+        if auto_commit and registry is not None:
+            _prompt_and_commit_step(
+                ctx=ctx,
+                step=step,
+                config=config,
+                repo_root=repo_root,
+                weld_dir=weld_dir,
+                registry=registry,
+                session_file=current_session,
+            )
+
+        return True
+    else:
+        # Step not marked complete - either no changes or user declined
         return False
-
-    # Mark step complete immediately (atomic write)
-    try:
-        mark_step_complete(plan, step)
-    except ValueError as e:
-        ctx.error(f"Failed to mark step complete: {e}")
-        return False
-
-    ctx.console.print(f"[green]✓ Step {step.number} marked complete[/green]")
-
-    # Capture current session before review (review might create new session)
-    # This ensures we use the implementation session for transcripts, not the review session
-    current_session = detect_current_session(repo_root)
-    if current_session is None and auto_commit and registry is not None:
-        ctx.console.print(
-            "[yellow]Warning: Could not detect Claude session for transcript generation[/yellow]"
-        )
-        ctx.console.print("[dim]Commit will proceed without session-specific transcript[/dim]")
-
-    # Prompt for review (always available, opt-in)
-    _prompt_and_review_step(
-        ctx=ctx,
-        step=step,
-        config=config,
-        repo_root=repo_root,
-        weld_dir=weld_dir,
-    )
-
-    # Auto-commit if enabled
-    if auto_commit and registry is not None:
-        _prompt_and_commit_step(
-            ctx=ctx,
-            step=step,
-            config=config,
-            repo_root=repo_root,
-            weld_dir=weld_dir,
-            registry=registry,
-            session_file=current_session,
-        )
-
-    return True
 
 
 def _execute_phase_steps(
@@ -843,6 +927,7 @@ def _execute_phase_steps(
     quiet: bool,
     timeout: int,
     auto_commit: bool = False,
+    no_review: bool = False,
     registry: SessionRegistry | None = None,
 ) -> bool:
     """Execute all incomplete steps in a phase sequentially.
@@ -870,6 +955,7 @@ def _execute_phase_steps(
             quiet=quiet,
             timeout=timeout,
             auto_commit=auto_commit,
+            no_review=no_review,
             registry=registry,
         )
 
