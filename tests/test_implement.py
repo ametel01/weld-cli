@@ -867,3 +867,1258 @@ Content here.
         assert len(snapshot) < 5000
         # Should log warning about timeout (unless completed on very fast machines)
         assert "timed out" in caplog.text.lower() or len(snapshot) == 5000
+
+
+class TestImplementNonTTY:
+    """Test implement behavior without TTY."""
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.sys")
+    def test_implement_interactive_requires_tty(
+        self,
+        mock_sys: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Interactive mode fails without TTY."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First step
+""")
+        # Mock stdin.isatty to return False (no TTY)
+        mock_sys.stdin.isatty.return_value = False
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 1
+        assert "requires a terminal" in result.output.lower()
+
+
+class TestImplementNotGitRepo:
+    """Test implement behavior outside git repository."""
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.get_repo_root")
+    def test_implement_not_in_git_repo(
+        self,
+        mock_get_repo_root: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Fails with exit code 3 when not in git repository."""
+        from weld.services import GitError
+
+        mock_get_repo_root.side_effect = GitError("Not a git repository")
+
+        plan_file = tmp_path / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First step
+""")
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+        assert result.exit_code == 3
+        assert "not a git repository" in result.output.lower()
+
+
+class TestImplementDryRun:
+    """Test implement dry run modes."""
+
+    @pytest.mark.cli
+    def test_implement_dry_run_phase(self, initialized_weld: Path) -> None:
+        """Dry run shows non-interactive phase mode."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+""")
+        result = runner.invoke(app, ["--dry-run", "implement", str(plan_file), "--phase", "1"])
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.output
+        assert "phase 1" in result.output.lower()
+
+
+class TestBuildMenuDisplay:
+    """Test _build_menu_display helper function."""
+
+    @pytest.mark.unit
+    def test_phase_without_steps(self) -> None:
+        """Phase without steps shows correctly."""
+        from weld.commands.implement import _build_menu_display
+        from weld.core.plan_parser import Phase, Plan
+
+        plan = Plan(path=Path("test.md"))
+        phase = Phase(
+            number=1,
+            title="Standalone Phase",
+            content="Do something standalone",
+            line_number=0,
+            is_complete=False,
+            steps=[],
+        )
+        plan.phases = [phase]
+
+        items = _build_menu_display(plan)
+
+        assert len(items) == 1
+        assert "○ Phase 1: Standalone Phase" in items[0]
+        # Should not have progress indicator when no steps
+        assert "complete]" not in items[0]
+
+    @pytest.mark.unit
+    def test_phase_with_mixed_steps(self) -> None:
+        """Phase with complete and incomplete steps shows progress."""
+        from weld.commands.implement import _build_menu_display
+        from weld.core.plan_parser import Phase, Plan, Step
+
+        plan = Plan(path=Path("test.md"))
+        phase = Phase(
+            number=1,
+            title="Test Phase",
+            content="",
+            line_number=0,
+            is_complete=False,
+        )
+        step1 = Step(number="1.1", title="Done", content="", line_number=1, is_complete=True)
+        step2 = Step(number="1.2", title="Pending", content="", line_number=2, is_complete=False)
+        phase.steps = [step1, step2]
+        plan.phases = [phase]
+
+        items = _build_menu_display(plan)
+
+        assert len(items) == 3
+        assert "[1/2 complete]" in items[0]
+        assert "✓ Step 1.1" in items[1]
+        assert "○ Step 1.2" in items[2]
+
+    @pytest.mark.unit
+    def test_complete_phase_shows_checkmark(self) -> None:
+        """Complete phase shows checkmark."""
+        from weld.commands.implement import _build_menu_display
+        from weld.core.plan_parser import Phase, Plan, Step
+
+        plan = Plan(path=Path("test.md"))
+        phase = Phase(
+            number=1,
+            title="Done Phase",
+            content="",
+            line_number=0,
+            is_complete=True,
+        )
+        step = Step(number="1.1", title="Done", content="", line_number=1, is_complete=True)
+        phase.steps = [step]
+        plan.phases = [phase]
+
+        items = _build_menu_display(plan)
+
+        assert "✓ Phase 1: Done Phase" in items[0]
+
+
+class TestHasFileChanges:
+    """Test _has_file_changes helper function."""
+
+    @pytest.mark.unit
+    def test_detects_changes(self, initialized_weld: Path) -> None:
+        """Detects when files have changed."""
+        from weld.commands.implement import _has_file_changes
+
+        # Get baseline
+        baseline = ""
+
+        # Create a file
+        (initialized_weld / "new_file.txt").write_text("content")
+
+        result = _has_file_changes(initialized_weld, baseline)
+
+        assert result is True
+
+    @pytest.mark.unit
+    def test_no_changes(self, initialized_weld: Path) -> None:
+        """Returns False when no changes."""
+        from weld.commands.implement import _has_file_changes
+        from weld.services import get_status_porcelain
+
+        baseline = get_status_porcelain(cwd=initialized_weld)
+
+        result = _has_file_changes(initialized_weld, baseline)
+
+        assert result is False
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_status_porcelain")
+    def test_git_error_returns_true(self, mock_status: MagicMock) -> None:
+        """Returns True when git status fails (safe default)."""
+        from weld.commands.implement import _has_file_changes
+        from weld.services import GitError
+
+        mock_status.side_effect = GitError("Cannot get status")
+
+        result = _has_file_changes(Path("/fake"), "")
+
+        assert result is True
+
+
+class TestHandleInterrupt:
+    """Test signal handler function."""
+
+    @pytest.mark.unit
+    def test_handle_interrupt_raises_graceful_exit(self) -> None:
+        """Signal handler raises GracefulExit exception."""
+        from weld.commands.implement import GracefulExit, _handle_interrupt
+
+        with pytest.raises(GracefulExit):
+            _handle_interrupt(2, None)
+
+
+class TestInteractiveMode:
+    """Test interactive mode behaviors."""
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.sys")
+    @patch("weld.commands.implement.TerminalMenu")
+    @patch("weld.commands.implement.run_claude")
+    def test_interactive_exit_on_escape(
+        self,
+        mock_claude: MagicMock,
+        mock_menu: MagicMock,
+        mock_sys: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Interactive mode exits cleanly when user presses escape."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First step
+""")
+        mock_sys.stdin.isatty.return_value = True
+
+        # Menu returns None on escape
+        mock_menu_instance = MagicMock()
+        mock_menu_instance.show.return_value = None
+        mock_menu.return_value = mock_menu_instance
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 0
+        assert "paused" in result.output.lower()
+        mock_claude.assert_not_called()
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.sys")
+    @patch("weld.commands.implement.TerminalMenu")
+    @patch("weld.commands.implement.run_claude")
+    def test_interactive_select_complete_step(
+        self,
+        mock_claude: MagicMock,
+        mock_menu: MagicMock,
+        mock_sys: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Interactive mode shows message when selecting already complete step."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First step **COMPLETE**
+
+### Step 1.2: Second step
+""")
+        mock_sys.stdin.isatty.return_value = True
+
+        # First select complete step (index 1), then exit (None)
+        mock_menu_instance = MagicMock()
+        mock_menu_instance.show.side_effect = [1, None]
+        mock_menu.return_value = mock_menu_instance
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 0
+        assert "already complete" in result.output.lower()
+        mock_claude.assert_not_called()
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.sys")
+    @patch("weld.commands.implement.TerminalMenu")
+    @patch("weld.commands.implement.run_claude")
+    def test_interactive_select_complete_phase(
+        self,
+        mock_claude: MagicMock,
+        mock_menu: MagicMock,
+        mock_sys: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Interactive mode shows message when selecting already complete phase."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test **COMPLETE**
+
+### Step 1.1: First step **COMPLETE**
+""")
+        mock_sys.stdin.isatty.return_value = True
+
+        # Select phase header (index 0), then exit (None)
+        mock_menu_instance = MagicMock()
+        mock_menu_instance.show.side_effect = [0, None]
+        mock_menu.return_value = mock_menu_instance
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 0
+        # Can be "already complete" or "already marked complete"
+        assert "complete" in result.output.lower()
+        mock_claude.assert_not_called()
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.signal")
+    @patch("weld.commands.implement.sys")
+    @patch("weld.commands.implement.TerminalMenu")
+    def test_interactive_graceful_exit_on_interrupt(
+        self,
+        mock_menu: MagicMock,
+        mock_sys: MagicMock,
+        mock_signal: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Interactive mode handles GracefulExit from Ctrl+C."""
+        from weld.commands.implement import GracefulExit
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First step
+""")
+        mock_sys.stdin.isatty.return_value = True
+
+        # Menu raises GracefulExit (simulating Ctrl+C)
+        mock_menu_instance = MagicMock()
+        mock_menu_instance.show.side_effect = GracefulExit()
+        mock_menu.return_value = mock_menu_instance
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 0
+        assert "interrupted" in result.output.lower()
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.sys")
+    @patch("weld.commands.implement.TerminalMenu")
+    @patch("weld.commands.implement.run_claude")
+    def test_interactive_select_phase_executes_steps(
+        self,
+        mock_claude: MagicMock,
+        mock_menu: MagicMock,
+        mock_sys: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Selecting phase executes all incomplete steps."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First
+Do first.
+
+### Step 1.2: Second
+Do second.
+""")
+        mock_sys.stdin.isatty.return_value = True
+
+        # Select phase header (index 0), which should execute both steps
+        # After phase completes, all-complete check exits automatically
+        mock_menu_instance = MagicMock()
+        mock_menu_instance.show.return_value = 0  # Select phase header
+        mock_menu.return_value = mock_menu_instance
+
+        mock_claude.return_value = "Done."
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 0
+        assert mock_claude.call_count == 2  # Both steps
+        updated = plan_file.read_text()
+        assert "### Step 1.1: First **COMPLETE**" in updated
+        assert "### Step 1.2: Second **COMPLETE**" in updated
+        assert "## Phase 1: Test **COMPLETE**" in updated
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.sys")
+    @patch("weld.commands.implement.TerminalMenu")
+    @patch("weld.commands.implement.run_claude")
+    def test_interactive_phase_stops_on_failure(
+        self,
+        mock_claude: MagicMock,
+        mock_menu: MagicMock,
+        mock_sys: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Phase execution stops on step failure and shows message."""
+        from weld.services import ClaudeError
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: First
+Do first.
+
+### Step 1.2: Second
+Do second.
+""")
+        mock_sys.stdin.isatty.return_value = True
+
+        # Select phase, first step succeeds, second fails, then exit
+        mock_menu_instance = MagicMock()
+        mock_menu_instance.show.side_effect = [0, None]  # Select phase, then exit
+        mock_menu.return_value = mock_menu_instance
+
+        mock_claude.side_effect = [None, ClaudeError("Failed")]
+
+        result = runner.invoke(app, ["implement", str(plan_file)])
+
+        assert result.exit_code == 0
+        assert "stopped" in result.output.lower() or "paused" in result.output.lower()
+
+
+class TestPromptAndCommitStep:
+    """Test _prompt_and_commit_step function."""
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_status_porcelain")
+    def test_no_registry_returns_early(
+        self,
+        mock_status: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Returns early if registry is None."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=None,
+        )
+
+        # Should return early without checking status
+        mock_status.assert_not_called()
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_status_porcelain")
+    def test_git_status_error_returns_early(
+        self,
+        mock_status: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Returns early if git status fails."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services import GitError
+        from weld.services.session_tracker import SessionRegistry
+
+        mock_status.side_effect = GitError("Status failed")
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+        # Should handle error gracefully (no crash)
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_status_porcelain")
+    def test_no_changes_returns_early(
+        self,
+        mock_status: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Returns early if no uncommitted changes."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services.session_tracker import SessionRegistry
+
+        mock_status.return_value = ""  # No changes
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+        # Should return early (no crash)
+
+    @pytest.mark.unit
+    def test_dry_run_shows_intent(self, initialized_weld: Path) -> None:
+        """Dry run shows what would happen."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create a change to detect
+        (initialized_weld / "new.txt").write_text("content")
+
+        ctx = OutputContext(console=Console(), dry_run=True)
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        # Should not crash in dry run mode
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.Confirm")
+    def test_user_declines_commit(
+        self,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Returns early if user declines commit."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create a change
+        (initialized_weld / "new.txt").write_text("content")
+
+        mock_confirm.ask.return_value = False
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+        # Should return without error
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.Confirm")
+    def test_keyboard_interrupt_skips_commit(
+        self,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """KeyboardInterrupt during prompt skips commit gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create a change
+        (initialized_weld / "new.txt").write_text("content")
+
+        mock_confirm.ask.side_effect = KeyboardInterrupt()
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        # Should not raise, just skip
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.Confirm")
+    def test_eof_error_skips_commit(
+        self,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """EOFError during prompt skips commit gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create a change
+        (initialized_weld / "new.txt").write_text("content")
+
+        mock_confirm.ask.side_effect = EOFError()
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        # Should not raise, just skip
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.stage_all")
+    @patch("weld.commands.implement.Confirm")
+    def test_stage_all_error_continues(
+        self,
+        mock_confirm: MagicMock,
+        mock_stage: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """GitError during staging continues gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services import GitError
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create a change
+        (initialized_weld / "new.txt").write_text("content")
+
+        mock_confirm.ask.return_value = True
+        mock_stage.side_effect = GitError("Stage failed")
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        # Should not raise
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_staged_files")
+    @patch("weld.commands.implement.stage_all")
+    @patch("weld.commands.implement.Confirm")
+    def test_get_staged_files_error_continues(
+        self,
+        mock_confirm: MagicMock,
+        mock_stage: MagicMock,
+        mock_get_staged: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """GitError getting staged files continues gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services import GitError
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create a change
+        (initialized_weld / "new.txt").write_text("content")
+
+        mock_confirm.ask.return_value = True
+        mock_stage.return_value = None
+        mock_get_staged.side_effect = GitError("Cannot get staged")
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        # Should not raise
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.run_git")
+    @patch("weld.commands.implement.get_staged_files")
+    @patch("weld.commands.implement.stage_all")
+    @patch("weld.commands.implement.Confirm")
+    def test_excludes_weld_files(
+        self,
+        mock_confirm: MagicMock,
+        mock_stage: MagicMock,
+        mock_get_staged: MagicMock,
+        mock_run_git: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Excludes .weld/ files from commit (except config.toml)."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_commit_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create changes including .weld files
+        (initialized_weld / "new.txt").write_text("content")
+
+        mock_confirm.ask.return_value = True
+        mock_stage.return_value = None
+        # First call returns files with .weld metadata, second returns filtered
+        mock_get_staged.side_effect = [
+            ["new.txt", ".weld/sessions/registry.jsonl"],
+            ["new.txt"],
+        ]
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+        registry = SessionRegistry(weld_dir / "sessions" / "registry.jsonl")
+
+        _prompt_and_commit_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+            registry=registry,
+        )
+
+        # Should have called run_git to unstage .weld file
+        mock_run_git.assert_called()
+
+
+class TestPromptAndReviewStep:
+    """Test _prompt_and_review_step function."""
+
+    @pytest.mark.unit
+    def test_dry_run_shows_intent(self, initialized_weld: Path) -> None:
+        """Dry run shows what would happen."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        ctx = OutputContext(console=Console(), dry_run=True)
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not crash
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.Confirm")
+    def test_user_declines_review(
+        self,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Returns early if user declines review."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        mock_confirm.ask.return_value = False
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+        # Confirm.ask should be called once (for review prompt)
+        assert mock_confirm.ask.call_count == 1
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.Confirm")
+    def test_keyboard_interrupt_first_prompt(
+        self,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """KeyboardInterrupt on first prompt skips gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        mock_confirm.ask.side_effect = KeyboardInterrupt()
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not raise
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.Confirm")
+    def test_keyboard_interrupt_second_prompt(
+        self,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """KeyboardInterrupt on apply prompt skips gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        # First prompt yes, second raises
+        mock_confirm.ask.side_effect = [True, KeyboardInterrupt()]
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not raise
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_diff")
+    @patch("weld.commands.implement.Confirm")
+    def test_git_diff_error_returns_early(
+        self,
+        mock_confirm: MagicMock,
+        mock_diff: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """GitError getting diff returns early."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services import GitError
+
+        mock_confirm.ask.side_effect = [True, False]  # review=yes, apply=no
+        mock_diff.side_effect = GitError("Diff failed")
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not raise
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.get_diff")
+    @patch("weld.commands.implement.Confirm")
+    def test_empty_diff_returns_early(
+        self,
+        mock_confirm: MagicMock,
+        mock_diff: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Empty diff returns early."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        mock_confirm.ask.side_effect = [True, False]  # review=yes, apply=no
+        mock_diff.return_value = ""
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not raise
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.run_claude")
+    @patch("weld.commands.implement.get_diff")
+    @patch("weld.commands.implement.Confirm")
+    def test_review_mode_runs_claude(
+        self,
+        mock_confirm: MagicMock,
+        mock_diff: MagicMock,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Review mode runs Claude and saves findings."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        mock_confirm.ask.side_effect = [True, False]  # review=yes, apply=no
+        mock_diff.return_value = "diff content here"
+        mock_claude.return_value = "# Review Findings\n\nAll looks good."
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+        mock_claude.assert_called_once()
+        # Verify skip_permissions=False for review mode
+        assert mock_claude.call_args.kwargs.get("skip_permissions") is False
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.run_claude")
+    @patch("weld.commands.implement.get_diff")
+    @patch("weld.commands.implement.Confirm")
+    def test_apply_mode_runs_claude_with_permissions(
+        self,
+        mock_confirm: MagicMock,
+        mock_diff: MagicMock,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Apply mode runs Claude with skip_permissions=True."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        mock_confirm.ask.side_effect = [True, True]  # review=yes, apply=yes
+        mock_diff.return_value = "diff content here"
+        mock_claude.return_value = "# Fixes Applied\n\nFixed issues."
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+        mock_claude.assert_called_once()
+        # Verify skip_permissions=True for apply mode
+        assert mock_claude.call_args.kwargs.get("skip_permissions") is True
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.run_claude")
+    @patch("weld.commands.implement.get_diff")
+    @patch("weld.commands.implement.Confirm")
+    def test_claude_error_continues(
+        self,
+        mock_confirm: MagicMock,
+        mock_diff: MagicMock,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """ClaudeError during review continues gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+        from weld.services import ClaudeError
+
+        mock_confirm.ask.side_effect = [True, False]
+        mock_diff.return_value = "diff content"
+        mock_claude.side_effect = ClaudeError("Review failed")
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not raise
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+    @pytest.mark.unit
+    @patch("weld.commands.implement.run_claude")
+    @patch("weld.commands.implement.get_diff")
+    @patch("weld.commands.implement.Confirm")
+    def test_empty_result_continues(
+        self,
+        mock_confirm: MagicMock,
+        mock_diff: MagicMock,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Empty Claude result continues gracefully."""
+        from rich.console import Console
+
+        from weld.commands.implement import _prompt_and_review_step
+        from weld.config import load_config
+        from weld.core.plan_parser import Step
+        from weld.output import OutputContext
+
+        mock_confirm.ask.side_effect = [True, False]
+        mock_diff.return_value = "diff content"
+        mock_claude.return_value = ""
+
+        ctx = OutputContext(console=Console())
+        step = Step(number="1.1", title="Test", content="", line_number=0, is_complete=True)
+        config = load_config(initialized_weld)
+        weld_dir = initialized_weld / ".weld"
+
+        # Should not raise
+        _prompt_and_review_step(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=initialized_weld,
+            weld_dir=weld_dir,
+        )
+
+
+class TestExecuteStepEdgeCases:
+    """Test edge cases in _execute_step."""
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.Confirm")
+    @patch("weld.commands.implement.run_claude")
+    def test_error_recovery_keyboard_interrupt(
+        self,
+        mock_claude: MagicMock,
+        mock_confirm: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """KeyboardInterrupt during error recovery prompt returns False."""
+        from weld.services import ClaudeError
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # Create file then fail
+        def create_file_then_fail(*args, **kwargs):
+            (initialized_weld / "new_file.py").write_text("# New\n")
+            raise ClaudeError("Crashed")
+
+        mock_claude.side_effect = create_file_then_fail
+        mock_confirm.ask.side_effect = KeyboardInterrupt()
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+        assert result.exit_code == 21
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.get_status_porcelain")
+    @patch("weld.commands.implement.run_claude")
+    def test_baseline_status_error_continues(
+        self,
+        mock_claude: MagicMock,
+        mock_status: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """GitError getting baseline status still allows execution."""
+        from weld.services import GitError
+
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        # First call fails (baseline), subsequent calls work
+        mock_status.side_effect = [GitError("Cannot get status")]
+        mock_claude.return_value = "Done."
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1"])
+
+        assert result.exit_code == 0
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.detect_current_session")
+    @patch("weld.commands.implement.run_claude")
+    def test_no_session_warning_with_auto_commit(
+        self,
+        mock_claude: MagicMock,
+        mock_detect: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Shows warning when session not detected with auto-commit enabled."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        mock_claude.return_value = "Done."
+        mock_detect.return_value = None
+
+        result = runner.invoke(
+            app, ["implement", str(plan_file), "--step", "1.1", "--auto-commit", "--no-review"]
+        )
+
+        assert result.exit_code == 0
+        assert "could not detect" in result.output.lower()
+
+    @pytest.mark.cli
+    @patch("weld.commands.implement.run_claude")
+    def test_no_review_flag_skips_review(
+        self,
+        mock_claude: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """--no-review flag skips review prompt."""
+        plan_file = initialized_weld / "test-plan.md"
+        plan_file.write_text("""## Phase 1: Test
+
+### Step 1.1: Do something
+
+Content here.
+""")
+
+        mock_claude.return_value = "Done."
+
+        result = runner.invoke(app, ["implement", str(plan_file), "--step", "1.1", "--no-review"])
+
+        assert result.exit_code == 0
+        # Should not see review prompt in output
+        assert "review changes" not in result.output.lower()

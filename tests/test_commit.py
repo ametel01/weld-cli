@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -810,3 +810,848 @@ class TestShouldExcludeFromCommit:
     def test_excludes_backup_files(self) -> None:
         """Should exclude backup files in .weld/."""
         assert _should_exclude_from_commit(".weld/config.toml.bak") is True
+
+
+@pytest.mark.unit
+class TestPromptUntrackedGrouping:
+    """Tests for prompt_untracked_grouping function."""
+
+    @patch("weld.commands.commit.get_output_context")
+    @patch("rich.prompt.Prompt.ask")
+    def test_attribute_to_most_recent_session(
+        self, mock_ask: MagicMock, mock_ctx: MagicMock
+    ) -> None:
+        """Should return 'attribute' when user selects option 1 with session."""
+        from weld.commands.commit import prompt_untracked_grouping
+
+        mock_ask.return_value = "1"
+
+        result = prompt_untracked_grouping(["file1.py", "file2.py"], "session-abc-123")
+
+        assert result == "attribute"
+
+    @patch("weld.commands.commit.get_output_context")
+    @patch("rich.prompt.Prompt.ask")
+    def test_separate_commit_with_session(self, mock_ask: MagicMock, mock_ctx: MagicMock) -> None:
+        """Should return 'separate' when user selects option 2 with session."""
+        from weld.commands.commit import prompt_untracked_grouping
+
+        mock_ask.return_value = "2"
+
+        result = prompt_untracked_grouping(["file1.py"], "session-abc-123")
+
+        assert result == "separate"
+
+    @patch("weld.commands.commit.get_output_context")
+    @patch("rich.prompt.Prompt.ask")
+    def test_cancel_with_session(self, mock_ask: MagicMock, mock_ctx: MagicMock) -> None:
+        """Should return None when user selects option 3 (cancel)."""
+        from weld.commands.commit import prompt_untracked_grouping
+
+        mock_ask.return_value = "3"
+
+        result = prompt_untracked_grouping(["file1.py"], "session-abc-123")
+
+        assert result is None
+
+    @patch("weld.commands.commit.get_output_context")
+    @patch("rich.prompt.Prompt.ask")
+    def test_separate_commit_without_session(
+        self, mock_ask: MagicMock, mock_ctx: MagicMock
+    ) -> None:
+        """Should return 'separate' when user selects option 1 without session."""
+        from weld.commands.commit import prompt_untracked_grouping
+
+        mock_ask.return_value = "1"
+
+        result = prompt_untracked_grouping(["file1.py"], None)
+
+        assert result == "separate"
+
+    @patch("weld.commands.commit.get_output_context")
+    @patch("rich.prompt.Prompt.ask")
+    def test_cancel_without_session(self, mock_ask: MagicMock, mock_ctx: MagicMock) -> None:
+        """Should return None when user selects option 2 (cancel) without session."""
+        from weld.commands.commit import prompt_untracked_grouping
+
+        mock_ask.return_value = "2"
+
+        result = prompt_untracked_grouping(["file1.py"], None)
+
+        assert result is None
+
+    @patch("rich.prompt.Prompt.ask")
+    def test_shows_truncated_file_list(self, mock_ask: MagicMock, capsys) -> None:
+        """Should truncate file list to first 10 files."""
+        from weld.commands.commit import prompt_untracked_grouping
+
+        mock_ask.return_value = "1"
+
+        # 15 files - should show first 10 + "... and 5 more"
+        files = [f"file{i}.py" for i in range(15)]
+        prompt_untracked_grouping(files, "session-abc")
+
+        # Check captured stdout for the truncation message
+        captured = capsys.readouterr()
+        assert "5 more" in captured.out
+
+
+@pytest.mark.cli
+class TestCommitSessionDryRun:
+    """Tests for commit dry run with session-based workflow."""
+
+    def test_dry_run_with_sessions(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Dry run should show session breakdown when sessions exist."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create and stage a file
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        # Set up a session registry with a session that tracks this file
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        result = runner.invoke(app, ["--dry-run", "commit"])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.stdout
+        assert "Session breakdown" in result.stdout
+        # Session ID is shown in short format or files listed
+        assert "1 files" in result.stdout or "test.txt" in result.stdout
+
+    def test_dry_run_shows_file_count(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Dry run should show file counts for sessions."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create and stage files - only the test file, not .weld/
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        # Set up registry with session
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        result = runner.invoke(app, ["--dry-run", "commit"])
+
+        # Check that it ran successfully and shows file info
+        assert result.exit_code == 0, f"Failed with: {result.stdout}"
+        # Should show file count
+        assert "files" in result.stdout.lower() or "test.txt" in result.stdout
+
+
+@pytest.mark.cli
+class TestCommitSessionBased:
+    """Tests for session-based commit flow."""
+
+    def _single_commit_response(self) -> str:
+        """Return mock Claude response."""
+        return """<commit>
+<files>
+test.txt
+</files>
+<commit_message>
+Add test file
+</commit_message>
+<changelog_entry>
+</changelog_entry>
+</commit>"""
+
+    def test_claude_error_in_session_commit(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should use generic message when Claude fails in session-based commit."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.claude import ClaudeError
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        with patch("weld.commands.commit.run_claude", side_effect=ClaudeError("API error")):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Claude failed" in result.stdout
+        assert "Committed:" in result.stdout
+
+    def test_session_file_not_found(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should warn when session file not found during transcript upload."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            # Non-existent session file
+            session_file="/nonexistent/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()):
+            result = runner.invoke(app, ["commit", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Session file not found" in result.stdout
+
+    def test_gist_error_in_session_commit(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should warn when gist upload fails in session-based commit."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.gist_uploader import GistError
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create a session with existing session file
+        session_file = initialized_weld / "session.jsonl"
+        session_file.write_text("{}\n")
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file=str(session_file),
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.render_transcript", return_value="# Transcript"),
+            patch("weld.commands.commit.upload_gist", side_effect=GistError("Auth failed")),
+        ):
+            result = runner.invoke(app, ["commit", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Transcript upload skipped" in result.stdout
+        assert "Committed:" in result.stdout
+
+    def test_git_error_during_session_commit(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should show error recovery info when commit fails mid-way."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        from weld.services import GitError
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.commit_file", side_effect=GitError("hook failed")),
+        ):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 22
+        assert "Commit failed" in result.stdout
+
+    def test_changelog_update_in_session_commit(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should update changelog in session-based commit."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        # Create CHANGELOG.md
+        changelog = initialized_weld / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n\n## [Unreleased]\n\n## [1.0.0]\n")
+        subprocess.run(["git", "add", "CHANGELOG.md"], cwd=initialized_weld, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add changelog"],
+            cwd=initialized_weld,
+            check=True,
+            capture_output=True,
+        )
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        response_with_changelog = """<commit>
+<files>
+test.txt
+</files>
+<commit_message>
+Add test file
+</commit_message>
+<changelog_entry>
+### Added
+- Test file for testing
+</changelog_entry>
+</commit>"""
+
+        with patch("weld.commands.commit.run_claude", return_value=response_with_changelog):
+            result = runner.invoke(app, ["commit", "--skip-transcript"])
+
+        assert result.exit_code == 0
+        assert "Updated CHANGELOG.md" in result.stdout
+
+
+@pytest.mark.cli
+class TestCommitFallbackWithMatchingSessions:
+    """Tests for fallback commit flow with matching sessions."""
+
+    def _single_commit_response(self) -> str:
+        """Return mock Claude response."""
+        return """<commit>
+<files>
+test.txt
+</files>
+<commit_message>
+Add test file
+</commit_message>
+<changelog_entry>
+</changelog_entry>
+</commit>"""
+
+    def test_shows_matching_sessions(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should display matching sessions when found in fallback mode."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file="/home/user/.claude/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()):
+            result = runner.invoke(
+                app, ["commit", "--no-session-split", "--skip-transcript", "--skip-changelog"]
+            )
+
+        assert result.exit_code == 0
+        assert "Found sessions matching" in result.stdout
+        assert "implement" in result.stdout
+
+    def test_uploads_matching_session_transcripts(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should upload transcripts from matching sessions in fallback mode."""
+        from datetime import datetime
+        from unittest.mock import MagicMock
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create session file
+        session_file = initialized_weld / "session.jsonl"
+        session_file.write_text("{}\n")
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file=str(session_file),
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        mock_result = MagicMock()
+        mock_result.gist_url = "https://gist.github.com/test/abc123"
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.render_transcript", return_value="# Transcript"),
+            patch("weld.commands.commit.upload_gist", return_value=mock_result),
+        ):
+            result = runner.invoke(app, ["commit", "--no-session-split", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Uploading" in result.stdout
+        assert "transcript" in result.stdout.lower()
+
+    def test_session_file_not_found_in_fallback(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should warn when session file not found in fallback mode."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            # Non-existent file
+            session_file="/nonexistent/session.jsonl",
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        with patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()):
+            result = runner.invoke(app, ["commit", "--no-session-split", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Session file not found" in result.stdout
+
+    def test_gist_error_in_fallback(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should warn when gist upload fails in fallback mode."""
+        from datetime import datetime
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.gist_uploader import GistError
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        session_file = initialized_weld / "session.jsonl"
+        session_file.write_text("{}\n")
+
+        registry = SessionRegistry(registry_path)
+        session = TrackedSession(
+            session_id="test-session-uuid",
+            session_file=str(session_file),
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["test-session-uuid"] = session
+        registry.save()
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.render_transcript", return_value="# Transcript"),
+            patch("weld.commands.commit.upload_gist", side_effect=GistError("Auth failed")),
+        ):
+            result = runner.invoke(app, ["commit", "--no-session-split", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Transcript upload failed" in result.stdout
+
+    def test_multiple_transcript_urls(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should display multiple transcript URLs when multiple sessions match."""
+        from datetime import datetime
+        from unittest.mock import MagicMock
+
+        from weld.models.session import SessionActivity, TrackedSession
+        from weld.services.session_tracker import SessionRegistry
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        registry_path = initialized_weld / ".weld" / "sessions" / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        session_file1 = initialized_weld / "session1.jsonl"
+        session_file1.write_text("{}\n")
+        session_file2 = initialized_weld / "session2.jsonl"
+        session_file2.write_text("{}\n")
+
+        registry = SessionRegistry(registry_path)
+
+        # Two sessions, both matching test.txt
+        session1 = TrackedSession(
+            session_id="session-1-uuid",
+            session_file=str(session_file1),
+            first_seen=datetime(2024, 1, 1, 10, 0, 0),
+            last_activity=datetime(2024, 1, 1, 11, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="implement",
+                    timestamp=datetime(2024, 1, 1, 10, 30, 0),
+                    files_created=["test.txt"],
+                    files_modified=[],
+                    completed=True,
+                )
+            ],
+        )
+        session2 = TrackedSession(
+            session_id="session-2-uuid",
+            session_file=str(session_file2),
+            first_seen=datetime(2024, 1, 1, 12, 0, 0),
+            last_activity=datetime(2024, 1, 1, 13, 0, 0),
+            activities=[
+                SessionActivity(
+                    command="review",
+                    timestamp=datetime(2024, 1, 1, 12, 30, 0),
+                    files_created=[],
+                    files_modified=["test.txt"],
+                    completed=True,
+                )
+            ],
+        )
+        registry._sessions["session-1-uuid"] = session1
+        registry._sessions["session-2-uuid"] = session2
+        registry.save()
+
+        mock_result1 = MagicMock()
+        mock_result1.gist_url = "https://gist.github.com/test/abc123"
+        mock_result2 = MagicMock()
+        mock_result2.gist_url = "https://gist.github.com/test/def456"
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.render_transcript", return_value="# Transcript"),
+            patch("weld.commands.commit.upload_gist", side_effect=[mock_result1, mock_result2]),
+        ):
+            result = runner.invoke(app, ["commit", "--no-session-split", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Transcripts (2)" in result.stdout
+
+
+@pytest.mark.cli
+class TestCommitWeldFilesExclusion:
+    """Tests for excluding .weld/ files from commit."""
+
+    def _single_commit_response(self) -> str:
+        """Return mock Claude response."""
+        return """<commit>
+<files>
+test.txt
+</files>
+<commit_message>
+Add test file
+</commit_message>
+<changelog_entry>
+</changelog_entry>
+</commit>"""
+
+    def test_excludes_weld_metadata_with_warning(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should exclude .weld/ metadata files and show warning."""
+        # Create test file
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+
+        # Create .weld metadata file
+        sessions_dir = initialized_weld / ".weld" / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        registry_file = sessions_dir / "registry.jsonl"
+        registry_file.write_text("{}\n")
+
+        # Stage both files
+        subprocess.run(["git", "add", "."], cwd=initialized_weld, check=True)
+
+        with patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 0
+        assert "Excluding" in result.stdout
+        assert ".weld/" in result.stdout
+
+    def test_exits_when_only_weld_metadata_files(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should exit with error when only .weld/ metadata files are staged."""
+        # Create .weld metadata file only (not config.toml)
+        sessions_dir = initialized_weld / ".weld" / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        registry_file = sessions_dir / "registry.jsonl"
+        registry_file.write_text("")  # Empty file
+
+        # Stage only the metadata file
+        subprocess.run(
+            ["git", "add", ".weld/sessions/registry.jsonl"],
+            cwd=initialized_weld,
+            check=True,
+        )
+
+        result = runner.invoke(app, ["commit"])
+
+        assert result.exit_code == 20
+        assert "No files to commit" in result.stdout or "No changes" in result.stdout
+
+
+@pytest.mark.cli
+class TestCommitCannotParseResponse:
+    """Tests for handling unparseable Claude response."""
+
+    def test_exits_when_cannot_parse_response(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should exit with error when Claude response cannot be parsed."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        # Return garbage response
+        with patch("weld.commands.commit.run_claude", return_value="Just some random text"):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 23
+        assert "Could not parse" in result.stdout
+
+    def test_shows_partial_response_on_parse_failure(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should show partial response when parse fails."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with patch(
+            "weld.commands.commit.run_claude",
+            return_value="This is some random response text that should be shown",
+        ):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 23
+        assert "Claude response:" in result.stdout
+
+
+@pytest.mark.cli
+class TestCommitGitError:
+    """Tests for Git errors during commit."""
+
+    def _single_commit_response(self) -> str:
+        return """<commit>
+<files>
+test.txt
+</files>
+<commit_message>
+Add test file
+</commit_message>
+<changelog_entry>
+</changelog_entry>
+</commit>"""
+
+    def test_git_error_in_fallback_commit(self, runner: CliRunner, initialized_weld: Path) -> None:
+        """Should exit with error when git commit fails in fallback mode."""
+        from weld.services import GitError
+
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.commit_file", side_effect=GitError("hook failed")),
+        ):
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        assert result.exit_code == 22
+        assert "Commit failed" in result.stdout

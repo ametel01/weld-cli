@@ -1,13 +1,24 @@
 """Tests for interview workflow functionality."""
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.console import Console
+from typer.testing import CliRunner
 
+from weld.cli import app
 from weld.core.interview_engine import (
     generate_interview_prompt,
     run_interview_loop,
+)
+
+runner = CliRunner(
+    env={
+        "NO_COLOR": "1",
+        "TERM": "dumb",
+        "COLUMNS": "200",
+    },
 )
 
 
@@ -136,3 +147,213 @@ class TestRunInterviewLoop:
         output = console.export_text()
         assert str(doc) in output
         assert "rewrite" in output.lower()
+
+
+@pytest.mark.cli
+class TestInterviewCommand:
+    """Tests for interview CLI command."""
+
+    def test_interview_help(self) -> None:
+        """Shows help text with options."""
+        result = runner.invoke(app, ["interview", "--help"])
+        assert result.exit_code == 0
+        assert "file" in result.output.lower()
+        assert "--focus" in result.output
+        assert "--track" in result.output
+
+    def test_interview_file_not_found(self, tmp_path: Path) -> None:
+        """Fails with exit code 1 when file not found."""
+        result = runner.invoke(app, ["interview", str(tmp_path / "nonexistent.md")])
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+    def test_interview_non_markdown_warning(self, tmp_path: Path) -> None:
+        """Shows warning for non-markdown files."""
+        txt_file = tmp_path / "spec.txt"
+        txt_file.write_text("Some content")
+
+        result = runner.invoke(app, ["interview", str(txt_file)])
+
+        # Should succeed (warning doesn't stop execution)
+        assert result.exit_code == 0
+        assert "not markdown" in result.output.lower()
+
+    def test_interview_prints_prompt(self, tmp_path: Path) -> None:
+        """Prints interview prompt for markdown file."""
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Feature Spec\n\nImplement login.")
+
+        result = runner.invoke(app, ["interview", str(spec)])
+
+        assert result.exit_code == 0
+        assert "# Feature Spec" in result.output
+        assert "AskUserQuestion tool" in result.output
+
+    def test_interview_with_focus(self, tmp_path: Path) -> None:
+        """Focus parameter appears in output."""
+        spec = tmp_path / "spec.md"
+        spec.write_text("# API Spec")
+
+        result = runner.invoke(app, ["interview", str(spec), "--focus", "error handling"])
+
+        assert result.exit_code == 0
+        assert "error handling" in result.output
+
+    def test_interview_dry_run(self, tmp_path: Path) -> None:
+        """Dry run shows what would happen."""
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["--dry-run", "interview", str(spec)])
+
+        assert result.exit_code == 0
+        assert "DRY RUN" in result.output
+
+    @patch("weld.commands.interview.get_repo_root")
+    def test_interview_outside_git_repo(
+        self,
+        mock_repo_root: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Works outside git repo without tracking."""
+        from weld.services import GitError
+
+        mock_repo_root.side_effect = GitError("Not a git repo")
+
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["interview", str(spec)])
+
+        # Should still work (tracking disabled)
+        assert result.exit_code == 0
+        assert "# Spec" in result.output
+
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_modified_shows_message(
+        self,
+        mock_loop: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Shows 'Document updated' when modified."""
+        mock_loop.return_value = True
+
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["interview", str(spec)])
+
+        assert result.exit_code == 0
+        assert "document updated" in result.output.lower()
+
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_not_modified_shows_message(
+        self,
+        mock_loop: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Shows 'No changes made' when not modified."""
+        mock_loop.return_value = False
+
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["interview", str(spec)])
+
+        assert result.exit_code == 0
+        assert "no changes" in result.output.lower()
+
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_keyboard_interrupt(
+        self,
+        mock_loop: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Handles KeyboardInterrupt gracefully."""
+        mock_loop.side_effect = KeyboardInterrupt()
+
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["interview", str(spec)])
+
+        assert result.exit_code == 0
+        assert "cancelled" in result.output.lower()
+
+    @patch("weld.commands.interview.track_session_activity")
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_with_track_flag(
+        self,
+        mock_loop: MagicMock,
+        mock_track: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """--track flag enables session tracking."""
+        mock_loop.return_value = True
+        # Mock the context manager
+        mock_track.return_value.__enter__ = MagicMock()
+        mock_track.return_value.__exit__ = MagicMock(return_value=False)
+
+        spec = initialized_weld / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["interview", str(spec), "--track"])
+
+        assert result.exit_code == 0
+        mock_track.assert_called_once()
+
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_without_track_flag(
+        self,
+        mock_loop: MagicMock,
+        initialized_weld: Path,
+    ) -> None:
+        """Without --track flag, no session tracking."""
+        mock_loop.return_value = True
+
+        spec = initialized_weld / "spec.md"
+        spec.write_text("# Spec")
+
+        result = runner.invoke(app, ["interview", str(spec)])
+
+        assert result.exit_code == 0
+        # run_interview_loop should be called directly, not inside tracking context
+
+    @patch("weld.commands.interview.get_repo_root")
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_track_outside_git(
+        self,
+        mock_loop: MagicMock,
+        mock_repo_root: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """--track flag is ignored when not in git repo."""
+        from weld.services import GitError
+
+        mock_repo_root.side_effect = GitError("Not a git repo")
+        mock_loop.return_value = True
+
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+
+        # Should not fail even with --track
+        result = runner.invoke(app, ["interview", str(spec), "--track"])
+
+        assert result.exit_code == 0
+
+    @patch("weld.commands.interview.run_interview_loop")
+    def test_interview_track_without_weld_dir(
+        self,
+        mock_loop: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """--track flag is ignored when .weld/ doesn't exist."""
+        mock_loop.return_value = True
+
+        spec = temp_git_repo / "spec.md"
+        spec.write_text("# Spec")
+
+        # Should not fail - tracking skipped when no .weld dir
+        result = runner.invoke(app, ["interview", str(spec), "--track"])
+
+        assert result.exit_code == 0
