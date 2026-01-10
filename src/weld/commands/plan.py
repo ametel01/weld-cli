@@ -214,10 +214,20 @@ def plan(
         bool,
         typer.Option("--track", help="Track session activity for this command"),
     ] = False,
+    skip_permissions: Annotated[
+        bool,
+        typer.Option(
+            "--dangerously-skip-permissions",
+            help="Allow Claude to explore codebase without permission prompts",
+        ),
+    ] = False,
 ) -> None:
     """Generate an implementation plan from a specification.
 
     If --output is not specified, writes to .weld/plan/{filename}-{timestamp}.md
+
+    Note: Claude often needs to explore the codebase (read files, search for patterns)
+    to create a proper plan. Use --dangerously-skip-permissions to allow this.
     """
     ctx = get_output_context()
 
@@ -269,6 +279,7 @@ def plan(
             exec_path=claude_exec,
             cwd=repo_root,
             stream=not quiet,
+            skip_permissions=skip_permissions,
             max_output_tokens=config.claude.max_output_tokens,
         )
 
