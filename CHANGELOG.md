@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--dangerously-skip-permissions` flag for `weld plan` command
+  - Allows Claude to explore codebase (read files, search patterns) during plan generation
+  - Required when Claude needs file access to create comprehensive plans
+  - Matches behavior of `weld implement` command
+- Multiple transcript gist support in `weld commit` fallback mode
+  - Now uploads separate gists for each session that contributed to staged files
+  - Example: implement session + review session = 2 gists attached to commit
+  - Each gist labeled with command type (implement, review, etc.)
+  - Provides complete context for understanding changes
+
+### Fixed
+- **Critical**: Plan generation now strictly enforces required Phase → Step format
+  - Added explicit format requirements to prompt to prevent conversational output
+  - Added validation to reject plans that don't start with "## Phase" or lack steps
+  - Fixed issue where Claude would output summaries/questions instead of structured plans
+  - Plans now correctly follow docs/reference/plan-format.md specification
+- **Critical**: `weld commit` now attaches transcripts from ALL relevant sessions
+  - Fallback flow finds all sessions from registry that match staged files
+  - Uploads one gist per matching session (e.g., implement + review)
+  - Fixes issue where only one transcript was attached when multiple sessions contributed
+  - Each transcript gets its own trailer line in commit message
+
 ## [0.6.0] - 2026-01-09
 
 ### Added
