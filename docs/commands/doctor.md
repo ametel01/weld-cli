@@ -17,7 +17,7 @@ Validates that all required and optional tools are available and properly config
 | Tool | Purpose |
 |------|---------|
 | `git` | Version control |
-| `gh` | GitHub CLI (must be authenticated) |
+| `gh` | GitHub CLI (run `gh auth login` separately for transcript uploads) |
 
 ### Optional Tools
 

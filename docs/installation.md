@@ -7,8 +7,8 @@
 | **Python 3.11+** | Yes | Runtime environment |
 | **uv** or **pipx** | Yes | Global CLI installation |
 | **git** | Yes | Version control |
-| **gh** | Yes | GitHub CLI (authenticated) |
-| **claude** | Yes | Claude Code CLI (AI provider) |
+| **gh** | Yes | GitHub CLI (auth via `gh auth login` for transcript uploads) |
+| **claude** | Optional | Claude Code CLI (AI provider) |
 
 ## Install from PyPI (Recommended)
 
@@ -44,8 +44,10 @@ weld doctor
 ```
 
 This validates:
-- **Required**: `git`, `gh` (GitHub CLI authenticated)
+- **Required**: `git`, `gh`
 - **Optional**: `claude`, `codex`
+
+Note: `weld doctor` checks if tools are in PATH. For `gh`, run `gh auth login` separately to enable transcript uploads.
 
 ## Install from Source
 

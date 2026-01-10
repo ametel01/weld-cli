@@ -17,6 +17,16 @@ This ensures team members share configuration while keeping local session data a
 [project]
 name = "your-project"
 
+[checks]
+lint = "ruff check ."
+test = "pytest tests/ -q"
+typecheck = "pyright"
+order = ["lint", "typecheck", "test"]
+
+[codex]
+exec = "codex"
+sandbox = "read-only"
+
 [claude]
 exec = "claude"                    # Claude CLI path
 model = "claude-sonnet-4-20250514" # Default model (optional)
@@ -29,6 +39,38 @@ visibility = "secret"              # Gist visibility: "secret" or "public"
 
 [git]
 commit_trailer_key = "Claude-Transcript"
+include_run_trailer = true
+
+[loop]
+max_iterations = 5
+fail_on_blockers_only = true
+
+[task_models.discover]
+provider = "claude"
+
+[task_models.interview]
+provider = "claude"
+
+[task_models.research]
+provider = "claude"
+
+[task_models.research_review]
+provider = "codex"
+
+[task_models.plan_generation]
+provider = "claude"
+
+[task_models.plan_review]
+provider = "codex"
+
+[task_models.implementation]
+provider = "claude"
+
+[task_models.implementation_review]
+provider = "codex"
+
+[task_models.fix_generation]
+provider = "claude"
 ```
 
 ## Configuration Options
@@ -38,6 +80,23 @@ commit_trailer_key = "Claude-Transcript"
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `name` | string | Directory name | Project name |
+
+### `[checks]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `lint` | string | `"ruff check ."` | Lint command |
+| `test` | string | `"pytest tests/ -q"` | Test command |
+| `typecheck` | string | `"pyright"` | Type checking command |
+| `order` | array | `["lint", "typecheck", "test"]` | Execution order for checks |
+
+### `[codex]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `exec` | string | `"codex"` | Path to Codex CLI |
+| `sandbox` | string | `"read-only"` | Sandbox mode |
+| `model` | string | - | Default model for Codex provider |
 
 ### `[claude]`
 
@@ -60,6 +119,39 @@ commit_trailer_key = "Claude-Transcript"
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `commit_trailer_key` | string | `"Claude-Transcript"` | Key for transcript trailer in commits |
+| `include_run_trailer` | boolean | `true` | Include run trailer in commits |
+
+### `[loop]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `max_iterations` | integer | `5` | Maximum review-fix loop iterations |
+| `fail_on_blockers_only` | boolean | `true` | Only fail on blocker-level issues |
+
+### `[task_models]`
+
+Per-task model assignments. Each task can specify:
+- `provider`: `"claude"`, `"codex"`, or other supported provider
+- `model`: Optional specific model name (e.g., `"claude-opus-4-20250514"`)
+- `exec`: Optional override for executable path
+
+Available task types:
+- `discover`: Codebase discovery
+- `interview`: Specification refinement
+- `research`: Research prompts
+- `research_review`: Review research outputs
+- `plan_generation`: Generate implementation plans
+- `plan_review`: Review plans
+- `implementation`: Execute implementation steps
+- `implementation_review`: Review implementation changes
+- `fix_generation`: Generate fixes for issues
+
+Example:
+```toml
+[task_models.implementation]
+provider = "claude"
+model = "claude-opus-4-20250514"
+```
 
 ## Minimal Configuration
 

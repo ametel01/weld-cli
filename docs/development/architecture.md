@@ -34,10 +34,15 @@ src/weld/
 ├── services/           # External integrations
 │   ├── git.py          # Git operations
 │   ├── claude.py       # Claude CLI integration
-│   ├── transcripts.py  # Transcript gist generation
-│   └── filesystem.py   # File system operations
+│   ├── gist_uploader.py       # Upload transcripts to GitHub Gists
+│   ├── session_detector.py    # Auto-detect Claude Code sessions
+│   ├── session_tracker.py     # Track file changes per session
+│   ├── transcript_renderer.py # Render JSONL to markdown
+│   ├── transcripts.py         # Legacy transcript tool wrapper
+│   └── filesystem.py          # File system operations
 │
 └── models/             # Pydantic data models
+    ├── session.py      # SessionActivity, TrackedSession
     ├── discover.py     # DiscoverMeta
     └── issues.py       # Issue, Issues
 ```
@@ -95,6 +100,19 @@ Each command logs to `.weld/<command>/history.jsonl`:
 
 ## Data Models
 
+### SessionActivity
+
+Tracks file changes during a command execution:
+
+```python
+class SessionActivity(BaseModel):
+    session_id: str
+    command: str
+    files_created: list[str]
+    files_modified: list[str]
+    timestamp: datetime
+```
+
 ### DiscoverMeta
 
 Metadata for discover artifacts:
@@ -115,6 +133,7 @@ class Issue(BaseModel):
     severity: Literal["blocker", "major", "minor"]
     file: str
     hint: str
+    maps_to: str | None  # Optional reference to acceptance criterion
 
 class Issues(BaseModel):
     pass_: bool = Field(alias="pass")

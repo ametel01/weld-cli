@@ -14,6 +14,7 @@ weld commit [OPTIONS]
 |--------|-------|-------------|
 | `--all` | `-a` | Stage all changes before committing |
 | `--no-split` | | Force single commit (disable automatic splitting) |
+| `--no-session-split` | | Disable session-based grouping of files |
 | `--edit` | `-e` | Edit generated message in $EDITOR before commit |
 | `--skip-transcript` | | Skip transcript generation |
 | `--skip-changelog` | | Skip CHANGELOG.md update |
