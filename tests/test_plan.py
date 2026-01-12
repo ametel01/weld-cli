@@ -37,20 +37,20 @@ class TestGeneratePlanPrompt:
     def test_includes_phase_structure(self) -> None:
         """Prompt includes phase structure description."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "**Phase template:**" in prompt
-        assert "## Phase <number>:" in prompt
+        assert "**Phase structure:**" in prompt
+        assert "## Phase <N>: <Title>" in prompt
 
     def test_includes_phase_validation(self) -> None:
         """Prompt includes phase-level validation section."""
         prompt = generate_plan_prompt("content", "spec.md")
         assert "### Phase Validation" in prompt
-        assert "verify the entire phase" in prompt
+        assert "<command to verify phase>" in prompt
 
     def test_includes_step_structure(self) -> None:
         """Prompt includes step structure description."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "**Step template (step numbers restart at 1 for each phase):**" in prompt
-        assert "### Step <number>:" in prompt
+        assert "### Step <N>: <Title>" in prompt
+        assert "Every step MUST have ALL four sections" in prompt
 
     def test_includes_step_sections(self) -> None:
         """Prompt includes required step sections."""
@@ -63,34 +63,23 @@ class TestGeneratePlanPrompt:
     def test_includes_concrete_example(self) -> None:
         """Prompt includes a concrete example plan."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "## Example" in prompt
-        assert "## Phase 1: Data Models" in prompt
-        assert "### Step 1: Create user model" in prompt
-        assert "### Step 2: Add validation logic" in prompt
-        assert "## Phase 2: Core Logic" in prompt
+        assert "**CORRECT - Output like this instead:**" in prompt
+        assert "## Phase 1: CSS Utility Extensions" in prompt
+        assert "### Step 1: Add subtitle contrast utility" in prompt
+        assert "### Step 2: Add link underline animation" in prompt
 
-    def test_example_shows_step_restart(self) -> None:
-        """Example demonstrates step numbering restarts per phase."""
+    def test_example_shows_wrong_format(self) -> None:
+        """Example demonstrates wrong format to avoid."""
         prompt = generate_plan_prompt("content", "spec.md")
-        # Phase 2 should have Step 1, not Step 3
-        assert "## Phase 2:" in prompt
-        # Phase 2 has a complete Step 1 example
-        assert "### Step 1: Create user service" in prompt
+        assert "**WRONG - Do NOT output like this:**" in prompt
+        assert "## Phase 2: Component Styling" in prompt
 
-    def test_includes_guidelines(self) -> None:
-        """Prompt includes guidelines section."""
+    def test_includes_output_checklist(self) -> None:
+        """Prompt includes output format checklist."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "## Guidelines" in prompt
-        assert "Logical milestones" in prompt
-        assert "completable and testable" in prompt
-        assert "Phase Validation" in prompt
-
-    def test_includes_step_guidelines(self) -> None:
-        """Prompt includes step guidelines in Guidelines section."""
-        prompt = generate_plan_prompt("content", "spec.md")
-        assert "- Steps:" in prompt
-        assert "restart at 1 for each phase" in prompt
-        assert "atomic and independently verifiable" in prompt
+        assert "## REMINDER: Output Format Checklist" in prompt
+        assert "Every phase has `## Phase N: Title` heading" in prompt
+        assert "Every step has `### Step N: Title` heading" in prompt
 
     def test_spec_appears_in_specification_section(self) -> None:
         """Specification content appears under Specification header."""
@@ -128,9 +117,9 @@ This is a detailed specification.
     def test_output_format_section_exists(self) -> None:
         """Prompt includes Output Format section."""
         prompt = generate_plan_prompt("content", "spec.md")
-        assert "## Output Format" in prompt
-        assert "phased implementation plan" in prompt
-        assert "using EXACTLY this structure" in prompt
+        assert "## CRITICAL: Required Output Format" in prompt
+        assert "EXACT structure" in prompt
+        assert "Every step MUST have ALL four sections" in prompt
 
 
 @pytest.mark.unit

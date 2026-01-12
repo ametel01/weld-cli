@@ -144,12 +144,12 @@ class TestPlanCommand:
         assert "DRY RUN" in result.stdout
         assert "Implementation Plan Request" in result.stdout
         # Verify Phase/Step structure is in output
-        assert "## Phase <number>:" in result.stdout
-        assert "### Step <number>:" in result.stdout
-        assert "## Guidelines" in result.stdout
+        assert "## Phase <N>:" in result.stdout
+        assert "### Step <N>:" in result.stdout
+        assert "## Planning Rules" in result.stdout
         # Verify concrete example is included
-        assert "## Example" in result.stdout
-        assert "## Phase 1: Data Models" in result.stdout
+        assert "**CORRECT - Output like this instead:**" in result.stdout
+        assert "## Phase 1: CSS Utility Extensions" in result.stdout
 
 
 class TestResearchCommand:

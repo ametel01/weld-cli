@@ -38,7 +38,106 @@ def generate_plan_prompt(spec_content: str, spec_name: str) -> str:
     """
     return f"""# Implementation Plan Request
 
-Read the following specification carefully, explore the codebase, and create an implementation plan.
+You MUST output a structured implementation plan following the EXACT format specified below.
+Do NOT output summaries, overviews, or prose. Output ONLY the structured plan.
+
+---
+
+## CRITICAL: Required Output Format
+
+Your output MUST follow this EXACT structure. Every step MUST have ALL four sections.
+
+**Phase structure:**
+```
+## Phase <N>: <Title>
+
+<One sentence description>
+
+### Phase Validation
+```bash
+<command to verify phase>
+```
+
+### Step <N>: <Title>
+
+#### Goal
+<What this step accomplishes>
+
+#### Files
+- `<path>` - <what to change>
+
+#### Validation
+```bash
+<command to verify step>
+```
+
+#### Failure modes
+- <what could go wrong>
+
+---
+```
+
+**WRONG - Do NOT output like this:**
+```
+## Phase 1: CSS Utility Extensions
+Extend globals.css with new utilities:
+- .text-subtitle - Enhanced subtitle contrast
+- .link-underline-hover - Animated underline
+
+## Phase 2: Component Styling
+Apply utilities to components:
+- StatCard.tsx - Add border glow
+```
+
+**CORRECT - Output like this instead:**
+```
+## Phase 1: CSS Utility Extensions
+
+Add utility classes for enhanced visual feedback.
+
+### Phase Validation
+```bash
+npm run build
+```
+
+### Step 1: Add subtitle contrast utility
+
+#### Goal
+Create .text-subtitle class for enhanced subtitle visibility.
+
+#### Files
+- `src/styles/globals.css` - Add .text-subtitle utility class
+
+#### Validation
+```bash
+grep -q "text-subtitle" src/styles/globals.css && echo "OK"
+```
+
+#### Failure modes
+- Class name conflicts with existing styles
+
+---
+
+### Step 2: Add link underline animation
+
+#### Goal
+Create .link-underline-hover class for animated underlines on hover.
+
+#### Files
+- `src/styles/globals.css` - Add .link-underline-hover utility class
+
+#### Validation
+```bash
+grep -q "link-underline-hover" src/styles/globals.css && echo "OK"
+```
+
+#### Failure modes
+- Animation conflicts with existing transitions
+
+---
+```
+
+---
 
 ## Specification: {spec_name}
 
@@ -90,131 +189,24 @@ patterns in the codebase.
 10. **Execution ready**: Imperative language ("Create", "Add", "Implement").
     Each step maps to concrete code change. No research-only placeholders.
 
-## Output Format
-
-Create a phased implementation plan using EXACTLY this structure.
-
-**Required sections for every step (use these exact headings, do not rename or omit):**
-- `#### Goal` - What this step accomplishes
-- `#### Files` - Specific files to create or modify
-- `#### Validation` - Bash command to verify the step works
-- `#### Failure modes` - What could go wrong and how to detect it
-
-**Phase template:**
-
-## Phase <number>: <Title>
-
-Brief description of what this phase accomplishes.
-
-### Phase Validation
-```bash
-# Command(s) to verify the entire phase is complete
-```
-
-**Step template (step numbers restart at 1 for each phase):**
-
-### Step <number>: <Title>
-
-#### Goal
-What this step accomplishes.
-
-#### Files
-- `path/to/file.py` - What changes to make
-
-#### Validation
-```bash
-# Command to verify this step works
-```
-
-#### Failure modes
-- What could go wrong and how to detect it
-
 ---
 
-## Example
+## REMINDER: Output Format Checklist
 
-Here is a complete example showing the required structure:
+Before outputting your plan, verify:
 
-## Phase 1: Data Models
+- [ ] Every phase has `## Phase N: Title` heading
+- [ ] Every phase has `### Phase Validation` with bash command
+- [ ] Every step has `### Step N: Title` heading
+- [ ] Every step has `#### Goal` section
+- [ ] Every step has `#### Files` section with bullet points
+- [ ] Every step has `#### Validation` section with bash command
+- [ ] Every step has `#### Failure modes` section
+- [ ] Steps end with `---` separator
+- [ ] NO bullet-point summaries or overviews
+- [ ] NO prose paragraphs outside the structure
 
-Set up the core data structures needed for the feature.
-
-### Phase Validation
-```bash
-pytest tests/test_models.py -v
-```
-
-### Step 1: Create user model
-
-#### Goal
-Define the User dataclass with required fields.
-
-#### Files
-- `src/models/user.py` - Create new file with User dataclass
-
-#### Validation
-```bash
-python -c "from src.models.user import User; print(User.__annotations__)"
-```
-
-#### Failure modes
-- Import error if module path is wrong
-
----
-
-### Step 2: Add validation logic
-
-#### Goal
-Add field validation to the User model.
-
-#### Files
-- `src/models/user.py` - Add validator methods
-
-#### Validation
-```bash
-pytest tests/test_models.py::test_user_validation -v
-```
-
-#### Failure modes
-- Validation too strict/lenient for requirements
-
----
-
-## Phase 2: Core Logic
-
-Implement the business logic using the data models from Phase 1.
-
-### Phase Validation
-```bash
-pytest tests/test_core.py -v
-```
-
-### Step 1: Create user service
-
-#### Goal
-Implement UserService with CRUD operations using the User model.
-
-#### Files
-- `src/services/user_service.py` - Create UserService class
-
-#### Validation
-```bash
-pytest tests/test_user_service.py -v
-```
-
-#### Failure modes
-- Import errors if User model path incorrect
-- Method signature mismatches with expected interface
-
----
-
-## Guidelines
-
-- Phases: Logical milestones, numbered from 1. Each phase completable and testable.
-  Always include Phase Validation.
-- Steps: Numbers restart at 1 for each phase. Each step atomic and independently verifiable.
-  Reference specific files and line numbers.
-- Dependencies: List inputs and outputs per step. Order by prerequisite.
+Output ONLY the structured plan now. Begin with `## Phase 1:`
 """
 
 
@@ -238,7 +230,7 @@ def plan(
             "--dangerously-skip-permissions",
             help="Allow Claude to explore codebase without permission prompts",
         ),
-    ] = False,
+    ] = True,
 ) -> None:
     """Generate an implementation plan from a specification.
 
