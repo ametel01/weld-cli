@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--autopilot` flag for `weld implement` command
+  - Executes all plan steps automatically without user intervention
+  - After each step: runs code review with auto-fix, then commits
+  - Stops on first Claude failure
+  - Designed for CI/automation and unattended execution
+
 ### Changed
 - `--dangerously-skip-permissions` now defaults to `True` for `weld plan` command
   - Plans are generated without permission prompts by default

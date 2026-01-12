@@ -129,6 +129,13 @@ def implement(
             help="Skip post-step review prompt (workaround for Claude CLI bugs)",
         ),
     ] = False,
+    autopilot: Annotated[
+        bool,
+        typer.Option(
+            "--autopilot",
+            help="Execute all steps automatically with review+apply and commit after each",
+        ),
+    ] = False,
 ) -> None:
     """Execute plan phases and steps with AI assistance.
 
@@ -152,11 +159,19 @@ def implement(
         )
         raise typer.Exit(1)
 
-    # TTY check for interactive mode
-    if step is None and phase is None and not sys.stdin.isatty():
+    # TTY check for interactive mode (not needed for autopilot)
+    if step is None and phase is None and not autopilot and not sys.stdin.isatty():
         ctx.error(
             "Interactive mode requires a terminal. Use --step or --phase for non-interactive.",
             next_action="weld implement plan.md --step 1.1",
+        )
+        raise typer.Exit(1)
+
+    # Autopilot validation: cannot be used with --step or --phase
+    if autopilot and (step is not None or phase is not None):
+        ctx.error(
+            "Autopilot mode executes all steps. Cannot use with --step or --phase.",
+            next_action="weld implement plan.md --autopilot",
         )
         raise typer.Exit(1)
 
@@ -197,7 +212,9 @@ def implement(
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would implement from plan:")
         ctx.console.print(f"  Plan file: {plan_file}")
-        if step:
+        if autopilot:
+            ctx.console.print("  Mode: Autopilot (all steps, auto-review, auto-commit)")
+        elif step:
             ctx.console.print(f"  Mode: Non-interactive (step {step})")
         elif phase:
             ctx.console.print(f"  Mode: Non-interactive (phase {phase})")
@@ -205,10 +222,22 @@ def implement(
             ctx.console.print("  Mode: Interactive menu")
         return
 
-    # --- Route to interactive or non-interactive mode ---
+    # --- Route to autopilot, interactive, or non-interactive mode ---
 
     # Always track implement command
     with track_session_activity(weld_dir, repo_root, "implement"):
+        if autopilot:
+            exit_code = _implement_autopilot(
+                ctx=ctx,
+                plan=plan,
+                config=config,
+                repo_root=repo_root,
+                weld_dir=weld_dir,
+                quiet=quiet,
+                timeout=effective_timeout,
+            )
+            raise typer.Exit(exit_code)
+
         if step is not None or phase is not None:
             exit_code = _implement_non_interactive(
                 ctx=ctx,
@@ -973,3 +1002,339 @@ def _execute_phase_steps(
     ctx.console.print(f"[green]✓ Phase {phase.number} complete[/green]")
 
     return True
+
+
+def _implement_autopilot(
+    ctx: OutputContext,
+    plan: Plan,
+    config: WeldConfig,
+    repo_root: Path,
+    weld_dir: Path,
+    quiet: bool,
+    timeout: int,
+) -> int:
+    """Run fully automated implementation of all plan steps.
+
+    For each incomplete step:
+    1. Execute the step with Claude
+    2. Run code review with --apply (auto-fix issues)
+    3. Stage and commit changes
+
+    Stops on first Claude failure.
+    Returns exit code (0 for success, 21 for Claude failure).
+    """
+    ctx.console.print(Panel(f"[bold]Autopilot:[/bold] {plan.path.name}", style="blue"))
+
+    # Collect all incomplete steps across all phases
+    all_steps: list[tuple[Phase, Step]] = []
+    for phase in plan.phases:
+        for step in phase.steps:
+            if not step.is_complete:
+                all_steps.append((phase, step))
+
+    if not all_steps:
+        ctx.console.print("[green]All steps already complete.[/green]")
+        return 0
+
+    ctx.console.print(f"[dim]{len(all_steps)} step(s) to implement[/dim]\n")
+
+    # Load registry for commit tracking
+    registry = get_registry(weld_dir)
+
+    # Track which phases have had all steps completed
+    completed_phases: set[int] = set()
+
+    for phase, step in all_steps:
+        success = _execute_step_autopilot(
+            ctx=ctx,
+            plan=plan,
+            phase=phase,
+            step=step,
+            config=config,
+            repo_root=repo_root,
+            weld_dir=weld_dir,
+            quiet=quiet,
+            timeout=timeout,
+            registry=registry,
+        )
+
+        if not success:
+            ctx.error(f"Autopilot stopped at step {step.number}.")
+            return 21
+
+        # Check if phase is now complete
+        if all(s.is_complete for s in phase.steps) and phase.number not in completed_phases:
+            try:
+                mark_phase_complete(plan, phase)
+                ctx.console.print(f"[green]Phase {phase.number} complete[/green]")
+                completed_phases.add(phase.number)
+            except ValueError as e:
+                ctx.console.print(f"[yellow]Warning: Failed to mark phase complete: {e}[/yellow]")
+
+    ctx.console.print("\n[green]Autopilot complete. All steps implemented.[/green]")
+    return 0
+
+
+def _execute_step_autopilot(
+    ctx: OutputContext,
+    plan: Plan,
+    phase: Phase,
+    step: Step,
+    config: WeldConfig,
+    repo_root: Path,
+    weld_dir: Path,
+    quiet: bool,
+    timeout: int,
+    registry: SessionRegistry,
+) -> bool:
+    """Execute a single step in autopilot mode.
+
+    1. Run Claude to implement step
+    2. Mark step complete
+    3. Run review with --apply mode (non-blocking)
+    4. Stage and commit all changes (non-blocking)
+
+    Returns True on success, False on Claude failure.
+    """
+    ctx.console.print(f"\n[bold cyan]Step {step.number}: {step.title}[/bold cyan]")
+
+    # Capture current session before any Claude calls
+    current_session = detect_current_session(repo_root)
+
+    # Build implementation prompt (same as _execute_step)
+    prompt = f"""## Implement Step {step.number}: {step.title}
+
+{step.content}
+
+---
+
+## Instructions
+
+**IMPORTANT - Check if already complete:**
+Before implementing, examine the codebase to determine if this step's requirements
+are already satisfied.
+
+If you determine the step is already complete:
+1. Check git status (`git status --porcelain`)
+2. If worktree is clean (no changes):
+   - Simply confirm the step is complete - DO NOT run tests or validation commands
+   - State: "Step already complete, no changes needed"
+3. If worktree is dirty (uncommitted changes):
+   - Review the changes to ensure they satisfy the step requirements
+   - If satisfied, state: "Step requirements met by uncommitted changes"
+   - DO NOT run tests again - assume changes are valid
+
+If the step is NOT complete:
+1. Implement the specification
+2. Verify changes work by running any validation commands shown
+3. Keep changes focused on this specific step only
+4. Do not implement future steps or phases
+
+When complete, confirm the implementation is done.
+"""
+
+    # Execute Claude
+    try:
+        run_claude(
+            prompt=prompt,
+            exec_path=config.claude.exec,
+            cwd=repo_root,
+            stream=not quiet,
+            timeout=timeout,
+            skip_permissions=True,
+            max_output_tokens=config.claude.max_output_tokens,
+        )
+    except ClaudeError as e:
+        ctx.console.print(f"[red]Claude failed: {e}[/red]")
+        return False
+
+    # Mark step complete
+    try:
+        mark_step_complete(plan, step)
+        ctx.console.print(f"[green]Step {step.number} marked complete[/green]")
+    except ValueError as e:
+        ctx.error(f"Failed to mark step complete: {e}")
+        return False
+
+    # Run review with apply mode (non-blocking - errors don't stop autopilot)
+    _autopilot_review_and_fix(
+        ctx=ctx,
+        step=step,
+        config=config,
+        repo_root=repo_root,
+        weld_dir=weld_dir,
+    )
+
+    # Commit changes (non-blocking - errors don't stop autopilot)
+    _autopilot_commit(
+        ctx=ctx,
+        step=step,
+        config=config,
+        repo_root=repo_root,
+        weld_dir=weld_dir,
+        registry=registry,
+        session_file=current_session,
+    )
+
+    return True
+
+
+def _autopilot_review_and_fix(
+    ctx: OutputContext,
+    step: Step,
+    config: WeldConfig,
+    repo_root: Path,
+    weld_dir: Path,
+) -> None:
+    """Run code review with auto-apply in autopilot mode.
+
+    Non-blocking: errors are logged but don't stop autopilot.
+    """
+    # Get diff content
+    try:
+        diff_content = get_diff(staged=False, cwd=repo_root)
+    except GitError as e:
+        ctx.console.print(f"[yellow]Skipping review (git error): {e}[/yellow]")
+        return
+
+    if not diff_content.strip():
+        ctx.console.print("[dim]No changes to review[/dim]")
+        return
+
+    # Generate review prompt with apply mode
+    try:
+        prompt = generate_code_review_prompt(diff_content, apply_mode=True)
+    except Exception as e:
+        ctx.console.print(f"[yellow]Failed to generate review prompt: {e}[/yellow]")
+        return
+
+    # Create artifact directory
+    step_safe = str(step.number).replace(".", "-")
+    review_id = datetime.now().strftime(f"%Y%m%d-%H%M%S-autopilot-step{step_safe}")
+
+    review_dir = get_doc_review_dir(weld_dir)
+    artifact_dir = review_dir / review_id
+
+    try:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "prompt.md").write_text(prompt)
+        (artifact_dir / "diff.patch").write_text(diff_content)
+    except OSError as e:
+        ctx.console.print(f"[yellow]Failed to save review artifacts: {e}[/yellow]")
+        return
+
+    # Run Claude for review+fix
+    ctx.console.print("[dim]Running code review with auto-fix...[/dim]")
+
+    try:
+        result = run_claude(
+            prompt=prompt,
+            exec_path=config.claude.exec,
+            cwd=repo_root,
+            stream=False,  # Quiet in autopilot
+            timeout=config.claude.timeout,
+            skip_permissions=True,
+            max_output_tokens=config.claude.max_output_tokens,
+        )
+    except ClaudeError as e:
+        ctx.console.print(f"[yellow]Review failed: {e}[/yellow]")
+        return
+
+    # Save results
+    if result and result.strip():
+        try:
+            (artifact_dir / "fixes.md").write_text(result)
+            ctx.console.print("[green]Review fixes applied[/green]")
+        except OSError as e:
+            ctx.console.print(f"[yellow]Failed to save review results: {e}[/yellow]")
+    else:
+        ctx.console.print("[dim]Review produced no output[/dim]")
+
+
+def _autopilot_commit(
+    ctx: OutputContext,
+    step: Step,
+    config: WeldConfig,
+    repo_root: Path,
+    weld_dir: Path,
+    registry: SessionRegistry,
+    session_file: Path | None,
+) -> None:
+    """Commit changes automatically in autopilot mode.
+
+    Non-blocking: errors are logged but don't stop autopilot.
+    """
+    # Check for uncommitted changes
+    try:
+        status = get_status_porcelain(cwd=repo_root)
+    except GitError as e:
+        ctx.console.print(f"[yellow]Failed to check git status: {e}[/yellow]")
+        return
+
+    if not status.strip():
+        ctx.console.print("[dim]No changes to commit[/dim]")
+        return
+
+    # Stage all changes
+    try:
+        stage_all(cwd=repo_root)
+    except GitError as e:
+        ctx.console.print(f"[yellow]Failed to stage changes: {e}[/yellow]")
+        return
+
+    # Get staged files and filter
+    try:
+        staged_files = get_staged_files(cwd=repo_root)
+    except GitError as e:
+        ctx.console.print(f"[yellow]Failed to get staged files: {e}[/yellow]")
+        return
+
+    # Exclude .weld/ metadata files
+    excluded_files = [f for f in staged_files if _should_exclude_from_commit(f)]
+    if excluded_files:
+        for f in excluded_files:
+            with contextlib.suppress(GitError):
+                run_git("restore", "--staged", f, cwd=repo_root)
+        # Refresh staged files list
+        try:
+            staged_files = get_staged_files(cwd=repo_root)
+        except GitError:
+            return
+
+    if not staged_files:
+        ctx.console.print("[dim]No files to commit after filtering[/dim]")
+        return
+
+    # Record session activity for transcript upload
+    if session_file:
+        try:
+            session_id = get_session_id(session_file)
+            registry.record_activity(
+                session_id=session_id,
+                session_file=str(session_file),
+                command="implement",
+                files_created=[],
+                files_modified=staged_files,
+                completed=True,
+            )
+        except Exception as e:
+            ctx.console.print(f"[yellow]Warning: Failed to record session: {e}[/yellow]")
+
+    # Resolve to sessions and commit
+    session_files = resolve_files_to_sessions(staged_files, registry)
+
+    try:
+        _commit_by_sessions(
+            ctx=ctx,
+            session_files=session_files,
+            registry=registry,
+            config=config,
+            repo_root=repo_root,
+            weld_dir=weld_dir,
+            skip_transcript=False,
+            skip_changelog=False,
+            quiet=True,  # Suppress streaming in autopilot
+        )
+        ctx.console.print(f"[green]Committed step {step.number} changes[/green]")
+    except Exception as e:
+        ctx.console.print(f"[yellow]Commit failed: {e}[/yellow]")
