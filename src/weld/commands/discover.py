@@ -120,6 +120,7 @@ def _run_discover(
             exec_path=claude_exec,
             cwd=repo_root,
             stream=not quiet,
+            skip_permissions=True,
             max_output_tokens=config.claude.max_output_tokens,
         )
 

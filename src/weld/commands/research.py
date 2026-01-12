@@ -158,6 +158,7 @@ def research(
         return run_claude(
             prompt=prompt,
             stream=not quiet,
+            skip_permissions=True,
             max_output_tokens=config.claude.max_output_tokens,
         )
 

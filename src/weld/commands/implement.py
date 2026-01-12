@@ -745,7 +745,7 @@ def _prompt_and_review_step(
             cwd=repo_root,
             stream=True,  # Show Claude's work
             timeout=timeout,
-            skip_permissions=should_apply,  # Allow writes if applying
+            skip_permissions=True,
             max_output_tokens=max_tokens,
         )
     except ClaudeError as e:

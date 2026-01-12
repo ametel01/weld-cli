@@ -423,6 +423,7 @@ def _commit_by_sessions(
                 model=config.claude.model,
                 cwd=repo_root,
                 stream=not quiet,
+                skip_permissions=True,
                 max_output_tokens=config.claude.max_output_tokens,
             )
             groups = _parse_commit_groups(response)
@@ -588,6 +589,7 @@ def _commit_with_fallback_transcript(
             model=config.claude.model,
             cwd=repo_root,
             stream=not quiet,
+            skip_permissions=True,
             max_output_tokens=config.claude.max_output_tokens,
         )
         commit_groups = _parse_commit_groups(response)

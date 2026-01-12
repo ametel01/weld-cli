@@ -1889,8 +1889,8 @@ class TestPromptAndReviewStep:
         )
 
         mock_claude.assert_called_once()
-        # Verify skip_permissions=False for review mode
-        assert mock_claude.call_args.kwargs.get("skip_permissions") is False
+        # Verify skip_permissions=True (always enabled)
+        assert mock_claude.call_args.kwargs.get("skip_permissions") is True
 
     @pytest.mark.unit
     @patch("weld.commands.implement.run_claude")

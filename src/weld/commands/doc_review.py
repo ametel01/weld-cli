@@ -281,7 +281,7 @@ def _run_code_review(
             cwd=repo_root,
             stream=not quiet,
             timeout=timeout,
-            skip_permissions=apply,  # Allow file writes in apply mode
+            skip_permissions=True,
             max_output_tokens=config.claude.max_output_tokens,
         )
 
@@ -397,7 +397,7 @@ def _run_doc_review(
             cwd=repo_root,
             stream=not quiet,
             timeout=timeout,
-            skip_permissions=apply,  # Allow file writes in apply mode
+            skip_permissions=True,
             max_output_tokens=config.claude.max_output_tokens,
         )
 
