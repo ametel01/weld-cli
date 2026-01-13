@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-01-14
+
 ### Added
 - `--autopilot` flag for `weld implement` command
   - Executes all plan steps automatically without user intervention
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Shows concrete anti-pattern to avoid (bullet-point summaries)
   - Provides complete correct example with all required sections
   - Adds output format checklist as final reminder before generation
+  - Explicitly forbids questions, follow-up options, and conversational closing
+  - Clarifies CLI context: output goes directly to file, not interactive chat
 
 ## [0.7.1] - 2026-01-11
 
@@ -373,7 +377,9 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ametel01/weld-cli/compare/v0.7.1...v0.8.0
+[0.7.1]: https://github.com/ametel01/weld-cli/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/ametel01/weld-cli/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ametel01/weld-cli/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ametel01/weld-cli/compare/v0.4.1...v0.5.0

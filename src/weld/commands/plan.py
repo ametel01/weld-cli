@@ -205,7 +205,12 @@ Before outputting your plan, verify:
 - [ ] Steps end with `---` separator
 - [ ] NO bullet-point summaries or overviews
 - [ ] NO prose paragraphs outside the structure
+- [ ] NO questions to the user (e.g., "Would you like me to...")
+- [ ] NO follow-up options or suggestions
+- [ ] NO conversational closing
 
+CRITICAL: This is a CLI tool. Your output will be written directly to a file.
+Do NOT ask questions. Do NOT offer alternatives. Do NOT include any text after the final `---`.
 Output ONLY the structured plan now. Begin with `## Phase 1:`
 """
 
