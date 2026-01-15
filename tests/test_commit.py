@@ -1553,8 +1553,13 @@ Add test file
         registry_file = sessions_dir / "registry.jsonl"
         registry_file.write_text("{}\n")
 
-        # Stage both files
-        subprocess.run(["git", "add", "."], cwd=initialized_weld, check=True)
+        # Stage both files (use -f to override .gitignore for .weld/ files)
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+        subprocess.run(
+            ["git", "add", "-f", ".weld/sessions/registry.jsonl"],
+            cwd=initialized_weld,
+            check=True,
+        )
 
         with patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()):
             result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
@@ -1573,9 +1578,9 @@ Add test file
         registry_file = sessions_dir / "registry.jsonl"
         registry_file.write_text("")  # Empty file
 
-        # Stage only the metadata file
+        # Stage only the metadata file (use -f to override .gitignore)
         subprocess.run(
-            ["git", "add", ".weld/sessions/registry.jsonl"],
+            ["git", "add", "-f", ".weld/sessions/registry.jsonl"],
             cwd=initialized_weld,
             check=True,
         )
