@@ -6,6 +6,7 @@ This package contains pure business logic with no external I/O:
 - discover_engine: Codebase discovery prompt generation
 - interview_engine: Interactive specification refinement
 - doc_review_engine: Document review against codebase
+- validators: Input validation utilities
 """
 
 from .discover_engine import generate_discover_prompt, get_discover_dir
@@ -29,6 +30,7 @@ from .plan_parser import (
     parse_plan,
     validate_plan,
 )
+from .validators import validate_input_file, validate_output_path, validate_plan_file
 from .weld_dir import get_sessions_dir, get_weld_dir
 
 __all__ = [
@@ -56,5 +58,8 @@ __all__ = [
     "read_history",
     "run_interview_loop",
     "strip_preamble",
+    "validate_input_file",
+    "validate_output_path",
     "validate_plan",
+    "validate_plan_file",
 ]
