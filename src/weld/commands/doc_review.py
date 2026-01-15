@@ -12,7 +12,13 @@ import typer
 from rich.panel import Panel
 
 from ..config import WeldConfig, load_config
-from ..core import generate_code_review_prompt, get_weld_dir, strip_preamble
+from ..core import (
+    generate_code_review_prompt,
+    get_weld_dir,
+    strip_preamble,
+    validate_input_file,
+    validate_output_path,
+)
 from ..core.doc_review_engine import generate_doc_review_prompt, get_doc_review_dir
 from ..output import OutputContext, get_output_context
 from ..services import (
@@ -130,19 +136,29 @@ def doc_review(
 
     # Validate arguments
     if diff and document:
-        ctx.console.print("[red]Error: Cannot use --diff with a document argument[/red]")
+        ctx.error("Cannot use --diff with a document argument")
         raise typer.Exit(1)
 
     if staged and not diff:
-        ctx.console.print("[red]Error: --staged requires --diff[/red]")
+        ctx.error("--staged requires --diff", next_action="weld review --diff --staged")
         raise typer.Exit(1)
 
     if not diff and not document:
-        ctx.console.print("[red]Error: Either provide a document or use --diff[/red]")
+        ctx.error("Either provide a document or use --diff", next_action="weld review --help")
         raise typer.Exit(1)
 
-    if document and not document.exists():
-        ctx.console.print(f"[red]Error: Document not found: {document}[/red]")
+    # Early validation of document if provided
+    if document is not None and (
+        error := validate_input_file(document, must_be_markdown=True, param_name="document")
+    ):
+        ctx.error(error[0], next_action=error[1])
+        raise typer.Exit(1)
+
+    # Early validation of output path if provided
+    if output is not None and (
+        error := validate_output_path(output, must_be_markdown=True, param_name="output")
+    ):
+        ctx.error(error[0], next_action=error[1])
         raise typer.Exit(1)
 
     try:

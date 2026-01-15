@@ -33,9 +33,9 @@ class TestImplementCommand:
 
     @pytest.mark.cli
     def test_implement_file_not_found(self, initialized_weld: Path) -> None:
-        """Fails with exit code 23 when plan file doesn't exist."""
+        """Fails early with exit code 1 and helpful hint when plan file doesn't exist."""
         result = runner.invoke(app, ["implement", "nonexistent.md", "--step", "1.1"])
-        assert result.exit_code == 23
+        assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
     @pytest.mark.cli

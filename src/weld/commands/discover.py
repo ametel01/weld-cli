@@ -7,7 +7,7 @@ from typing import Annotated
 import typer
 
 from ..config import load_config
-from ..core import get_weld_dir, log_command, strip_preamble
+from ..core import get_weld_dir, log_command, strip_preamble, validate_output_path
 from ..core.discover_engine import generate_discover_prompt, get_discover_dir
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
@@ -73,6 +73,13 @@ def _run_discover(
 ) -> None:
     """Execute the discover workflow."""
     ctx = get_output_context()
+
+    # Early validation of output path if provided
+    if output is not None and (
+        error := validate_output_path(output, must_be_markdown=True, param_name="output")
+    ):
+        ctx.error(error[0], next_action=error[1])
+        raise typer.Exit(1)
 
     try:
         repo_root = get_repo_root()

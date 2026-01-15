@@ -3,8 +3,12 @@
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from weld.cli import app
 from weld.commands.plan import generate_plan_prompt, get_plan_dir
+
+runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "200"})
 
 
 @pytest.mark.unit
@@ -158,3 +162,60 @@ class TestGetPlanDir:
         plan_dir = get_plan_dir(weld_dir)
 
         assert plan_dir == weld_dir / "plan"
+
+
+@pytest.mark.cli
+class TestPlanInputValidation:
+    """Tests for plan command input validation."""
+
+    def test_plan_spec_not_found(self, tmp_path: Path) -> None:
+        """Fails early with helpful hint when spec file doesn't exist."""
+        result = runner.invoke(app, ["plan", str(tmp_path / "missing.md")])
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+        assert "ls" in result.output
+
+    def test_plan_spec_is_directory(self, tmp_path: Path) -> None:
+        """Fails with helpful hint when spec path is a directory."""
+        result = runner.invoke(app, ["plan", str(tmp_path)])
+
+        assert result.exit_code == 1
+        assert "directory" in result.output.lower()
+        assert "example.md" in result.output
+
+    def test_plan_spec_wrong_extension(self, tmp_path: Path) -> None:
+        """Fails with helpful hint when spec file is not markdown."""
+        txt_file = tmp_path / "spec.txt"
+        txt_file.write_text("content")
+
+        result = runner.invoke(app, ["plan", str(txt_file)])
+
+        assert result.exit_code == 1
+        assert "markdown" in result.output.lower()
+        assert ".md" in result.output
+
+    def test_plan_output_is_directory(self, tmp_path: Path) -> None:
+        """Fails early when output path is an existing directory."""
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+        out_dir = tmp_path / "output"
+        out_dir.mkdir()
+
+        result = runner.invoke(app, ["plan", str(spec), "-o", str(out_dir)])
+
+        assert result.exit_code == 1
+        assert "directory" in result.output.lower()
+        assert "--output" in result.output
+
+    def test_plan_output_wrong_extension(self, tmp_path: Path) -> None:
+        """Fails early when output path doesn't have .md extension."""
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec")
+        out_path = tmp_path / "plan.txt"
+
+        result = runner.invoke(app, ["plan", str(spec), "-o", str(out_path)])
+
+        assert result.exit_code == 1
+        assert "markdown" in result.output.lower()
+        assert ".md" in result.output

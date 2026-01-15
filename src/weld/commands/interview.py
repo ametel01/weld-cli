@@ -5,7 +5,7 @@ from typing import Annotated
 
 import typer
 
-from ..core import get_weld_dir
+from ..core import get_weld_dir, validate_input_file
 from ..core.interview_engine import run_interview_loop
 from ..output import get_output_context
 from ..services import GitError, get_repo_root, track_session_activity
@@ -27,14 +27,10 @@ def interview(
     """Interactively refine a specification through Q&A."""
     ctx = get_output_context()
 
-    if not file.exists():
-        ctx.console.print(f"[red]Error: File not found: {file}[/red]")
-        raise typer.Exit(1) from None
-
-    if file.suffix != ".md":
-        ctx.console.print(
-            "[yellow]Warning: File is not markdown - interview may not work well[/yellow]"
-        )
+    # Early validation of input file
+    if error := validate_input_file(file, must_be_markdown=True, param_name="file"):
+        ctx.error(error[0], next_action=error[1])
+        raise typer.Exit(1)
 
     # Get repo root and weld dir for session tracking
     try:

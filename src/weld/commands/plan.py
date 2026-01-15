@@ -7,7 +7,7 @@ from typing import Annotated
 import typer
 
 from ..config import load_config
-from ..core import get_weld_dir, log_command
+from ..core import get_weld_dir, log_command, validate_input_file, validate_output_path
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
 
@@ -246,8 +246,16 @@ def plan(
     """
     ctx = get_output_context()
 
-    if not input_file.exists():
-        ctx.error(f"Input file not found: {input_file}")
+    # Early validation of input file
+    if error := validate_input_file(input_file, must_be_markdown=True, param_name="spec file"):
+        ctx.error(error[0], next_action=error[1])
+        raise typer.Exit(1)
+
+    # Early validation of output path if provided
+    if output is not None and (
+        error := validate_output_path(output, must_be_markdown=True, param_name="output")
+    ):
+        ctx.error(error[0], next_action=error[1])
         raise typer.Exit(1)
 
     # Get weld directory for history logging and default output

@@ -167,16 +167,17 @@ class TestInterviewCommand:
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
-    def test_interview_non_markdown_warning(self, tmp_path: Path) -> None:
-        """Shows warning for non-markdown files."""
+    def test_interview_non_markdown_error(self, tmp_path: Path) -> None:
+        """Fails early for non-markdown files with helpful hint."""
         txt_file = tmp_path / "spec.txt"
         txt_file.write_text("Some content")
 
         result = runner.invoke(app, ["interview", str(txt_file)])
 
-        # Should succeed (warning doesn't stop execution)
-        assert result.exit_code == 0
-        assert "not markdown" in result.output.lower()
+        # Should fail with helpful error message
+        assert result.exit_code == 1
+        assert "markdown" in result.output.lower()
+        assert ".md" in result.output
 
     def test_interview_prints_prompt(self, tmp_path: Path) -> None:
         """Prints interview prompt for markdown file."""

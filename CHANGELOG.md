@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Early input validation with helpful error hints for all commands
+  - Validates file paths before starting expensive operations (prevents wasted API tokens)
+  - Clear error messages indicate what's wrong (e.g., "is a directory, expected a file")
+  - Actionable hints suggest corrections (e.g., "Provide a file path: --output /path/output.md")
+  - Applies to: `plan`, `research`, `discover`, `review`, `interview`, `implement`
+
 ## [0.8.0] - 2026-01-14
 
 ### Added

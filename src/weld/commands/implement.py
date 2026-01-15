@@ -29,6 +29,7 @@ from ..core import (
     mark_phase_complete,
     mark_step_complete,
     validate_plan,
+    validate_plan_file,
 )
 from ..core.plan_parser import Phase, Plan, Step
 from ..output import OutputContext, get_output_context
@@ -148,6 +149,13 @@ def implement(
     Without options, shows interactive menu to select phase/step.
     """
     ctx = get_output_context()
+
+    # --- Early path validation ---
+
+    # Validate plan file path before any other processing
+    if error := validate_plan_file(plan_file, param_name="plan file"):
+        ctx.error(error[0], next_action=error[1])
+        raise typer.Exit(1)
 
     # --- Validate environment ---
 
