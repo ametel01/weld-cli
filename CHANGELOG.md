@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Telegram bot configuration with user authentication and project registration
+
+### Added
 - Initial Telegram bot integration module structure
 
 ## [0.9.1] - 2026-01-17
