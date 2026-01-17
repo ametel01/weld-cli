@@ -180,6 +180,98 @@ The entire `.weld/` directory is local-only and not tracked in git. This include
 
 If `.gitignore` already contains `.weld/`, `weld init` skips updating it.
 
+### Telegram Bot
+
+Remote weld interaction via Telegram. Runs as a long-polling bot for executing weld commands on registered projects.
+
+#### Architecture
+
+```
+src/weld/telegram/
+├── cli.py              # Typer commands: init, serve, whoami, doctor, projects
+├── bot.py              # Aiogram handlers and command implementations
+├── config.py           # TelegramConfig, TelegramAuth, TelegramProject (Pydantic)
+├── auth.py             # User allowlist validation
+├── state.py            # SQLite state store (contexts, projects, runs)
+├── queue.py            # Per-chat async queue for sequential command execution
+├── runner.py           # Subprocess runner for weld commands
+├── format.py           # MessageEditor for streaming Telegram updates
+├── files.py            # File upload/download handlers
+└── errors.py           # TelegramError hierarchy
+```
+
+#### CLI Commands
+
+```bash
+# Setup
+weld telegram init                          # Configure bot token interactively
+weld telegram init --token <TOKEN>          # Configure with token directly
+
+# Diagnostics
+weld telegram whoami                        # Show bot identity and auth status
+weld telegram doctor                        # Validate setup (deps, config, token, users)
+
+# Project management
+weld telegram projects add <name> <path>    # Register project for bot access
+weld telegram projects remove <name>        # Unregister project
+weld telegram projects list                 # List registered projects
+
+# Run bot
+weld telegram serve                         # Start long-polling bot server
+```
+
+#### Telegram Bot Commands
+
+Once `weld telegram serve` is running, users interact via Telegram:
+
+- `/use [project]` - Switch project context (or show current)
+- `/status` - Show queue and run status
+- `/cancel` - Cancel active/pending runs
+- `/doctor` - Run environment check on current project
+- `/plan [spec.md]` - Generate implementation plan
+- `/interview [spec.md]` - Interactive spec refinement
+- `/implement <plan.md>` - Execute plan steps
+- `/commit [-m msg]` - Commit changes with transcripts
+- `/fetch <path>` - Download file from project
+- `/push <path>` - Upload file to project (reply to document)
+
+#### Configuration
+
+Config file: `~/.config/weld/telegram.toml` (created by `weld telegram init`)
+
+```toml
+bot_token = "123456:ABC..."
+
+[auth]
+allowed_user_ids = [123456789]
+allowed_usernames = ["myusername"]
+
+[[projects]]
+name = "myproject"
+path = "/home/user/projects/myproject"
+description = "My project"
+```
+
+State database: `~/.weld/telegram/state.db` (SQLite)
+
+#### Security Model
+
+- **Allowlist-only**: Bot ignores all messages from users not in `auth.allowed_user_ids` or `auth.allowed_usernames`
+- **Token protection**: Config file set to `0o600` (owner read/write only)
+- **Project isolation**: Commands execute in registered project directories only
+- **No shell**: All subprocess calls use explicit argument lists (never `shell=True`)
+- **Silent rejection**: Unauthorized access attempts are logged but receive no response
+
+#### Installation
+
+Telegram support is an optional dependency:
+
+```bash
+pip install weld[telegram]
+```
+
+Requires `aiogram` for async Telegram API interaction.
+
 ## Git Commits
 
 - Never mention Claude Code in commit messages
