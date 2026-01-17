@@ -32,3 +32,16 @@ CHECKS_TIMEOUT = 300  # 5 minutes
 
 #: Timeout for tool availability checks during `weld init`
 INIT_TOOL_CHECK_TIMEOUT = 10
+
+# =============================================================================
+# Telegram Bot Timeouts (in seconds)
+# =============================================================================
+
+#: Timeout for Telegram Bot API calls (getUpdates, sendMessage, etc.)
+TELEGRAM_BOT_TIMEOUT = 30
+
+#: Timeout for full weld command runs triggered via Telegram
+TELEGRAM_RUN_TIMEOUT = 1800  # 30 minutes
+
+#: Minimum interval between message edits to avoid Telegram rate limits
+TELEGRAM_EDIT_THROTTLE = 2.0
