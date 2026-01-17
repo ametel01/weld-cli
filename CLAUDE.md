@@ -211,6 +211,11 @@ weld telegram init --token <TOKEN>          # Configure with token directly
 weld telegram whoami                        # Show bot identity and auth status
 weld telegram doctor                        # Validate setup (deps, config, token, users)
 
+# User management
+weld telegram user add <id_or_username>     # Add user to allowlist (by ID or @username)
+weld telegram user remove <id_or_username>  # Remove user from allowlist
+weld telegram user list                     # List allowed users
+
 # Project management
 weld telegram projects add <name> <path>    # Register project for bot access
 weld telegram projects remove <name>        # Unregister project
