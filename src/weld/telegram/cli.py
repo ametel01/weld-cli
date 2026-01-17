@@ -214,6 +214,173 @@ async def _validate_token(token: str) -> tuple[bool, str]:
 
 
 @telegram_app.command()
+def whoami() -> None:
+    """Show current bot identity and authentication status.
+
+    Displays the bot token status and bot identity if configured.
+    Validates the token with Telegram API to confirm it's still valid.
+    """
+    _check_telegram_deps()
+
+    config, config_path = _load_config_or_exit()
+
+    if not config.bot_token:
+        typer.echo("Status: Token not set", err=True)
+        typer.echo(f"Config: {config_path}", err=True)
+        typer.echo("Run 'weld telegram init' to set up the bot token.")
+        raise typer.Exit(1)
+
+    try:
+        success, message = asyncio.run(_validate_token(config.bot_token))
+    except Exception as e:
+        typer.echo("Status: Cannot connect", err=True)
+        typer.echo(f"Config: {config_path}", err=True)
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    if not success:
+        typer.echo("Status: Invalid token", err=True)
+        typer.echo(f"Config: {config_path}", err=True)
+        typer.echo(f"Error: {message}", err=True)
+        raise typer.Exit(1)
+
+    # Token is valid, show identity
+    typer.echo("Status: Authenticated")
+    typer.echo(f"Bot: {message}")
+    typer.echo(f"Config: {config_path}")
+
+    # Show allowed users summary
+    user_count = len(config.auth.allowed_user_ids)
+    username_count = len(config.auth.allowed_usernames)
+    typer.echo(f"Allowed users: {user_count} IDs, {username_count} usernames")
+
+    # Show projects summary
+    project_count = len(config.projects)
+    typer.echo(f"Projects: {project_count} registered")
+
+
+@telegram_app.command()
+def doctor() -> None:
+    """Validate Telegram bot setup and environment.
+
+    Checks:
+    - Telegram dependencies (aiogram) installed
+    - Configuration file exists and is valid
+    - Bot token is set and valid
+    - At least one allowed user configured
+    - At least one project registered
+    """
+    issues: list[tuple[str, str]] = []  # (severity, message)
+
+    typer.echo("Checking Telegram bot setup...\n")
+
+    # Check 1: Dependencies
+    typer.echo("Checking dependencies...")
+    try:
+        import aiogram  # noqa: F401
+
+        typer.echo("  aiogram: installed")
+    except ImportError:
+        typer.echo("  aiogram: NOT INSTALLED")
+        issues.append(("error", "aiogram not installed. Run: pip install weld[telegram]"))
+
+    # Check 2: Configuration file
+    from weld.telegram.config import get_config_path, load_config
+
+    config_path = get_config_path()
+    typer.echo("\nChecking configuration...")
+    typer.echo(f"  Path: {config_path}")
+
+    if not config_path.exists():
+        typer.echo("  Status: NOT FOUND")
+        issues.append(("error", "Configuration not found. Run: weld telegram init"))
+        # Can't continue checks without config
+        _doctor_summary(issues)
+        return
+
+    # Try to load config
+    try:
+        config = load_config(config_path)
+        typer.echo("  Status: valid")
+    except (tomllib.TOMLDecodeError, ValidationError) as e:
+        typer.echo("  Status: INVALID")
+        issues.append(("error", f"Configuration invalid: {e}"))
+        _doctor_summary(issues)
+        return
+
+    # Check 3: Bot token
+    typer.echo("\nChecking bot token...")
+    if not config.bot_token:
+        typer.echo("  Status: NOT SET")
+        issues.append(("error", "Bot token not configured. Run: weld telegram init"))
+    else:
+        typer.echo("  Status: configured")
+        typer.echo("  Validating with Telegram API...")
+        try:
+            success, message = asyncio.run(_validate_token(config.bot_token))
+            if success:
+                typer.echo(f"  Bot: {message}")
+            else:
+                typer.echo("  Validation: FAILED")
+                issues.append(("error", f"Token validation failed: {message}"))
+        except Exception as e:
+            typer.echo("  Validation: FAILED")
+            issues.append(("warning", f"Could not validate token: {e}"))
+
+    # Check 4: Allowed users
+    typer.echo("\nChecking authorization...")
+    user_ids = len(config.auth.allowed_user_ids)
+    usernames = len(config.auth.allowed_usernames)
+    typer.echo(f"  Allowed user IDs: {user_ids}")
+    typer.echo(f"  Allowed usernames: {usernames}")
+    if user_ids == 0 and usernames == 0:
+        issues.append(("warning", "No allowed users configured. Bot will reject all messages."))
+
+    # Check 5: Projects
+    typer.echo("\nChecking projects...")
+    project_count = len(config.projects)
+    typer.echo(f"  Registered: {project_count}")
+    if project_count == 0:
+        issues.append(("warning", "No projects registered. Add with: weld telegram projects add"))
+    else:
+        # Check each project path exists
+        for project in config.projects:
+            if not project.path.exists():
+                msg = f"Project '{project.name}' path does not exist: {project.path}"
+                issues.append(("warning", msg))
+            elif not project.path.is_dir():
+                msg = f"Project '{project.name}' path is not a directory: {project.path}"
+                issues.append(("warning", msg))
+
+    _doctor_summary(issues)
+
+
+def _doctor_summary(issues: list[tuple[str, str]]) -> None:
+    """Print doctor summary and exit with appropriate code."""
+    typer.echo("\n" + "=" * 40)
+
+    errors = [msg for sev, msg in issues if sev == "error"]
+    warnings = [msg for sev, msg in issues if sev == "warning"]
+
+    if not issues:
+        typer.echo("All checks passed!")
+        return
+
+    if errors:
+        typer.echo(f"\nErrors ({len(errors)}):")
+        for msg in errors:
+            typer.echo(f"  - {msg}")
+
+    if warnings:
+        typer.echo(f"\nWarnings ({len(warnings)}):")
+        for msg in warnings:
+            typer.echo(f"  - {msg}")
+
+    if errors:
+        raise typer.Exit(1)
+
+
+@telegram_app.command()
 def init(
     token: str | None = typer.Option(
         None,

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `weld telegram whoami` command to show bot identity and authentication status
+- `weld telegram doctor` command to validate Telegram bot setup and environment
+
+### Added
 - `weld telegram projects add` command to register projects for Telegram bot access
 - `weld telegram projects remove` command to unregister projects
 - `weld telegram projects list` command to show registered projects
