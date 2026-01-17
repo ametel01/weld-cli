@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- SQLite state persistence for Telegram bot with user contexts, projects, and command run tracking
+
+### Added
 - Telegram bot configuration with user authentication and project registration
 
 ### Added
