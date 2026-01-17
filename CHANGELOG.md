@@ -8,24 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Rate-limited message editor for Telegram with exponential backoff retry
+- Telegram message formatting utilities with proper Unicode chunking support
 - Per-chat FIFO queue system for Telegram bot to ensure ordered run processing
-
-### Added
 - Async command runner for Telegram bot with streaming output and timeout handling
-
-### Added
 - `TelegramFileError` and `TelegramRunError` exception classes for more specific error handling in Telegram bot
-
-### Added
 - File path validation for Telegram bot `/fetch` and `/push` commands with path traversal protection
-
-### Added
 - SQLite state persistence for Telegram bot with user contexts, projects, and command run tracking
-
-### Added
 - Telegram bot configuration with user authentication and project registration
-
-### Added
 - Initial Telegram bot integration module structure
 
 ## [0.9.1] - 2026-01-17
