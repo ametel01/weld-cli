@@ -10,6 +10,7 @@ from aiogram.filters import CommandObject
 from aiogram.types import Message
 
 from weld.telegram.config import TelegramConfig
+from weld.telegram.queue import QueueManager
 from weld.telegram.state import StateStore, UserContext
 
 logger = logging.getLogger(__name__)
@@ -177,3 +178,168 @@ async def use_command(
 
     logger.info(f"User {user_id} switched to project '{project_name}'")
     await message.answer(f"Switched to project: *{_escape_markdown(project_name)}*")
+
+
+async def status_command(
+    message: Message,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /status command to show current run and queue state.
+
+    Displays:
+    - Current active run (if any) with project and command
+    - Queue position and pending count
+    - Recent completed/failed runs
+
+    Args:
+        message: Incoming Telegram message
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue state
+    """
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await message.answer("Unable to identify user.")
+        return
+
+    chat_id = message.chat.id
+
+    # Get current context
+    context = await state_store.get_context(user_id)
+
+    # Get active/pending runs
+    running_runs = await state_store.list_runs_by_user(user_id, limit=1, status="running")
+    pending_runs = await state_store.list_runs_by_user(user_id, limit=10, status="pending")
+
+    # Build status message
+    lines: list[str] = []
+
+    # Current project
+    if context and context.current_project:
+        lines.append(f"*Project:* {_escape_markdown(context.current_project)}")
+    else:
+        lines.append("*Project:* None selected")
+
+    lines.append("")
+
+    # Active run
+    if running_runs:
+        run = running_runs[0]
+        cmd_display = run.command[:50] + "..." if len(run.command) > 50 else run.command
+        cmd_escaped = _escape_markdown(cmd_display)
+        lines.append("*Current run:*")
+        lines.append(f"  Command: `{cmd_escaped}`")
+        lines.append(f"  Project: {_escape_markdown(run.project_name)}")
+        lines.append("  Status: running")
+    else:
+        lines.append("*Current run:* None")
+
+    lines.append("")
+
+    # Queue status
+    queue_size = queue_manager.queue_size(chat_id)
+    if queue_size > 0 or pending_runs:
+        lines.append(f"*Queue:* {queue_size} pending")
+        if pending_runs:
+            lines.append("Pending commands:")
+            for i, run in enumerate(pending_runs[:5], 1):
+                cmd_short = run.command[:30] + "..." if len(run.command) > 30 else run.command
+                lines.append(f"  {i}. `{_escape_markdown(cmd_short)}`")
+            if len(pending_runs) > 5:
+                lines.append(f"  ... and {len(pending_runs) - 5} more")
+    else:
+        lines.append("*Queue:* Empty")
+
+    # Recent history (last 3 completed/failed)
+    recent_runs = await state_store.list_runs_by_user(user_id, limit=5)
+    terminal_statuses = ("completed", "failed", "cancelled")
+    completed_runs = [r for r in recent_runs if r.status in terminal_statuses][:3]
+
+    if completed_runs:
+        lines.append("")
+        lines.append("*Recent:*")
+        for run in completed_runs:
+            status_emoji = {"completed": "✓", "failed": "✗", "cancelled": "⊘"}.get(run.status, "?")
+            cmd_short = run.command[:25] + "..." if len(run.command) > 25 else run.command
+            lines.append(f"  {status_emoji} `{_escape_markdown(cmd_short)}`")
+
+    await message.answer("\n".join(lines))
+
+
+async def cancel_command(
+    message: Message,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /cancel command to abort active run and clear queue.
+
+    Cancels the currently running command (if any) and clears all
+    pending commands from the queue.
+
+    Args:
+        message: Incoming Telegram message
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+    """
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await message.answer("Unable to identify user.")
+        return
+
+    chat_id = message.chat.id
+
+    # Track what we cancelled
+    cancelled_active = False
+    cancelled_pending = 0
+
+    # Get and cancel active run
+    running_runs = await state_store.list_runs_by_user(user_id, limit=1, status="running")
+    if running_runs:
+        run = running_runs[0]
+        # Mark the run as cancelled in the database
+        run.status = "cancelled"
+        run.completed_at = datetime.now(UTC)
+        run.error = "Cancelled by user"
+        try:
+            await state_store.update_run(run)
+            cancelled_active = True
+            logger.info(f"User {user_id} cancelled active run {run.id}")
+        except Exception:
+            logger.exception(f"Failed to cancel active run {run.id} for user {user_id}")
+
+    # Cancel pending items in queue
+    cancelled_pending = await queue_manager.cancel_pending(chat_id)
+
+    # Also mark pending runs in database as cancelled
+    pending_runs = await state_store.list_runs_by_user(user_id, limit=100, status="pending")
+    db_cancelled_count = 0
+    for run in pending_runs:
+        run.status = "cancelled"
+        run.completed_at = datetime.now(UTC)
+        run.error = "Cancelled by user"
+        try:
+            await state_store.update_run(run)
+            db_cancelled_count += 1
+        except Exception:
+            logger.exception(f"Failed to cancel pending run {run.id} for user {user_id}")
+    if db_cancelled_count > 0:
+        logger.info(f"User {user_id} cancelled {db_cancelled_count} pending runs in database")
+
+    # Update user context to idle
+    context = await state_store.get_context(user_id)
+    if context and context.conversation_state == "running":
+        context.conversation_state = "idle"
+        context.updated_at = datetime.now(UTC)
+        await state_store.upsert_context(context)
+
+    # Build response
+    if cancelled_active or cancelled_pending > 0 or db_cancelled_count > 0:
+        parts: list[str] = []
+        if cancelled_active:
+            parts.append("Cancelled active run")
+        total_pending = max(cancelled_pending, db_cancelled_count)
+        if total_pending > 0:
+            parts.append(f"cleared {total_pending} pending command(s)")
+        await message.answer("✓ " + ", ".join(parts) + ".")
+    else:
+        await message.answer("Nothing to cancel. No active or pending runs.")

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Telegram bot `/status` command to view current run, queue, and recent history
+- Telegram bot `/cancel` command to abort active runs and clear pending queue
+
+### Added
 - `/use` command for Telegram bot to switch between configured projects
 
 ### Added
