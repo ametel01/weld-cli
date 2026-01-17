@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -16,11 +18,63 @@ DEFAULT_TIMEOUT = 600
 # Graceful shutdown timeout before SIGKILL
 GRACEFUL_SHUTDOWN_TIMEOUT = 5.0
 
-# Registry of active runs: run_id -> Process
-_active_runs: dict[int, asyncio.subprocess.Process] = {}
+# Registry of active runs: run_id -> (Process, input_queue)
+_active_runs: dict[int, tuple[asyncio.subprocess.Process, asyncio.Queue[str]]] = {}
 
 # Chunk type for distinguishing stdout from stderr
-ChunkType = Literal["stdout", "stderr"]
+ChunkType = Literal["stdout", "stderr", "prompt"]
+
+# Pattern to detect interactive prompts
+PROMPT_PATTERN = re.compile(r"Select \[([^\]]+)\].*:")
+
+
+@dataclass
+class PromptInfo:
+    """Information about a detected interactive prompt."""
+
+    text: str  # The full prompt text
+    options: list[str]  # Available options (e.g., ["1", "2", "3"])
+
+
+def detect_prompt(text: str) -> PromptInfo | None:
+    """Detect if text contains an interactive prompt.
+
+    Args:
+        text: Output text to check
+
+    Returns:
+        PromptInfo if a prompt is detected, None otherwise
+    """
+    match = PROMPT_PATTERN.search(text)
+    if match:
+        options_str = match.group(1)
+        options = [opt.strip() for opt in options_str.split("/")]
+        return PromptInfo(text=text, options=options)
+    return None
+
+
+async def send_input(run_id: int, response: str) -> bool:
+    """Send input to a running command's stdin.
+
+    Args:
+        run_id: The run identifier
+        response: The input to send (will have newline appended)
+
+    Returns:
+        True if input was sent, False if no such run exists
+    """
+    run_info = _active_runs.get(run_id)
+    if run_info is None:
+        logger.warning(f"Run {run_id}: No active process to send input to")
+        return False
+
+    proc, input_queue = run_info
+    if proc.returncode is not None:
+        logger.warning(f"Run {run_id}: Process already terminated")
+        return False
+
+    await input_queue.put(response)
+    return True
 
 
 async def execute_run(
@@ -33,6 +87,8 @@ async def execute_run(
     """Execute a weld command asynchronously with streaming output.
 
     Uses asyncio.subprocess for non-blocking execution with proper timeout handling.
+    Supports interactive prompts - when a prompt is detected, yields ("prompt", data)
+    and waits for input via send_input().
 
     Args:
         run_id: Unique identifier for this run (for logging/tracking)
@@ -42,8 +98,8 @@ async def execute_run(
         timeout: Maximum execution time in seconds (default 600s/10min)
 
     Yields:
-        Tuples of (chunk_type, data) where chunk_type is "stdout" or "stderr"
-        and data is the string content read from that stream.
+        Tuples of (chunk_type, data) where chunk_type is "stdout", "stderr", or "prompt"
+        and data is the string content. For "prompt", data contains the prompt text.
 
     Raises:
         TelegramRunError: If command fails to start, times out, or returns non-zero
@@ -52,8 +108,10 @@ async def execute_run(
         async for chunk_type, data in execute_run(1, "plan", ["--dry-run"], cwd=Path("/project")):
             if chunk_type == "stdout":
                 print(data, end="")
-            else:
-                print(f"[stderr] {data}", end="", file=sys.stderr)
+            elif chunk_type == "prompt":
+                # Show prompt to user and get response
+                response = await get_user_response(data)
+                await send_input(run_id, response)
     """
     cmd = ["weld", command]
     if args:
@@ -62,22 +120,26 @@ async def execute_run(
     logger.info(f"Run {run_id}: Starting command: {' '.join(cmd)} in {cwd or 'current dir'}")
 
     proc: asyncio.subprocess.Process | None = None
+    input_queue: asyncio.Queue[str] = asyncio.Queue()
 
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=cwd,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         logger.debug(f"Run {run_id}: Process started with PID {proc.pid}")
 
-        # Register process for cancellation
-        _active_runs[run_id] = proc
+        # Register process and input queue for interaction
+        _active_runs[run_id] = (proc, input_queue)
 
         # Track when streams are exhausted
         stdout_done = False
         stderr_done = False
+        # Buffer for accumulating output to detect prompts
+        output_buffer = ""
 
         async def read_chunk(
             stream: asyncio.StreamReader | None,
@@ -109,7 +171,30 @@ async def execute_run(
                 if result is None:
                     stdout_done = True
                 elif result[0] != "_timeout":
-                    yield result
+                    _chunk_type, data = result
+                    output_buffer += data
+
+                    # Check for prompt
+                    prompt_info = detect_prompt(output_buffer)
+                    if prompt_info:
+                        logger.info(f"Run {run_id}: Detected prompt: {prompt_info.options}")
+                        yield ("prompt", output_buffer)
+                        output_buffer = ""
+
+                        # Wait for user input with timeout
+                        try:
+                            response = await asyncio.wait_for(
+                                input_queue.get(), timeout=timeout - elapsed
+                            )
+                            logger.info(f"Run {run_id}: Received input: {response}")
+                            if proc.stdin:
+                                proc.stdin.write(f"{response}\n".encode())
+                                await proc.stdin.drain()
+                        except TimeoutError:
+                            logger.error(f"Run {run_id}: Timeout waiting for prompt response")
+                            raise TimeoutError("Timeout waiting for prompt response") from None
+                    else:
+                        yield result
 
             # Try to read from stderr
             if not stderr_done and proc.stderr:
@@ -212,11 +297,13 @@ async def cancel_run(run_id: int) -> bool:
         This handles the race condition where a process completes naturally
         between the cancel request and execution - in that case, returns False.
     """
-    proc = _active_runs.get(run_id)
+    run_info = _active_runs.get(run_id)
 
-    if proc is None:
+    if run_info is None:
         logger.debug(f"Run {run_id}: No active process found to cancel")
         return False
+
+    proc, _ = run_info
 
     # Check if process already terminated (race with natural completion)
     if proc.returncode is not None:
