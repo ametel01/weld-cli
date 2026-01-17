@@ -246,11 +246,13 @@ class TestRunCRUD:
         """update_run modifies existing run."""
         run = Run(user_id=12345, project_name="proj", command="cmd")
         run_id = await state_store.create_run(run)
+        original_started_at = run.started_at
 
-        # Update run
+        # Update run with new started_at (simulating pending -> running transition)
         run.id = run_id
         run.status = "completed"
         run.result = "Success!"
+        run.started_at = datetime.now(UTC)
         run.completed_at = datetime.now(UTC)
         updated = await state_store.update_run(run)
         assert updated is True
@@ -260,6 +262,8 @@ class TestRunCRUD:
         assert result.status == "completed"
         assert result.result == "Success!"
         assert result.completed_at is not None
+        # Verify started_at was updated (not the original creation time)
+        assert result.started_at >= original_started_at
 
     async def test_update_run_not_found(self, state_store: StateStore) -> None:
         """update_run returns False when run doesn't exist."""

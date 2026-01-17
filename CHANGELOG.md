@@ -8,8 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Telegram bot commands: /doctor, /plan, /interview, /implement, /commit for remote weld execution
+
+### Added
 - Telegram bot `/status` command to view current run, queue, and recent history
 - Telegram bot `/cancel` command to abort active runs and clear pending queue
+
+### Fixed
+- Telegram bot now persists `started_at` timestamp when run transitions from pending to running
 
 ### Added
 - `/use` command for Telegram bot to switch between configured projects

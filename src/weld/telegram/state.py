@@ -466,6 +466,7 @@ class StateStore:
             """
             UPDATE runs SET
                 status = ?,
+                started_at = ?,
                 completed_at = ?,
                 result = ?,
                 error = ?
@@ -473,6 +474,7 @@ class StateStore:
             """,
             (
                 run.status,
+                _serialize_datetime(run.started_at),
                 _serialize_datetime(run.completed_at),
                 run.result,
                 run.error,

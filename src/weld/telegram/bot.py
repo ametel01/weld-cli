@@ -1,17 +1,32 @@
 """Bot module with aiogram dispatcher and command handlers."""
 
+import asyncio
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandObject
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
+from weld.services.gist_uploader import GistError, upload_gist
 from weld.telegram.config import TelegramConfig
+from weld.telegram.files import (
+    FilePathError,
+    PathNotAllowedError,
+    PathNotFoundError,
+    validate_fetch_path,
+    validate_push_path,
+)
+from weld.telegram.format import MessageEditor, format_chunk, format_status
 from weld.telegram.queue import QueueManager
-from weld.telegram.state import StateStore, UserContext
+from weld.telegram.runner import execute_run
+from weld.telegram.state import Run, StateStore, UserContext
+
+# Telegram file size limits
+TELEGRAM_MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024  # 50MB for bot downloads
 
 logger = logging.getLogger(__name__)
 
@@ -343,3 +358,603 @@ async def cancel_command(
         await message.answer("✓ " + ", ".join(parts) + ".")
     else:
         await message.answer("Nothing to cancel. No active or pending runs.")
+
+
+def _sanitize_command_args(args: str) -> str:
+    """Sanitize command arguments to prevent shell injection.
+
+    Removes or escapes potentially dangerous characters from user input.
+
+    Args:
+        args: Raw command arguments from user
+
+    Returns:
+        Sanitized argument string safe for command construction
+    """
+    if not args:
+        return ""
+
+    # Remove null bytes
+    args = args.replace("\0", "")
+
+    # Remove shell metacharacters that could enable injection
+    # Allow: alphanumeric, space, dash, underscore, dot, forward slash, quotes
+    dangerous_chars = [";", "&", "|", "$", "`", "(", ")", "{", "}", "<", ">", "\n", "\r"]
+    for char in dangerous_chars:
+        args = args.replace(char, "")
+
+    return args.strip()
+
+
+async def _enqueue_weld_command(
+    message: Message,
+    command: CommandObject,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+    weld_command: str,
+) -> None:
+    """Common handler for weld commands that enqueue runs.
+
+    Validates project context, creates a run record, and enqueues it.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with arguments
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+        weld_command: The weld subcommand name (e.g., "doctor", "plan")
+    """
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await message.answer("Unable to identify user.")
+        return
+
+    chat_id = message.chat.id
+
+    # Check project context
+    context = await state_store.get_context(user_id)
+    if not context or not context.current_project:
+        await message.answer(
+            "No project selected.\n\n" "Use `/use <project>` to select a project first."
+        )
+        return
+
+    project_name = context.current_project
+
+    # Build the full command string with sanitized arguments
+    raw_args = command.args.strip() if command.args else ""
+    args = _sanitize_command_args(raw_args)
+    full_command = f"weld {weld_command} {args}" if args else f"weld {weld_command}"
+
+    # Create run record
+    run = Run(
+        user_id=user_id,
+        project_name=project_name,
+        command=full_command,
+        status="pending",
+    )
+    run_id = await state_store.create_run(run)
+
+    # Enqueue the run
+    try:
+        position = await queue_manager.enqueue(chat_id, run_id)
+    except Exception:
+        # If enqueue fails, mark run as failed
+        run.id = run_id
+        run.status = "failed"
+        run.completed_at = datetime.now(UTC)
+        run.error = "Failed to enqueue command"
+        try:
+            await state_store.update_run(run)
+        except Exception:
+            logger.exception(f"Failed to update run {run_id} status to failed")
+        logger.exception(f"Failed to enqueue run {run_id} for user {user_id}")
+        await message.answer("Failed to queue command. Please try again.")
+        return
+
+    logger.info(
+        f"User {user_id} queued '{full_command}' for project '{project_name}' "
+        f"(run_id={run_id}, position={position})"
+    )
+
+    # Build response
+    cmd_escaped = _escape_markdown(full_command)
+    if position == 1:
+        await message.answer(
+            f"Queued: `{cmd_escaped}`\n"
+            f"Project: *{_escape_markdown(project_name)}*\n"
+            f"Position: next up"
+        )
+    else:
+        await message.answer(
+            f"Queued: `{cmd_escaped}`\n"
+            f"Project: *{_escape_markdown(project_name)}*\n"
+            f"Position: {position} in queue"
+        )
+
+
+async def doctor_command(
+    message: Message,
+    command: CommandObject,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /doctor command to run weld doctor.
+
+    Validates environment and tool availability for the selected project.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with arguments
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+
+    Usage:
+        /doctor - Run environment validation
+    """
+    await _enqueue_weld_command(message, command, state_store, queue_manager, "doctor")
+
+
+async def plan_command(
+    message: Message,
+    command: CommandObject,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /plan command to run weld plan.
+
+    Generate or view implementation plans for the selected project.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with arguments
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+
+    Usage:
+        /plan              - Show plan help/status
+        /plan <file.md>    - Generate plan from specification file
+    """
+    await _enqueue_weld_command(message, command, state_store, queue_manager, "plan")
+
+
+async def interview_command(
+    message: Message,
+    command: CommandObject,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /interview command to run weld interview.
+
+    Interactive specification refinement for the selected project.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with arguments
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+
+    Usage:
+        /interview              - Start interactive interview
+        /interview <spec.md>    - Interview about specific spec file
+    """
+    await _enqueue_weld_command(message, command, state_store, queue_manager, "interview")
+
+
+async def implement_command(
+    message: Message,
+    command: CommandObject,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /implement command to run weld implement.
+
+    Execute implementation plans step by step for the selected project.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with arguments
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+
+    Usage:
+        /implement <plan.md>              - Execute plan interactively
+        /implement <plan.md> --phase 1    - Execute specific phase
+        /implement <plan.md> --step 1.2   - Execute specific step
+    """
+    await _enqueue_weld_command(message, command, state_store, queue_manager, "implement")
+
+
+async def commit_command(
+    message: Message,
+    command: CommandObject,
+    state_store: StateStore,
+    queue_manager: QueueManager[int],
+) -> None:
+    """Handle /commit command to run weld commit.
+
+    Create session-based commits with transcript provenance.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with arguments
+        state_store: StateStore instance for database operations
+        queue_manager: QueueManager for queue operations
+
+    Usage:
+        /commit                       - Commit with auto-generated message
+        /commit -m "message"          - Commit with custom message
+        /commit --no-session-split    - Single commit for all files
+    """
+    await _enqueue_weld_command(message, command, state_store, queue_manager, "commit")
+
+
+async def fetch_command(
+    message: Message,
+    command: CommandObject,
+    config: TelegramConfig,
+    bot: Bot,
+) -> None:
+    """Handle /fetch <path> command to download a file from the project.
+
+    Validates the path is within a registered project, checks file size,
+    and sends the file via Telegram. Falls back to GitHub Gist for files
+    larger than Telegram's 50MB limit.
+
+    Args:
+        message: Incoming Telegram message
+        command: Parsed command with path argument
+        config: TelegramConfig with registered projects
+        bot: Bot instance for sending files
+
+    Usage:
+        /fetch src/main.py           - Download a file
+        /fetch /absolute/path/file   - Download using absolute path
+    """
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await message.answer("Unable to identify user.")
+        return
+
+    # Extract path argument
+    path_arg = command.args.strip() if command.args else ""
+    if not path_arg:
+        await message.answer(
+            "Usage: `/fetch <path>`\n\n"
+            "Downloads a file from a registered project.\n"
+            "Path must be within a project directory."
+        )
+        return
+
+    # Validate path
+    try:
+        resolved_path = validate_fetch_path(path_arg, config)
+    except PathNotFoundError as e:
+        await message.answer(f"File not found: `{_escape_markdown(str(e))}`")
+        return
+    except PathNotAllowedError as e:
+        await message.answer(f"Access denied: `{_escape_markdown(str(e))}`")
+        return
+    except FilePathError as e:
+        await message.answer(f"Invalid path: `{_escape_markdown(str(e))}`")
+        return
+
+    # Check if it's a directory
+    if resolved_path.is_dir():
+        await message.answer("Cannot fetch directories. Specify a file path.")
+        return
+
+    # Get file size
+    try:
+        file_size = resolved_path.stat().st_size
+    except OSError as e:
+        await message.answer(f"Cannot read file: `{_escape_markdown(str(e))}`")
+        return
+
+    # Check if file is too large for Telegram
+    if file_size > TELEGRAM_MAX_DOWNLOAD_SIZE:
+        # Fall back to gist for large files
+        logger.info(
+            f"File {resolved_path} ({file_size} bytes) exceeds Telegram limit, "
+            "using gist fallback"
+        )
+        await _fetch_via_gist(message, resolved_path)
+        return
+
+    # Send file via Telegram
+    try:
+        document = FSInputFile(resolved_path, filename=resolved_path.name)
+        await bot.send_document(
+            chat_id=message.chat.id,
+            document=document,
+            caption=f"`{_escape_markdown(str(resolved_path))}`",
+            reply_to_message_id=message.message_id,
+        )
+        logger.info(f"User {user_id} fetched file: {resolved_path}")
+    except Exception as e:
+        logger.exception(f"Failed to send file {resolved_path}")
+        await message.answer(f"Failed to send file: `{_escape_markdown(str(e))}`")
+
+
+async def _fetch_via_gist(message: Message, path: Path) -> None:
+    """Upload a file to GitHub Gist as fallback for large files.
+
+    Args:
+        message: Original message to reply to
+        path: Path to the file to upload
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        await message.answer(
+            "File is too large for Telegram (>50MB) and is binary.\n"
+            "Cannot upload binary files to Gist."
+        )
+        return
+    except OSError as e:
+        await message.answer(f"Failed to read file: `{_escape_markdown(str(e))}`")
+        return
+
+    try:
+        # upload_gist is synchronous and does blocking I/O - run in thread pool
+        result = await asyncio.to_thread(
+            upload_gist,
+            content=content,
+            filename=path.name,
+            description=f"File fetch: {path.name}",
+            public=False,
+        )
+        await message.answer(
+            f"File too large for Telegram (>50MB).\n" f"Uploaded to Gist: {result.gist_url}"
+        )
+    except GistError as e:
+        await message.answer(
+            f"File too large for Telegram and Gist upload failed:\n" f"`{_escape_markdown(str(e))}`"
+        )
+
+
+async def push_command(
+    message: Message,
+    command: CommandObject,
+    config: TelegramConfig,
+    bot: Bot,
+) -> None:
+    """Handle /push <path> command to upload a file to the project.
+
+    Must be used as a reply to a document message. Downloads the document
+    and writes it to the specified path within a registered project.
+
+    Args:
+        message: Incoming Telegram message (should be a reply to a document)
+        command: Parsed command with path argument
+        config: TelegramConfig with registered projects
+        bot: Bot instance for downloading files
+
+    Usage:
+        Reply to a document with:
+        /push src/new_file.py        - Save document to specified path
+        /push /absolute/path/file    - Save using absolute path
+    """
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await message.answer("Unable to identify user.")
+        return
+
+    # Check if this is a reply to a message
+    if not message.reply_to_message:
+        await message.answer(
+            "Reply to a document with `/push <path>` to save it.\n\n"
+            "Usage:\n"
+            "1. Send or forward a file to this chat\n"
+            "2. Reply to that file with `/push <destination-path>`"
+        )
+        return
+
+    # Check if the replied message has a document
+    replied = message.reply_to_message
+    if not replied.document:
+        await message.answer(
+            "The replied message does not contain a document.\n"
+            "Reply to a file/document message to push it."
+        )
+        return
+
+    # Extract path argument
+    path_arg = command.args.strip() if command.args else ""
+    if not path_arg:
+        # Default to document's original filename if no path specified
+        if replied.document.file_name:
+            await message.answer(
+                "Usage: `/push <path>`\n\n"
+                "Specify the destination path for the file.\n"
+                f"Original filename: `{_escape_markdown(replied.document.file_name)}`"
+            )
+        else:
+            await message.answer(
+                "Usage: `/push <path>`\n\n" "Specify the destination path for the file."
+            )
+        return
+
+    # Validate destination path
+    try:
+        resolved_path = validate_push_path(path_arg, config)
+    except PathNotAllowedError as e:
+        await message.answer(f"Access denied: `{_escape_markdown(str(e))}`")
+        return
+    except FilePathError as e:
+        await message.answer(f"Invalid path: `{_escape_markdown(str(e))}`")
+        return
+
+    # Check file size (Telegram bot download limit is 20MB, but we allow larger via getFile)
+    file_size = replied.document.file_size or 0
+    if file_size > TELEGRAM_MAX_DOWNLOAD_SIZE:
+        await message.answer(
+            f"File too large to download ({file_size / 1024 / 1024:.1f}MB).\n"
+            "Telegram bots can only download files up to 50MB."
+        )
+        return
+
+    # Download the file
+    try:
+        file = await bot.get_file(replied.document.file_id)
+        if not file.file_path:
+            await message.answer("Failed to get file path from Telegram.")
+            return
+
+        # Download file content
+        file_bytes = await bot.download_file(file.file_path)
+        if file_bytes is None:
+            await message.answer("Failed to download file from Telegram.")
+            return
+
+        content = file_bytes.read()
+    except Exception as e:
+        logger.exception("Failed to download file from Telegram")
+        await message.answer(f"Failed to download file: `{_escape_markdown(str(e))}`")
+        return
+
+    # Ensure parent directory exists
+    try:
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        await message.answer(f"Failed to create directory: `{_escape_markdown(str(e))}`")
+        return
+
+    # Write file
+    try:
+        resolved_path.write_bytes(content)
+        logger.info(f"User {user_id} pushed file to: {resolved_path}")
+        await message.answer(f"Saved to: `{_escape_markdown(str(resolved_path))}`")
+    except OSError as e:
+        logger.exception(f"Failed to write file to {resolved_path}")
+        await message.answer(f"Failed to write file: `{_escape_markdown(str(e))}`")
+
+
+# Maximum output buffer size for status display (preserve last N bytes)
+MAX_OUTPUT_BUFFER = 3000
+
+
+async def run_consumer(
+    run: Run,
+    chat_id: int,
+    editor: MessageEditor,
+    cwd: Path,
+    state_store: StateStore,
+) -> None:
+    """Consume runner output stream and update status message in real-time.
+
+    Reads output chunks from execute_run and uses MessageEditor to update
+    a status message with progress. The message shows the run status and
+    a tail of the most recent output.
+
+    Args:
+        run: The Run object with command details (must have id set)
+        chat_id: Telegram chat ID to send/edit status messages in
+        editor: MessageEditor instance for rate-limited message updates
+        cwd: Working directory for command execution
+        state_store: StateStore for persisting run status updates
+
+    Note:
+        - Output is buffered to the last MAX_OUTPUT_BUFFER bytes to avoid
+          hitting Telegram's message size limit
+        - MessageEditor handles rate limiting (2s minimum between edits)
+        - If output arrives faster than edits can be made, intermediate
+          chunks are accumulated and shown in the next edit
+    """
+    if run.id is None:
+        logger.error("run_consumer called with run that has no id")
+        return
+
+    run_id = run.id
+    output_buffer = ""
+
+    # Mark run as running
+    run.status = "running"
+    run.started_at = datetime.now(UTC)
+    try:
+        await state_store.update_run(run)
+    except Exception:
+        logger.exception(f"Failed to update run {run_id} to running status")
+
+    # Send initial status message
+    initial_status = format_status(run)
+    try:
+        await editor.send_or_edit(chat_id, initial_status)
+    except Exception:
+        logger.exception(f"Failed to send initial status for run {run_id}")
+
+    # Parse command to get weld subcommand and args
+    # run.command is like "weld doctor" or "weld plan --dry-run"
+    parts = run.command.split()
+    if len(parts) < 2 or parts[0] != "weld":
+        logger.error(f"Run {run_id}: Invalid command format: {run.command}")
+        run.status = "failed"
+        run.completed_at = datetime.now(UTC)
+        run.error = "Invalid command format"
+        try:
+            await state_store.update_run(run)
+            await editor.send_or_edit(chat_id, format_status(run))
+        except Exception:
+            logger.exception(f"Failed to update run {run_id} status")
+        return
+
+    weld_subcommand = parts[1]
+    weld_args = parts[2:] if len(parts) > 2 else None
+
+    try:
+        async for _chunk_type, data in execute_run(
+            run_id=run_id,
+            command=weld_subcommand,
+            args=weld_args,
+            cwd=cwd,
+        ):
+            # Accumulate output (stdout and stderr combined)
+            output_buffer += data
+
+            # Truncate buffer to keep only recent output
+            if len(output_buffer) > MAX_OUTPUT_BUFFER:
+                # Keep only the last MAX_OUTPUT_BUFFER chars, starting at a newline if possible
+                truncated = output_buffer[-MAX_OUTPUT_BUFFER:]
+                newline_pos = truncated.find("\n")
+                if newline_pos > 0 and newline_pos < 200:
+                    truncated = truncated[newline_pos + 1 :]
+                output_buffer = "..." + truncated
+
+            # Update run with current output
+            run.result = output_buffer
+
+            # Format and chunk the status message to fit Telegram limits
+            status_text = format_status(run)
+            chunked_text = format_chunk(status_text)
+
+            try:
+                await editor.send_or_edit(chat_id, chunked_text)
+            except Exception:
+                # Log but don't fail the run if we can't update status
+                logger.warning(f"Failed to update status message for run {run_id}")
+
+        # Run completed successfully
+        run.status = "completed"
+        run.completed_at = datetime.now(UTC)
+        logger.info(f"Run {run_id} completed successfully")
+
+    except Exception as e:
+        # Run failed
+        run.status = "failed"
+        run.completed_at = datetime.now(UTC)
+        run.error = str(e)
+        logger.exception(f"Run {run_id} failed: {e}")
+
+    # Persist final status
+    try:
+        await state_store.update_run(run)
+    except Exception:
+        logger.exception(f"Failed to persist final status for run {run_id}")
+
+    # Send final status update
+    final_status = format_status(run)
+    final_chunked = format_chunk(final_status)
+    try:
+        await editor.send_or_edit(chat_id, final_chunked)
+    except Exception:
+        logger.exception(f"Failed to send final status for run {run_id}")
