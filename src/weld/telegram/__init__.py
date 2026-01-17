@@ -1,5 +1,6 @@
 """Telegram bot integration for weld."""
 
+from weld.telegram.auth import check_auth
 from weld.telegram.config import (
     TelegramAuth,
     TelegramConfig,
@@ -8,7 +9,7 @@ from weld.telegram.config import (
     load_config,
     save_config,
 )
-from weld.telegram.errors import TelegramError
+from weld.telegram.errors import TelegramAuthError, TelegramError
 from weld.telegram.state import (
     ConversationState,
     Project,
@@ -26,10 +27,12 @@ __all__ = [
     "RunStatus",
     "StateStore",
     "TelegramAuth",
+    "TelegramAuthError",
     "TelegramConfig",
     "TelegramError",
     "TelegramProject",
     "UserContext",
+    "check_auth",
     "get_config_path",
     "get_state_db_path",
     "load_config",

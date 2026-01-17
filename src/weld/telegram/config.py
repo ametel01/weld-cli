@@ -159,7 +159,8 @@ def save_config(config: TelegramConfig, config_path: Path | None = None) -> Path
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Convert to dict with Path objects preserved, then stringify for TOML
-    config_dict = config.model_dump(mode="python")
+    # exclude_none=True because TOML doesn't support null values
+    config_dict = config.model_dump(mode="python", exclude_none=True)
 
     # Convert Path objects to strings for TOML serialization
     if "projects" in config_dict:
