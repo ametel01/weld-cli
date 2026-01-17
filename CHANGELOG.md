@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `weld telegram` command group for remote bot interaction
+
+### Added
 - Telegram bot commands: /doctor, /plan, /interview, /implement, /commit for remote weld execution
 
 ### Added

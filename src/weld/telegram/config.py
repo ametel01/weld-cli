@@ -171,5 +171,9 @@ def save_config(config: TelegramConfig, config_path: Path | None = None) -> Path
     with open(config_path, "wb") as f:
         tomli_w.dump(config_dict, f)
 
+    # Set restrictive permissions since file contains bot token
+    # 0o600 = owner read/write only
+    config_path.chmod(0o600)
+
     logger.info(f"Saved Telegram config to {config_path}")
     return config_path

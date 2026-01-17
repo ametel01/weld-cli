@@ -20,6 +20,7 @@ from .commands.plan import plan
 from .commands.research import research
 from .logging import configure_logging, setup_debug_logging
 from .output import OutputContext, set_output_context
+from .telegram.cli import telegram_app
 
 
 def _version_callback(value: bool) -> None:
@@ -37,6 +38,7 @@ app = typer.Typer(
 
 # Sub-command groups
 app.add_typer(discover_app, name="discover")
+app.add_typer(telegram_app, name="telegram")
 
 # Global console (initialized in main callback)
 _console: Console | None = None
