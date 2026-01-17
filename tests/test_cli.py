@@ -397,7 +397,7 @@ class TestInitCommandDetailed:
     def test_init_creates_gitignore_if_missing(
         self, runner: CliRunner, temp_git_repo: Path
     ) -> None:
-        """init should create .gitignore with .weld/ exclusions if it doesn't exist."""
+        """init should create .gitignore with .weld/ entry if it doesn't exist."""
 
         def mock_subprocess_run(
             cmd: list[str], **kwargs: object
@@ -410,11 +410,10 @@ class TestInitCommandDetailed:
         gitignore = temp_git_repo / ".gitignore"
         assert gitignore.exists()
         content = gitignore.read_text()
-        assert ".weld/*" in content
-        assert "!.weld/config.toml" in content
+        assert ".weld/" in content
 
     def test_init_updates_existing_gitignore(self, runner: CliRunner, temp_git_repo: Path) -> None:
-        """init should update existing .gitignore with .weld/ exclusions."""
+        """init should update existing .gitignore with .weld/ entry."""
         gitignore = temp_git_repo / ".gitignore"
         gitignore.write_text("node_modules/\n*.log\n")
 
@@ -429,15 +428,14 @@ class TestInitCommandDetailed:
         content = gitignore.read_text()
         assert "node_modules/" in content
         assert "*.log" in content
-        assert ".weld/*" in content
-        assert "!.weld/config.toml" in content
+        assert ".weld/" in content
 
     def test_init_skips_duplicate_gitignore_entries(
         self, runner: CliRunner, temp_git_repo: Path
     ) -> None:
-        """init should not duplicate .weld/ entries if they already exist."""
+        """init should not duplicate .weld/ entry if it already exists."""
         gitignore = temp_git_repo / ".gitignore"
-        gitignore.write_text(".weld/*\n!.weld/config.toml\n")
+        gitignore.write_text(".weld/\n")
 
         def mock_subprocess_run(
             cmd: list[str], **kwargs: object
@@ -449,9 +447,8 @@ class TestInitCommandDetailed:
 
         content = gitignore.read_text()
         # Count occurrences - should appear only once
-        assert content.count(".weld/*") == 1
-        assert content.count("!.weld/config.toml") == 1
-        assert "already excludes .weld/" in result.stdout
+        assert content.count(".weld/") == 1
+        assert "already has .weld/" in result.stdout
 
 
 class TestPlanCommandDetailed:

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Actionable hints suggest corrections (e.g., "Provide a file path: --output /path/output.md")
   - Applies to: `plan`, `research`, `discover`, `review`, `interview`, `implement`
 
+### Changed
+- `weld init` now adds simple `.weld/` entry to `.gitignore` instead of complex pattern
+  - Previously used `.weld/*` with `!.weld/config.toml` exception to track config
+  - Now ignores entire `.weld/` directory (config is local-only)
+
 ## [0.8.0] - 2026-01-14
 
 ### Added

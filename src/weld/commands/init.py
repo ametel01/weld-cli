@@ -10,11 +10,7 @@ from ..constants import INIT_TOOL_CHECK_TIMEOUT
 from ..output import get_output_context
 from ..services import GitError, get_repo_root
 
-WELD_GITIGNORE_ENTRIES = """
-# Weld metadata (keep config.toml only)
-.weld/*
-!.weld/config.toml
-""".strip()
+WELD_GITIGNORE_ENTRY = ".weld/"
 
 
 def _update_gitignore(repo_root: Path) -> bool:
@@ -28,18 +24,15 @@ def _update_gitignore(repo_root: Path) -> bool:
     # Read existing content
     content = gitignore_path.read_text() if gitignore_path.exists() else ""
 
-    # Check if weld entries already exist
-    if ".weld/" in content or ".weld/*" in content:
+    # Check if weld entry already exists
+    if ".weld/" in content:
         return False
 
-    # Append weld entries with proper spacing
+    # Append weld entry with proper spacing
     if content and not content.endswith("\n"):
         content += "\n"
 
-    if content:
-        content += "\n"
-
-    content += WELD_GITIGNORE_ENTRIES + "\n"
+    content += WELD_GITIGNORE_ENTRY + "\n"
 
     gitignore_path.write_text(content)
     return True
@@ -69,12 +62,12 @@ def init() -> None:
         gitignore_path = repo_root / ".gitignore"
         if gitignore_path.exists():
             content = gitignore_path.read_text()
-            if ".weld/" not in content and ".weld/*" not in content:
-                ctx.console.print("  Update .gitignore: add .weld/ exclusions")
+            if ".weld/" not in content:
+                ctx.console.print("  Update .gitignore: add .weld/ entry")
             else:
-                ctx.console.print("  .gitignore already has .weld/ exclusions")
+                ctx.console.print("  .gitignore already has .weld/ entry")
         else:
-            ctx.console.print("  Create .gitignore with .weld/ exclusions")
+            ctx.console.print("  Create .gitignore with .weld/ entry")
 
         ctx.console.print("\n[cyan][DRY RUN][/cyan] Would check toolchain:")
         ctx.console.print("  git, gh, codex")
@@ -90,11 +83,11 @@ def init() -> None:
     else:
         ctx.console.print(f"[yellow]Config already exists:[/yellow] {config_path}")
 
-    # Update .gitignore to exclude .weld/ metadata
+    # Update .gitignore to exclude .weld/
     if _update_gitignore(repo_root):
-        ctx.console.print("[green]Updated .gitignore:[/green] added .weld/ exclusions")
+        ctx.console.print("[green]Updated .gitignore:[/green] added .weld/")
     else:
-        ctx.console.print("[yellow].gitignore already excludes .weld/[/yellow]")
+        ctx.console.print("[yellow].gitignore already has .weld/[/yellow]")
 
     # Validate toolchain
     tools = {

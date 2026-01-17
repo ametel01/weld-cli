@@ -170,24 +170,15 @@ Config migration: Old `[claude.transcripts]` auto-migrates to top-level `[transc
 
 ### Version Control
 
-`weld init` automatically configures `.gitignore` to exclude `.weld/` metadata:
+`weld init` automatically adds `.weld/` to `.gitignore`:
 
 ```gitignore
-# Weld metadata (keep config.toml only)
-.weld/*
-!.weld/config.toml
+.weld/
 ```
 
-**Tracked**: Only `.weld/config.toml` (team-shared configuration)
-**Ignored**: All other `.weld/` content (local sessions, reviews, history, etc.)
+The entire `.weld/` directory is local-only and not tracked in git. This includes config, sessions, reviews, and history.
 
-This prevents committing:
-- Session tracking metadata (`.weld/sessions/registry.jsonl`)
-- Review artifacts (`.weld/reviews/*/`)
-- Command history (`.weld/commit/history.jsonl`)
-- Backup files (`.weld/config.toml.bak`)
-
-If `.gitignore` already contains `.weld/` patterns, `weld init` skips updating it.
+If `.gitignore` already contains `.weld/`, `weld init` skips updating it.
 
 ## Git Commits
 
