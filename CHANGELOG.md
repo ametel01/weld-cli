@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Per-chat FIFO queue system for Telegram bot to ensure ordered run processing
+
+### Added
 - Async command runner for Telegram bot with streaming output and timeout handling
 
 ### Added
