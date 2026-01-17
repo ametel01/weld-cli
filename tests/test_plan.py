@@ -17,22 +17,22 @@ class TestGeneratePlanPrompt:
 
     def test_includes_spec_content(self) -> None:
         """Prompt includes the specification content."""
-        prompt = generate_plan_prompt("Build a widget parser", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "Build a widget parser")])
         assert "Build a widget parser" in prompt
 
     def test_includes_spec_name(self) -> None:
         """Prompt includes specification filename."""
-        prompt = generate_plan_prompt("content", "my-feature.md")
+        prompt = generate_plan_prompt([("my-feature.md", "content")])
         assert "my-feature.md" in prompt
 
     def test_includes_implementation_plan_request(self) -> None:
         """Prompt includes Implementation Plan Request header."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "# Implementation Plan Request" in prompt
 
     def test_includes_planning_rules(self) -> None:
         """Prompt includes planning rules section."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "## Planning Rules" in prompt
         assert "Monotonic phases" in prompt
         assert "Artifact-driven" in prompt
@@ -40,25 +40,25 @@ class TestGeneratePlanPrompt:
 
     def test_includes_phase_structure(self) -> None:
         """Prompt includes phase structure description."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "**Phase structure:**" in prompt
         assert "## Phase <N>: <Title>" in prompt
 
     def test_includes_phase_validation(self) -> None:
         """Prompt includes phase-level validation section."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "### Phase Validation" in prompt
         assert "<command to verify phase>" in prompt
 
     def test_includes_step_structure(self) -> None:
         """Prompt includes step structure description."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "### Step <N>: <Title>" in prompt
         assert "Every step MUST have ALL four sections" in prompt
 
     def test_includes_step_sections(self) -> None:
         """Prompt includes required step sections."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "#### Goal" in prompt
         assert "#### Files" in prompt
         assert "#### Validation" in prompt
@@ -66,7 +66,7 @@ class TestGeneratePlanPrompt:
 
     def test_includes_concrete_example(self) -> None:
         """Prompt includes a concrete example plan."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "**CORRECT - Output like this instead:**" in prompt
         assert "## Phase 1: CSS Utility Extensions" in prompt
         assert "### Step 1: Add subtitle contrast utility" in prompt
@@ -74,20 +74,20 @@ class TestGeneratePlanPrompt:
 
     def test_example_shows_wrong_format(self) -> None:
         """Example demonstrates wrong format to avoid."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "**WRONG - Do NOT output like this:**" in prompt
         assert "## Phase 2: Component Styling" in prompt
 
     def test_includes_output_checklist(self) -> None:
         """Prompt includes output format checklist."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "## REMINDER: Output Format Checklist" in prompt
         assert "Every phase has `## Phase N: Title` heading" in prompt
         assert "Every step has `### Step N: Title` heading" in prompt
 
     def test_spec_appears_in_specification_section(self) -> None:
-        """Specification content appears under Specification header."""
-        prompt = generate_plan_prompt("My custom spec content", "feature.md")
+        """Specification content appears under Specification header for single spec."""
+        prompt = generate_plan_prompt([("feature.md", "My custom spec content")])
         assert "## Specification: feature.md" in prompt
         # Verify content follows the header
         spec_index = prompt.index("## Specification:")
@@ -105,7 +105,7 @@ This is a detailed specification.
 - Requirement 1
 - Requirement 2
 """
-        prompt = generate_plan_prompt(spec, "spec.md")
+        prompt = generate_plan_prompt([("spec.md", spec)])
         assert "# Feature Title" in prompt
         assert "## Overview" in prompt
         assert "- Requirement 1" in prompt
@@ -113,17 +113,54 @@ This is a detailed specification.
     def test_special_characters_in_spec(self) -> None:
         """Handles special characters in specification."""
         spec = "Use `backticks` and **bold** and $variables"
-        prompt = generate_plan_prompt(spec, "spec.md")
+        prompt = generate_plan_prompt([("spec.md", spec)])
         assert "`backticks`" in prompt
         assert "**bold**" in prompt
         assert "$variables" in prompt
 
     def test_output_format_section_exists(self) -> None:
         """Prompt includes Output Format section."""
-        prompt = generate_plan_prompt("content", "spec.md")
+        prompt = generate_plan_prompt([("spec.md", "content")])
         assert "## CRITICAL: Required Output Format" in prompt
         assert "EXACT structure" in prompt
         assert "Every step MUST have ALL four sections" in prompt
+
+    def test_multiple_specs_includes_all_content(self) -> None:
+        """Prompt includes content from all specification files."""
+        specs = [
+            ("spec1.md", "First spec content"),
+            ("spec2.md", "Second spec content"),
+        ]
+        prompt = generate_plan_prompt(specs)
+        assert "First spec content" in prompt
+        assert "Second spec content" in prompt
+
+    def test_multiple_specs_includes_all_names(self) -> None:
+        """Prompt includes all specification filenames."""
+        specs = [
+            ("requirements.md", "req content"),
+            ("design.md", "design content"),
+        ]
+        prompt = generate_plan_prompt(specs)
+        assert "requirements.md" in prompt
+        assert "design.md" in prompt
+
+    def test_multiple_specs_uses_specifications_header(self) -> None:
+        """Multiple specs use Specifications (plural) header."""
+        specs = [
+            ("spec1.md", "content1"),
+            ("spec2.md", "content2"),
+        ]
+        prompt = generate_plan_prompt(specs)
+        assert "## Specifications" in prompt
+        assert "### Specification 1: spec1.md" in prompt
+        assert "### Specification 2: spec2.md" in prompt
+
+    def test_single_spec_uses_singular_header(self) -> None:
+        """Single spec uses Specification (singular) header."""
+        prompt = generate_plan_prompt([("spec.md", "content")])
+        assert "## Specification: spec.md" in prompt
+        assert "## Specifications" not in prompt
 
 
 @pytest.mark.unit

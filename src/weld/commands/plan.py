@@ -26,16 +26,29 @@ def get_plan_dir(weld_dir: Path) -> Path:
     return plan_dir
 
 
-def generate_plan_prompt(spec_content: str, spec_name: str) -> str:
+def generate_plan_prompt(specs: list[tuple[str, str]]) -> str:
     """Generate prompt for creating an implementation plan.
 
     Args:
-        spec_content: Content of the specification file
-        spec_name: Name of the specification file
+        specs: List of (spec_name, spec_content) tuples
 
     Returns:
         Formatted prompt for Claude
     """
+    # Build specifications section
+    if len(specs) == 1:
+        spec_name, spec_content = specs[0]
+        spec_section = f"""## Specification: {spec_name}
+
+{spec_content}"""
+    else:
+        spec_parts = []
+        for i, (spec_name, spec_content) in enumerate(specs, 1):
+            spec_parts.append(f"""### Specification {i}: {spec_name}
+
+{spec_content}""")
+        spec_section = "## Specifications\n\n" + "\n\n---\n\n".join(spec_parts)
+
     return f"""# Implementation Plan Request
 
 You MUST output a structured implementation plan following the EXACT format specified below.
@@ -139,9 +152,7 @@ grep -q "link-underline-hover" src/styles/globals.css && echo "OK"
 
 ---
 
-## Specification: {spec_name}
-
-{spec_content}
+{spec_section}
 
 ---
 
@@ -216,7 +227,10 @@ Output ONLY the structured plan now. Begin with `## Phase 1:`
 
 
 def plan(
-    input_file: Annotated[Path, typer.Argument(help="Specification markdown file")],
+    input_files: Annotated[
+        list[Path],
+        typer.Argument(help="Specification markdown file(s)"),
+    ],
     output: Annotated[
         Path | None,
         typer.Option("--output", "-o", help="Output path for the plan"),
@@ -237,7 +251,7 @@ def plan(
         ),
     ] = True,
 ) -> None:
-    """Generate an implementation plan from a specification.
+    """Generate an implementation plan from one or more specifications.
 
     If --output is not specified, writes to .weld/plan/{filename}-{timestamp}.md
 
@@ -246,10 +260,16 @@ def plan(
     """
     ctx = get_output_context()
 
-    # Early validation of input file
-    if error := validate_input_file(input_file, must_be_markdown=True, param_name="spec file"):
-        ctx.error(error[0], next_action=error[1])
+    # Require at least one input file
+    if not input_files:
+        ctx.error("At least one specification file is required.")
         raise typer.Exit(1)
+
+    # Early validation of all input files
+    for input_file in input_files:
+        if error := validate_input_file(input_file, must_be_markdown=True, param_name="spec file"):
+            ctx.error(error[0], next_action=error[1])
+            raise typer.Exit(1)
 
     # Early validation of output path if provided
     if output is not None and (
@@ -276,23 +296,27 @@ def plan(
             raise typer.Exit(1)
         plan_dir = get_plan_dir(weld_dir)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        output = plan_dir / f"{input_file.stem}-{timestamp}.md"
+        # Use first file's stem for output filename
+        output = plan_dir / f"{input_files[0].stem}-{timestamp}.md"
 
-    spec_content = input_file.read_text()
-    prompt = generate_plan_prompt(spec_content, input_file.name)
+    # Read all spec files and build prompt
+    specs = [(f.name, f.read_text()) for f in input_files]
+    prompt = generate_plan_prompt(specs)
 
     # Load config (falls back to defaults if not initialized)
-    config = load_config(weld_dir) if weld_dir else load_config(input_file.parent)
+    config = load_config(weld_dir) if weld_dir else load_config(input_files[0].parent)
 
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would generate plan:")
-        ctx.console.print(f"  Input: {input_file}")
+        for f in input_files:
+            ctx.console.print(f"  Input: {f}")
         ctx.console.print(f"  Output: {output}")
         ctx.console.print("\n[cyan]Prompt:[/cyan]")
         ctx.console.print(prompt)
         return
 
-    ctx.console.print(f"[cyan]Generating plan from {input_file.name}...[/cyan]\n")
+    file_names = ", ".join(f.name for f in input_files)
+    ctx.console.print(f"[cyan]Generating plan from {file_names}...[/cyan]\n")
 
     claude_exec = config.claude.exec if config.claude else "claude"
 
@@ -322,6 +346,7 @@ def plan(
 
     # Log to history (only if weld is initialized)
     if weld_dir and weld_dir.exists():
-        log_command(weld_dir, "plan", str(input_file), str(output))
+        input_paths = ", ".join(str(f) for f in input_files)
+        log_command(weld_dir, "plan", input_paths, str(output))
 
     ctx.success(f"Plan written to {output}")

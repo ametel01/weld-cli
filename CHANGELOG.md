@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-01-17
+
+### Added
+- `weld plan` now accepts multiple specification files
+  - Combines all specs into a single implementation plan
+  - Usage: `weld plan spec1.md spec2.md spec3.md`
+
 ## [0.9.0] - 2026-01-17
 
 ### Added
@@ -391,7 +398,8 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/ametel01/weld-cli/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ametel01/weld-cli/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/ametel01/weld-cli/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/ametel01/weld-cli/compare/v0.7.0...v0.7.1
