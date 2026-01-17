@@ -60,6 +60,23 @@ weld research specs/feature.md -o research.md --quiet
 
 Research output is written to `.weld/research/` by default with a timestamped filename.
 
+## Input Validation
+
+Before starting the (potentially expensive) Claude operation, weld validates inputs upfront:
+
+- **File existence**: Verifies the input file exists
+- **File type**: Ensures the path points to a file, not a directory
+- **Output path**: If `--output` is specified, validates the path is writable
+
+When validation fails, you'll see a clear error message with an actionable hint:
+
+```
+Error: specs/feature is a directory, expected a file
+Hint: Provide a valid specification file path
+```
+
+This prevents wasted API tokens from invalid inputs.
+
 ## See Also
 
 - [Workflow](../workflow.md) - How research fits in the workflow

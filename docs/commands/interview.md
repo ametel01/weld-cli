@@ -50,6 +50,22 @@ weld interview specs/feature.md --focus "edge cases"
 weld interview specs/auth.md --focus "security"
 ```
 
+## Input Validation
+
+Before starting the Claude operation, weld validates inputs upfront:
+
+- **File existence**: Verifies the specification file exists
+- **File type**: Ensures the path points to a file, not a directory
+
+When validation fails, you'll see a clear error message with an actionable hint:
+
+```
+Error: specs/ is a directory, expected a file
+Hint: Provide a valid specification file path
+```
+
+This prevents wasted time from invalid inputs.
+
 ## See Also
 
 - [Workflow](../workflow.md) - How interview fits in the workflow

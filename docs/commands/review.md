@@ -84,6 +84,22 @@ weld review --diff --focus "error handling"
 weld review --diff --prompt-only
 ```
 
+## Input Validation
+
+Before starting the (potentially expensive) Claude operation, weld validates inputs upfront:
+
+- **File existence**: In document review mode, verifies the input file exists
+- **File type**: Ensures the path points to a file, not a directory
+
+When validation fails, you'll see a clear error message with an actionable hint:
+
+```
+Error: docs/specs is a directory, expected a file
+Hint: Provide a valid document path to review
+```
+
+This prevents wasted API tokens from invalid inputs.
+
 ## See Also
 
 - [commit](commit.md) - Commit after review

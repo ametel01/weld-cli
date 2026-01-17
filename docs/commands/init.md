@@ -13,7 +13,7 @@ weld init
 Creates the `.weld/` directory with default configuration and updates version control:
 
 - `.weld/config.toml` - Configuration file
-- Updates `.gitignore` to exclude `.weld/` metadata (keeps only `config.toml` tracked)
+- Updates `.gitignore` to exclude the entire `.weld/` directory (local-only metadata)
 
 ## Exit Codes
 

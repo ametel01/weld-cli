@@ -54,6 +54,23 @@ weld plan specs/feature.md -o plan.md --quiet
 
 Plans are written to `.weld/plan/` by default with a timestamped filename.
 
+## Input Validation
+
+Before starting the (potentially expensive) Claude operation, weld validates inputs upfront:
+
+- **File existence**: Verifies the input file exists
+- **File type**: Ensures the path points to a file, not a directory
+- **Output path**: If `--output` is specified, validates the path is writable
+
+When validation fails, you'll see a clear error message with an actionable hint:
+
+```
+Error: specs/feature is a directory, expected a file
+Hint: Provide a valid specification file path
+```
+
+This prevents wasted API tokens from invalid inputs.
+
 ## See Also
 
 - [Plan Format](../reference/plan-format.md) - How plans are structured

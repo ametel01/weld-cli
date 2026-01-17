@@ -224,6 +224,22 @@ weld implement plan.md
 
 Each arrow represents a completely independent Claude CLI execution with no shared context.
 
+## Input Validation
+
+Before starting the (potentially expensive) Claude operation, weld validates inputs upfront:
+
+- **File existence**: Verifies the plan file exists
+- **File type**: Ensures the path points to a file, not a directory
+
+When validation fails, you'll see a clear error message with an actionable hint:
+
+```
+Error: plans/ is a directory, expected a file
+Hint: Provide a valid plan file path
+```
+
+This prevents wasted API tokens from invalid inputs.
+
 ## See Also
 
 - [plan](plan.md) - Generate a plan to implement

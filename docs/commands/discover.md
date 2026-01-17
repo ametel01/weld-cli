@@ -53,6 +53,21 @@ weld discover -o docs/architecture.md
 weld discover --prompt-only
 ```
 
+## Input Validation
+
+Before starting the (potentially expensive) Claude operation, weld validates inputs upfront:
+
+- **Output path**: If `--output` is specified, validates the path is writable and is a file (not a directory)
+
+When validation fails, you'll see a clear error message with an actionable hint:
+
+```
+Error: docs/ is a directory, expected a file
+Hint: Provide a file path: --output /path/output.md
+```
+
+This prevents wasted API tokens from invalid inputs.
+
 ## Subcommands
 
 ### weld discover show
