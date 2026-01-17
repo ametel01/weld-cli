@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Async command runner for Telegram bot with streaming output and timeout handling
+
+### Added
 - `TelegramFileError` and `TelegramRunError` exception classes for more specific error handling in Telegram bot
 
 ### Added
