@@ -358,6 +358,37 @@ class TestQueueManagerShutdown:
 
 @pytest.mark.asyncio
 @pytest.mark.unit
+class TestQueueManagerActiveChatIds:
+    """Tests for QueueManager.active_chat_ids."""
+
+    async def test_active_chat_ids_empty_initially(self, queue_manager: QueueManager[int]) -> None:
+        """active_chat_ids returns empty list when no queues exist."""
+        assert queue_manager.active_chat_ids() == []
+
+    async def test_active_chat_ids_returns_all_chats(
+        self, queue_manager: QueueManager[int]
+    ) -> None:
+        """active_chat_ids returns all chat IDs with queues."""
+        await queue_manager.enqueue(chat_id=100, item=1)
+        await queue_manager.enqueue(chat_id=200, item=1)
+        await queue_manager.enqueue(chat_id=300, item=1)
+
+        chat_ids = queue_manager.active_chat_ids()
+        assert sorted(chat_ids) == [100, 200, 300]
+
+    async def test_active_chat_ids_returns_copy(self, queue_manager: QueueManager[int]) -> None:
+        """active_chat_ids returns a copy, not the internal dict."""
+        await queue_manager.enqueue(chat_id=100, item=1)
+
+        chat_ids = queue_manager.active_chat_ids()
+        chat_ids.append(999)  # Modify the returned list
+
+        # Internal state should not be affected
+        assert 999 not in queue_manager.active_chat_ids()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
 class TestQueueManagerConstants:
     """Tests for module constants."""
 

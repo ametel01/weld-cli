@@ -415,7 +415,7 @@ async def _enqueue_weld_command(
     context = await state_store.get_context(user_id)
     if not context or not context.current_project:
         await message.answer(
-            "No project selected.\n\n" "Use `/use <project>` to select a project first."
+            "No project selected.\n\nUse `/use <project>` to select a project first."
         )
         return
 
@@ -655,8 +655,7 @@ async def fetch_command(
     if file_size > TELEGRAM_MAX_DOWNLOAD_SIZE:
         # Fall back to gist for large files
         logger.info(
-            f"File {resolved_path} ({file_size} bytes) exceeds Telegram limit, "
-            "using gist fallback"
+            f"File {resolved_path} ({file_size} bytes) exceeds Telegram limit, using gist fallback"
         )
         await _fetch_via_gist(message, resolved_path)
         return
@@ -705,11 +704,11 @@ async def _fetch_via_gist(message: Message, path: Path) -> None:
             public=False,
         )
         await message.answer(
-            f"File too large for Telegram (>50MB).\n" f"Uploaded to Gist: {result.gist_url}"
+            f"File too large for Telegram (>50MB).\nUploaded to Gist: {result.gist_url}"
         )
     except GistError as e:
         await message.answer(
-            f"File too large for Telegram and Gist upload failed:\n" f"`{_escape_markdown(str(e))}`"
+            f"File too large for Telegram and Gist upload failed:\n`{_escape_markdown(str(e))}`"
         )
 
 
@@ -771,7 +770,7 @@ async def push_command(
             )
         else:
             await message.answer(
-                "Usage: `/push <path>`\n\n" "Specify the destination path for the file."
+                "Usage: `/push <path>`\n\nSpecify the destination path for the file."
             )
         return
 

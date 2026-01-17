@@ -180,12 +180,12 @@ allowed_usernames = ["alice", "bob"]
         config_path.write_text(f"""
 [[projects]]
 name = "project1"
-path = "{tmp_path / 'proj1'}"
+path = "{tmp_path / "proj1"}"
 description = "First project"
 
 [[projects]]
 name = "project2"
-path = "{tmp_path / 'proj2'}"
+path = "{tmp_path / "proj2"}"
 """)
         config = load_config(config_path)
         assert len(config.projects) == 2

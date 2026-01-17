@@ -268,6 +268,14 @@ class QueueManager(Generic[T]):
         """
         return len(self._queues)
 
+    def active_chat_ids(self) -> list[int]:
+        """Get list of chat IDs with active queues.
+
+        Returns:
+            List of chat IDs that have queues (may be empty)
+        """
+        return list(self._queues.keys())
+
     async def shutdown(self) -> None:
         """Shutdown the queue manager, cancelling all pending items.
 
