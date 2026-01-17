@@ -5,6 +5,7 @@ import contextlib
 import logging
 import tomllib
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import typer
@@ -19,6 +20,13 @@ telegram_app = typer.Typer(
     help="Telegram bot for remote weld interaction",
     no_args_is_help=True,
 )
+
+# Projects sub-app for project registry management
+projects_app = typer.Typer(
+    help="Manage registered projects for Telegram bot access",
+    no_args_is_help=True,
+)
+telegram_app.add_typer(projects_app, name="projects")
 
 
 def _check_telegram_deps() -> None:
@@ -35,6 +43,142 @@ def _check_telegram_deps() -> None:
             err=True,
         )
         raise typer.Exit(1) from None
+
+
+def _load_config_or_exit() -> tuple["TelegramConfig", Path]:
+    """Load config and return (config, config_path), or exit on error.
+
+    Returns:
+        Tuple of (TelegramConfig, config_path)
+
+    Raises:
+        typer.Exit: If config doesn't exist or is invalid
+    """
+    from weld.telegram.config import get_config_path, load_config
+
+    config_path = get_config_path()
+
+    if not config_path.exists():
+        typer.echo(f"Configuration not found at {config_path}", err=True)
+        typer.echo("Run 'weld telegram init' first to configure the bot.")
+        raise typer.Exit(1)
+
+    try:
+        config = load_config(config_path)
+    except (tomllib.TOMLDecodeError, ValidationError) as e:
+        typer.echo(f"Error loading configuration: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    return config, config_path
+
+
+@projects_app.command("add")
+def projects_add(
+    name: str = typer.Argument(help="Project name identifier (used with /use command)"),
+    path: Path = typer.Argument(help="Path to project directory"),
+    description: str | None = typer.Option(
+        None,
+        "--description",
+        "-d",
+        help="Optional project description",
+    ),
+) -> None:
+    """Add a project to the Telegram bot registry.
+
+    Projects are identified by name and can be switched using /use in Telegram.
+    The path must be an existing directory.
+
+    Example:
+        weld telegram projects add myproject /home/user/projects/myproject
+    """
+    from weld.telegram.config import TelegramProject, save_config
+
+    config, config_path = _load_config_or_exit()
+
+    # Validate path exists and is a directory
+    resolved_path = path.resolve()
+    if not resolved_path.exists():
+        typer.echo(f"Error: Path does not exist: {resolved_path}", err=True)
+        raise typer.Exit(1)
+
+    if not resolved_path.is_dir():
+        typer.echo(f"Error: Path is not a directory: {resolved_path}", err=True)
+        raise typer.Exit(1)
+
+    # Check for name conflicts
+    existing = config.get_project(name)
+    if existing is not None:
+        typer.echo(f"Error: Project '{name}' already exists.", err=True)
+        typer.echo(f"  Path: {existing.path}")
+        typer.echo("Use 'weld telegram projects remove' first to replace it.")
+        raise typer.Exit(1)
+
+    # Create and add project
+    project = TelegramProject(name=name, path=resolved_path, description=description)
+    config.projects.append(project)
+
+    # Save config
+    try:
+        save_config(config, config_path)
+    except (PermissionError, OSError) as e:
+        typer.echo(f"Error: Could not save configuration: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"Added project '{name}' at {resolved_path}")
+
+
+@projects_app.command("remove")
+def projects_remove(
+    name: str = typer.Argument(help="Project name to remove"),
+) -> None:
+    """Remove a project from the Telegram bot registry.
+
+    Example:
+        weld telegram projects remove myproject
+    """
+    from weld.telegram.config import save_config
+
+    config, config_path = _load_config_or_exit()
+
+    # Check project exists using the same helper as add command
+    existing = config.get_project(name)
+    if existing is None:
+        typer.echo(f"Error: Project '{name}' not found.", err=True)
+        typer.echo("Use 'weld telegram projects list' to see registered projects.")
+        raise typer.Exit(1)
+
+    # Remove project by filtering out the matching name
+    config.projects = [p for p in config.projects if p.name != name]
+
+    # Save config
+    try:
+        save_config(config, config_path)
+    except (PermissionError, OSError) as e:
+        typer.echo(f"Error: Could not save configuration: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"Removed project '{existing.name}' ({existing.path})")
+
+
+@projects_app.command("list")
+def projects_list() -> None:
+    """List all registered projects.
+
+    Shows project names, paths, and descriptions.
+    """
+    config, _ = _load_config_or_exit()
+
+    if not config.projects:
+        typer.echo("No projects registered.")
+        typer.echo("Add a project with: weld telegram projects add <name> <path>")
+        return
+
+    typer.echo("Registered projects:")
+    for project in config.projects:
+        typer.echo(f"  {project.name}")
+        typer.echo(f"    Path: {project.path}")
+        if project.description:
+            typer.echo(f"    Description: {project.description}")
 
 
 @telegram_app.callback()
@@ -163,7 +307,7 @@ def init(
         typer.echo()
         typer.echo("Next steps:")
         typer.echo("  1. Add allowed users with: weld telegram user add <user_id>")
-        typer.echo("  2. Add projects with: weld telegram project add <name> <path>")
+        typer.echo("  2. Add projects with: weld telegram projects add <name> <path>")
         typer.echo("  3. Start the bot with: weld telegram serve")
     except PermissionError:
         typer.echo(f"Error: Permission denied writing to {config_path}", err=True)
