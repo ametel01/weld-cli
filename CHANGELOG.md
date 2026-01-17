@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `/use` command for Telegram bot to switch between configured projects
+
+### Added
 - Rate-limited message editor for Telegram with exponential backoff retry
 - Telegram message formatting utilities with proper Unicode chunking support
 - Per-chat FIFO queue system for Telegram bot to ensure ordered run processing
