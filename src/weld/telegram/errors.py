@@ -7,3 +7,11 @@ class TelegramError(Exception):
 
 class TelegramAuthError(TelegramError):
     """Raised when user authentication fails."""
+
+
+class TelegramFileError(TelegramError):
+    """Raised when file operations fail."""
+
+
+class TelegramRunError(TelegramError):
+    """Raised when run execution fails."""
