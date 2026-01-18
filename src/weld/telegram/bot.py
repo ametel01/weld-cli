@@ -1,6 +1,7 @@
 """Bot module with aiogram dispatcher and command handlers."""
 
 import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,7 +10,13 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandObject
-from aiogram.types import FSInputFile, Message
+from aiogram.types import (
+    CallbackQuery,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from weld.services.gist_uploader import GistError, upload_gist
 from weld.telegram.config import TelegramConfig
@@ -22,13 +29,78 @@ from weld.telegram.files import (
 )
 from weld.telegram.format import MessageEditor, format_chunk, format_status
 from weld.telegram.queue import QueueManager
-from weld.telegram.runner import execute_run
+from weld.telegram.runner import detect_prompt, execute_run, send_input
 from weld.telegram.state import Run, StateStore, UserContext
+
+# Pending prompt responses: run_id -> asyncio.Future
+_pending_prompts: dict[int, asyncio.Future[str]] = {}
 
 # Telegram file size limits
 TELEGRAM_MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024  # 50MB for bot downloads
 
 logger = logging.getLogger(__name__)
+
+
+def create_prompt_keyboard(run_id: int, options: list[str]) -> InlineKeyboardMarkup:
+    """Create inline keyboard for prompt options.
+
+    Args:
+        run_id: The run ID to associate with button callbacks
+        options: List of option values (e.g., ["1", "2", "3"])
+
+    Returns:
+        InlineKeyboardMarkup with buttons for each option
+    """
+    # Map options to human-readable labels
+    option_labels = {
+        "1": "1: Attribute to session",
+        "2": "2: Separate commit",
+        "3": "3: Cancel",
+    }
+
+    buttons = []
+    for opt in options:
+        label = option_labels.get(opt, opt)
+        callback_data = f"prompt:{run_id}:{opt}"
+        buttons.append(InlineKeyboardButton(text=label, callback_data=callback_data))
+
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+
+async def handle_prompt_callback(callback: CallbackQuery) -> None:
+    """Handle callback from prompt inline keyboard button.
+
+    Args:
+        callback: The callback query from button press
+    """
+    if not callback.data or not callback.data.startswith("prompt:"):
+        return
+
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        logger.warning(f"Invalid prompt callback data: {callback.data}")
+        return
+
+    _, run_id_str, option = parts
+    try:
+        run_id = int(run_id_str)
+    except ValueError:
+        logger.warning(f"Invalid run_id in callback: {run_id_str}")
+        return
+
+    logger.info(f"Prompt callback: run_id={run_id}, option={option}")
+
+    # Send the response to the running process
+    if await send_input(run_id, option):
+        # Acknowledge the callback
+        await callback.answer(f"Selected option {option}")
+
+        # Remove the keyboard from the message
+        if isinstance(callback.message, Message):
+            with contextlib.suppress(Exception):
+                await callback.message.edit_reply_markup(reply_markup=None)
+    else:
+        await callback.answer("Command no longer running", show_alert=True)
 
 
 def _escape_markdown(text: str) -> str:
@@ -364,6 +436,8 @@ def _sanitize_command_args(args: str) -> str:
     """Sanitize command arguments to prevent shell injection.
 
     Removes or escapes potentially dangerous characters from user input.
+    Also normalizes Unicode dashes to regular hyphens (Telegram auto-converts
+    -- to em-dash).
 
     Args:
         args: Raw command arguments from user
@@ -376,6 +450,17 @@ def _sanitize_command_args(args: str) -> str:
 
     # Remove null bytes
     args = args.replace("\0", "")
+
+    # Normalize Unicode dashes to regular hyphens
+    # Telegram and other apps often auto-convert -- to em-dash or similar
+    unicode_dashes = [
+        "\u2014",  # Em dash
+        "\u2013",  # En dash
+        "\u2212",  # Minus sign
+        "\u2015",  # Horizontal bar
+    ]
+    for dash in unicode_dashes:
+        args = args.replace(dash, "--")
 
     # Remove shell metacharacters that could enable injection
     # Allow: alphanumeric, space, dash, underscore, dot, forward slash, quotes
@@ -839,12 +924,14 @@ async def run_consumer(
     editor: MessageEditor,
     cwd: Path,
     state_store: StateStore,
+    bot: Bot,
 ) -> None:
     """Consume runner output stream and update status message in real-time.
 
     Reads output chunks from execute_run and uses MessageEditor to update
     a status message with progress. The message shows the run status and
-    a tail of the most recent output.
+    a tail of the most recent output. Handles interactive prompts by showing
+    inline keyboard buttons.
 
     Args:
         run: The Run object with command details (must have id set)
@@ -852,6 +939,7 @@ async def run_consumer(
         editor: MessageEditor instance for rate-limited message updates
         cwd: Working directory for command execution
         state_store: StateStore for persisting run status updates
+        bot: Bot instance for sending messages with inline keyboards
 
     Note:
         - Output is buffered to the last MAX_OUTPUT_BUFFER bytes to avoid
@@ -859,6 +947,7 @@ async def run_consumer(
         - MessageEditor handles rate limiting (2s minimum between edits)
         - If output arrives faster than edits can be made, intermediate
           chunks are accumulated and shown in the next edit
+        - Interactive prompts are shown with inline keyboard buttons
     """
     if run.id is None:
         logger.error("run_consumer called with run that has no id")
@@ -901,12 +990,31 @@ async def run_consumer(
     weld_args = parts[2:] if len(parts) > 2 else None
 
     try:
-        async for _chunk_type, data in execute_run(
+        async for chunk_type, data in execute_run(
             run_id=run_id,
             command=weld_subcommand,
             args=weld_args,
             cwd=cwd,
         ):
+            # Handle interactive prompts
+            if chunk_type == "prompt":
+                logger.info(f"Run {run_id}: Showing prompt to user")
+                # Detect the prompt options
+                prompt_info = detect_prompt(data)
+                if prompt_info:
+                    # Show prompt with inline keyboard
+                    keyboard = create_prompt_keyboard(run_id, prompt_info.options)
+                    prompt_text = (
+                        f"*Run #{run_id} needs input:*\n\n"
+                        f"```\n{data[-500:] if len(data) > 500 else data}\n```\n\n"
+                        "Select an option:"
+                    )
+                    try:
+                        await bot.send_message(chat_id, prompt_text, reply_markup=keyboard)
+                    except Exception:
+                        logger.exception(f"Failed to send prompt for run {run_id}")
+                continue
+
             # Accumulate output (stdout and stderr combined)
             output_buffer += data
 
