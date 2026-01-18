@@ -34,6 +34,7 @@ dependencies = [
   "tomli-w>=1.0",
   "simple-term-menu>=1.6",
   "aiosqlite>=0.19",
+  "aiogram>=3.22",
 ]
 
 [project.scripts]
@@ -45,11 +46,6 @@ Documentation = "https://ametel01.github.io/weld-cli/"
 Repository = "https://github.com/ametel01/weld-cli.git"
 Issues = "https://github.com/ametel01/weld-cli/issues"
 Changelog = "https://github.com/ametel01/weld-cli/blob/master/CHANGELOG.md"
-
-[project.optional-dependencies]
-telegram = [
-  "aiogram>=3.22",
-]
 
 [dependency-groups]
 dev = [

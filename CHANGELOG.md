@@ -7,12 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Telegram bot support is now included in standard installation (no longer optional)
+
 ### Added
 - Telegram user management commands: `weld telegram user add/remove/list`
 - Auto-prompt to install weld globally during `weld telegram init`
+- `--skip-hooks` flag for `weld commit` to bypass pre-commit hooks (useful for Telegram bot or CI)
+
+### Changed
+- Telegram support (aiogram) is now included in the main installation, no longer requires `[telegram]` extra
 
 ### Fixed
 - Telegram bot status output now shows error messages instead of truncating them
+- Telegram bot now shows clear feedback after selecting prompt options ("Command continuing...")
+- Telegram bot prompt message is updated with final result when command completes
 
 ### Added
 - Interactive prompt support in Telegram bot with inline keyboard buttons for command options
