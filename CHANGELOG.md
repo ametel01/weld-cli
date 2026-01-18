@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Telegram user management commands: `weld telegram user add/remove/list`
+- Auto-prompt to install weld globally during `weld telegram init`
+
 ### Fixed
 - Telegram bot status output now shows error messages instead of truncating them
 

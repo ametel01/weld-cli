@@ -3,6 +3,8 @@
 import asyncio
 import contextlib
 import logging
+import shutil
+import subprocess
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +30,13 @@ projects_app = typer.Typer(
 )
 telegram_app.add_typer(projects_app, name="projects")
 
+# User sub-app for user allowlist management
+user_app = typer.Typer(
+    help="Manage allowed users for Telegram bot access",
+    no_args_is_help=True,
+)
+telegram_app.add_typer(user_app, name="user")
+
 
 def _check_telegram_deps() -> None:
     """Check if telegram dependencies are installed.
@@ -43,6 +52,111 @@ def _check_telegram_deps() -> None:
             err=True,
         )
         raise typer.Exit(1) from None
+
+
+def _is_weld_globally_available() -> bool:
+    """Check if weld is available globally in PATH.
+
+    Returns:
+        True if weld is available globally, False otherwise.
+    """
+    weld_path = shutil.which("weld")
+    if weld_path is None:
+        return False
+
+    # Check if it's a working installation (not a broken symlink)
+    return Path(weld_path).exists()
+
+
+def _get_install_source() -> str:
+    """Determine the install source for weld.
+
+    If running from a development install (editable install from source),
+    returns the path to the source directory. Otherwise returns the PyPI
+    package name.
+
+    Returns:
+        Install source: either a path to local source or "weld-cli[telegram]"
+    """
+    import weld
+
+    weld_path = Path(weld.__file__).resolve()
+
+    # Check if this is an editable install by looking for pyproject.toml
+    # in parent directories
+    for parent in weld_path.parents:
+        pyproject = parent / "pyproject.toml"
+        if pyproject.exists():
+            # Verify it's the weld-cli project
+            try:
+                content = pyproject.read_text()
+                if 'name = "weld-cli"' in content:
+                    # Return path with extras for telegram
+                    return str(parent)
+            except OSError:
+                pass
+            break
+
+    # Default to PyPI package
+    return "weld-cli[telegram]"
+
+
+def _install_weld_globally() -> bool:
+    """Install weld globally using uv tool.
+
+    Returns:
+        True if installation succeeded, False otherwise.
+    """
+    # Check if uv is available
+    uv_path = shutil.which("uv")
+    if uv_path is None:
+        typer.echo("Error: 'uv' is not installed. Install it first:", err=True)
+        typer.echo("  curl -LsSf https://astral.sh/uv/install.sh | sh", err=True)
+        return False
+
+    typer.echo("Installing weld globally...")
+
+    # Determine install source (local dev or PyPI)
+    install_source = _get_install_source()
+    is_local = install_source != "weld-cli[telegram]"
+
+    if is_local:
+        logger.debug(f"Installing from local source: {install_source}")
+
+    try:
+        # First uninstall any existing version
+        subprocess.run(
+            ["uv", "tool", "uninstall", "weld-cli"],
+            capture_output=True,
+            timeout=30,
+        )
+
+        # Build install command
+        # For local installs, append [telegram] extras to the path
+        install_source_with_extras = f"{install_source}[telegram]" if is_local else install_source
+
+        install_cmd = ["uv", "tool", "install", "--force", install_source_with_extras]
+
+        result = subprocess.run(
+            install_cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            typer.echo(f"Error: Installation failed: {result.stderr}", err=True)
+            return False
+
+        typer.echo("Weld installed globally!")
+        return True
+
+    except subprocess.TimeoutExpired:
+        typer.echo("Error: Installation timed out.", err=True)
+        return False
+    except FileNotFoundError:
+        typer.echo("Error: Could not run uv command.", err=True)
+        return False
 
 
 def _load_config_or_exit() -> tuple["TelegramConfig", Path]:
@@ -179,6 +293,117 @@ def projects_list() -> None:
         typer.echo(f"    Path: {project.path}")
         if project.description:
             typer.echo(f"    Description: {project.description}")
+
+
+@user_app.command("add")
+def user_add(
+    identifier: str = typer.Argument(help="Telegram user ID (numeric) or username (without @)"),
+) -> None:
+    """Add a user to the Telegram bot allowlist.
+
+    Users can be specified by numeric ID or username.
+    - Numeric values are treated as user IDs
+    - Non-numeric values are treated as usernames
+
+    Example:
+        weld telegram user add 123456789    # Add by user ID
+        weld telegram user add myusername   # Add by username
+    """
+    from weld.telegram.config import save_config
+
+    config, config_path = _load_config_or_exit()
+
+    # Determine if identifier is a user ID (numeric) or username
+    identifier = identifier.lstrip("@")  # Remove @ prefix if present
+
+    if identifier.isdigit():
+        user_id = int(identifier)
+        if user_id in config.auth.allowed_user_ids:
+            typer.echo(f"User ID {user_id} is already in the allowlist.")
+            return
+        config.auth.allowed_user_ids.append(user_id)
+        display = f"user ID {user_id}"
+    else:
+        if identifier in config.auth.allowed_usernames:
+            typer.echo(f"Username '{identifier}' is already in the allowlist.")
+            return
+        config.auth.allowed_usernames.append(identifier)
+        display = f"username '{identifier}'"
+
+    # Save config
+    try:
+        save_config(config, config_path)
+    except (PermissionError, OSError) as e:
+        typer.echo(f"Error: Could not save configuration: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"Added {display} to allowlist.")
+
+
+@user_app.command("remove")
+def user_remove(
+    identifier: str = typer.Argument(help="Telegram user ID (numeric) or username (without @)"),
+) -> None:
+    """Remove a user from the Telegram bot allowlist.
+
+    Example:
+        weld telegram user remove 123456789    # Remove by user ID
+        weld telegram user remove myusername   # Remove by username
+    """
+    from weld.telegram.config import save_config
+
+    config, config_path = _load_config_or_exit()
+
+    identifier = identifier.lstrip("@")  # Remove @ prefix if present
+
+    if identifier.isdigit():
+        user_id = int(identifier)
+        if user_id not in config.auth.allowed_user_ids:
+            typer.echo(f"Error: User ID {user_id} not found in allowlist.", err=True)
+            raise typer.Exit(1)
+        config.auth.allowed_user_ids.remove(user_id)
+        display = f"user ID {user_id}"
+    else:
+        if identifier not in config.auth.allowed_usernames:
+            typer.echo(f"Error: Username '{identifier}' not found in allowlist.", err=True)
+            raise typer.Exit(1)
+        config.auth.allowed_usernames.remove(identifier)
+        display = f"username '{identifier}'"
+
+    # Save config
+    try:
+        save_config(config, config_path)
+    except (PermissionError, OSError) as e:
+        typer.echo(f"Error: Could not save configuration: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"Removed {display} from allowlist.")
+
+
+@user_app.command("list")
+def user_list() -> None:
+    """List all allowed users.
+
+    Shows user IDs and usernames in the allowlist.
+    """
+    config, _ = _load_config_or_exit()
+
+    if not config.auth.allowed_user_ids and not config.auth.allowed_usernames:
+        typer.echo("No users in allowlist.")
+        typer.echo("Add a user with: weld telegram user add <id_or_username>")
+        return
+
+    typer.echo("Allowed users:")
+
+    if config.auth.allowed_user_ids:
+        typer.echo("  User IDs:")
+        for user_id in config.auth.allowed_user_ids:
+            typer.echo(f"    {user_id}")
+
+    if config.auth.allowed_usernames:
+        typer.echo("  Usernames:")
+        for username in config.auth.allowed_usernames:
+            typer.echo(f"    @{username}")
 
 
 @telegram_app.callback()
@@ -471,17 +696,31 @@ def init(
     try:
         saved_path = save_config(config, config_path)
         typer.echo(f"Configuration saved to {saved_path}")
-        typer.echo()
-        typer.echo("Next steps:")
-        typer.echo("  1. Add allowed users with: weld telegram user add <user_id>")
-        typer.echo("  2. Add projects with: weld telegram projects add <name> <path>")
-        typer.echo("  3. Start the bot with: weld telegram serve")
     except PermissionError:
         typer.echo(f"Error: Permission denied writing to {config_path}", err=True)
         raise typer.Exit(1) from None
     except OSError as e:
         typer.echo(f"Error: Could not save configuration: {e}", err=True)
         raise typer.Exit(1) from None
+
+    # Check if weld is available globally and offer to install
+    if not _is_weld_globally_available():
+        typer.echo()
+        typer.echo("Note: 'weld' is not available globally in your PATH.")
+        if typer.confirm("Install weld globally for easier access?", default=True):
+            if _install_weld_globally():
+                typer.echo()
+            else:
+                typer.echo()
+                typer.echo("You can install manually later with:")
+                typer.echo("  uv tool install weld-cli[telegram]")
+                typer.echo()
+
+    typer.echo()
+    typer.echo("Next steps:")
+    typer.echo("  1. Add allowed users with: weld telegram user add <user_id>")
+    typer.echo("  2. Add projects with: weld telegram projects add <name> <path>")
+    typer.echo("  3. Start the bot with: weld telegram serve")
 
 
 @telegram_app.command()
@@ -541,7 +780,7 @@ async def _run_bot(config: "TelegramConfig") -> None:
         config: Validated TelegramConfig with bot token.
     """
     from aiogram.filters import Command, CommandObject
-    from aiogram.types import Message
+    from aiogram.types import CallbackQuery, Message
 
     from weld.telegram.auth import check_auth
     from weld.telegram.bot import (
@@ -550,6 +789,7 @@ async def _run_bot(config: "TelegramConfig") -> None:
         create_bot,
         doctor_command,
         fetch_command,
+        handle_prompt_callback,
         implement_command,
         interview_command,
         plan_command,
@@ -685,6 +925,11 @@ async def _run_bot(config: "TelegramConfig") -> None:
         """Handle /push command."""
         await push_command(message, command, config, bot)
 
+    @dp.callback_query(lambda c: c.data and c.data.startswith("prompt:"))
+    async def prompt_callback_handler(callback: CallbackQuery) -> None:
+        """Handle prompt button callbacks."""
+        await handle_prompt_callback(callback)
+
     # Queue consumer task
     async def queue_consumer() -> None:
         """Background task to process queued runs."""
@@ -721,7 +966,7 @@ async def _run_bot(config: "TelegramConfig") -> None:
 
                 # Execute the run with exception handling
                 try:
-                    await run_consumer(run, chat_id, editor, project.path, state_store)
+                    await run_consumer(run, chat_id, editor, project.path, state_store, bot)
                 except Exception:
                     logger.exception(f"Unhandled exception in run_consumer for run {run_id}")
 
