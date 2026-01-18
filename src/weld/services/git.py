@@ -127,17 +127,25 @@ def stage_all(cwd: Path | None = None) -> None:
     run_git("add", "-A", cwd=cwd)
 
 
-def commit_file(message_file: Path, cwd: Path | None = None) -> str:
+def commit_file(
+    message_file: Path,
+    cwd: Path | None = None,
+    no_verify: bool = False,
+) -> str:
     """Create commit using message file, return commit SHA.
 
     Args:
         message_file: Path to file containing commit message
         cwd: Working directory
+        no_verify: Skip pre-commit and commit-msg hooks
 
     Returns:
         New commit SHA
     """
-    run_git("commit", "-F", str(message_file), cwd=cwd)
+    args = ["commit", "-F", str(message_file)]
+    if no_verify:
+        args.append("--no-verify")
+    run_git(*args, cwd=cwd)
     return get_head_sha(cwd=cwd)
 
 

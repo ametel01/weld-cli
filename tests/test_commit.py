@@ -1660,3 +1660,64 @@ Add test file
 
         assert result.exit_code == 22
         assert "Commit failed" in result.stdout
+
+
+@pytest.mark.cli
+class TestCommitSkipHooks:
+    """Tests for --skip-hooks flag."""
+
+    def _single_commit_response(self) -> str:
+        return """<commit>
+<files>
+test.txt
+</files>
+<commit_message>
+Add test file
+</commit_message>
+<changelog_entry>
+</changelog_entry>
+</commit>"""
+
+    def test_skip_hooks_passes_no_verify_to_git(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should pass --no-verify to git commit when --skip-hooks is used."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.commit_file") as mock_commit_file,
+        ):
+            mock_commit_file.return_value = "abc1234"
+            result = runner.invoke(
+                app, ["commit", "--skip-hooks", "--skip-transcript", "--skip-changelog"]
+            )
+
+        # Verify commit_file was called with no_verify=True
+        mock_commit_file.assert_called_once()
+        call_kwargs = mock_commit_file.call_args.kwargs
+        assert call_kwargs.get("no_verify") is True
+        assert result.exit_code == 0
+
+    def test_skip_hooks_not_passed_by_default(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """Should not pass --no-verify to git commit by default."""
+        test_file = initialized_weld / "test.txt"
+        test_file.write_text("content")
+        subprocess.run(["git", "add", "test.txt"], cwd=initialized_weld, check=True)
+
+        with (
+            patch("weld.commands.commit.run_claude", return_value=self._single_commit_response()),
+            patch("weld.commands.commit.commit_file") as mock_commit_file,
+        ):
+            mock_commit_file.return_value = "abc1234"
+            result = runner.invoke(app, ["commit", "--skip-transcript", "--skip-changelog"])
+
+        # Verify commit_file was called with no_verify=False
+        mock_commit_file.assert_called_once()
+        call_kwargs = mock_commit_file.call_args.kwargs
+        assert call_kwargs.get("no_verify") is False
+        assert result.exit_code == 0

@@ -41,6 +41,13 @@ pre-commit-install: ## Install pre-commit hooks
 setup: install-dev pre-commit-install ## Complete development setup (install + hooks)
 	@echo -e "$(GREEN)Development environment ready!$(NC)"
 
+.PHONY: upgrade
+upgrade: ## Upgrade all dependencies to latest versions
+	@echo -e "$(BLUE)Upgrading dependencies...$(NC)"
+	$(UV) lock --upgrade
+	$(UV) sync
+	@echo -e "$(GREEN)All dependencies upgraded!$(NC)"
+
 ##@ Testing
 
 .PHONY: test
@@ -189,10 +196,10 @@ build: ## Build the package
 	@echo -e "$(GREEN)Build complete! Check dist/$(NC)"
 
 .PHONY: bin-install
-bin-install: ## Install weld globally as a CLI tool
+bin-install: ## Install weld globally as a CLI tool (with telegram support)
 	@echo -e "$(BLUE)Installing weld globally...$(NC)"
 	$(UV) tool uninstall weld 2>/dev/null || true
-	$(UV) tool install --force .
+	$(UV) tool install --force ".[telegram]"
 	@echo -e "$(GREEN)weld installed! Run 'weld --help' to verify.$(NC)"
 
 .PHONY: bin-uninstall

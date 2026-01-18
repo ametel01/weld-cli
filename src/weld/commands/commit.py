@@ -358,6 +358,7 @@ def _commit_by_sessions(
     weld_dir: Path,
     skip_transcript: bool,
     skip_changelog: bool,
+    skip_hooks: bool,
     quiet: bool,
 ) -> None:
     """Create commits grouped by session.
@@ -379,6 +380,7 @@ def _commit_by_sessions(
         weld_dir: .weld directory path
         skip_transcript: Whether to skip transcript upload
         skip_changelog: Whether to skip changelog update
+        skip_hooks: Whether to skip pre-commit hooks
         quiet: Whether to suppress streaming output
     """
     ctx.console.print(f"[green]Creating {len(session_files)} commit(s) by session:[/green]")
@@ -476,7 +478,7 @@ def _commit_by_sessions(
             msg_file = Path(f.name)
 
         try:
-            sha = commit_file(msg_file, cwd=repo_root)
+            sha = commit_file(msg_file, cwd=repo_root, no_verify=skip_hooks)
             created_commits.append(sha[:8])
         except GitError as e:
             msg_file.unlink(missing_ok=True)
@@ -520,6 +522,7 @@ def _commit_with_fallback_transcript(
     registry: SessionRegistry,
     skip_transcript: bool,
     skip_changelog: bool,
+    skip_hooks: bool,
     quiet: bool,
     no_split: bool,
     changelog_unreleased: str,
@@ -539,6 +542,7 @@ def _commit_with_fallback_transcript(
         registry: Session registry for finding matching sessions
         skip_transcript: Whether to skip transcript upload
         skip_changelog: Whether to skip changelog update
+        skip_hooks: Whether to skip pre-commit hooks
         quiet: Whether to suppress streaming output
         no_split: Whether to force single commit
         changelog_unreleased: Current changelog unreleased section content
@@ -723,7 +727,7 @@ def _commit_with_fallback_transcript(
             msg_file = Path(f.name)
 
         try:
-            sha = commit_file(msg_file, cwd=repo_root)
+            sha = commit_file(msg_file, cwd=repo_root, no_verify=skip_hooks)
             created_commits.append(sha[:8])
         except GitError as e:
             msg_file.unlink()
@@ -753,6 +757,9 @@ def commit(
     all: bool = typer.Option(False, "--all", "-a", help="Stage all changes before committing"),
     skip_transcript: bool = typer.Option(False, "--skip-transcript", help="Skip transcript upload"),
     skip_changelog: bool = typer.Option(False, "--skip-changelog", help="Skip CHANGELOG.md update"),
+    skip_hooks: bool = typer.Option(
+        False, "--skip-hooks", help="Skip pre-commit and commit-msg hooks"
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress streaming output"),
     no_split: bool = typer.Option(False, "--no-split", help="Disable logical grouping, one commit"),
     no_session_split: bool = typer.Option(
@@ -766,6 +773,7 @@ def commit(
 
     Use -a/--all to stage all changes first.
     Use --no-session-split to disable session-based grouping of files.
+    Use --skip-hooks to bypass pre-commit hooks (useful for Telegram bot or CI).
     """
     ctx = get_output_context()
 
@@ -888,6 +896,7 @@ def commit(
             weld_dir=weld_dir,
             skip_transcript=skip_transcript,
             skip_changelog=skip_changelog,
+            skip_hooks=skip_hooks,
             quiet=quiet,
         )
     else:
@@ -913,6 +922,7 @@ def commit(
             registry=registry,
             skip_transcript=skip_transcript,
             skip_changelog=skip_changelog,
+            skip_hooks=skip_hooks,
             quiet=quiet,
             no_split=no_split,
             changelog_unreleased=changelog_unreleased,

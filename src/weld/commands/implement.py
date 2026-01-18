@@ -658,6 +658,7 @@ def _prompt_and_commit_step(
             weld_dir=weld_dir,
             skip_transcript=False,
             skip_changelog=False,
+            skip_hooks=False,
             quiet=True,  # Suppress streaming during implement
         )
         ctx.console.print("[green]✓ Changes committed successfully[/green]")
@@ -1341,6 +1342,7 @@ def _autopilot_commit(
             weld_dir=weld_dir,
             skip_transcript=False,
             skip_changelog=False,
+            skip_hooks=False,
             quiet=True,  # Suppress streaming in autopilot
         )
         ctx.console.print(f"[green]Committed step {step.number} changes[/green]")

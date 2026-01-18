@@ -24,6 +24,7 @@ Spec Doc  -->  Research Prompt  -->  Plan Prompt  -->  Review  -->  Commit
 | [Quickstart](quickstart.md) | Get running in under 5 minutes |
 | [Workflow](workflow.md) | Understand the development workflow |
 | [Commands](commands/index.md) | Full command reference |
+| [Telegram Bot](telegram.md) | Remote weld access via Telegram |
 | [Configuration](configuration.md) | Configure weld for your project |
 | [Troubleshooting](troubleshooting.md) | Common issues and solutions |
 | [Development](development/index.md) | Contributing and architecture |
