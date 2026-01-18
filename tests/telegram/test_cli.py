@@ -1,6 +1,8 @@
 """CLI integration tests for Telegram bot commands."""
 
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +15,20 @@ from weld.telegram.config import (
     TelegramProject,
     save_config,
 )
+
+
+def mock_asyncio_run(return_value: Any) -> Any:
+    """Create a mock for asyncio.run that properly closes coroutines.
+
+    This prevents 'coroutine was never awaited' warnings by closing
+    the coroutine before returning the mocked value.
+    """
+
+    def _mock_run(coro: Coroutine[Any, Any, Any]) -> Any:
+        coro.close()
+        return return_value
+
+    return _mock_run
 
 
 @pytest.fixture
@@ -88,22 +104,9 @@ class TestTelegramHelp:
 class TestTelegramInit:
     """Tests for weld telegram init command."""
 
-    def test_init_missing_deps(self, telegram_runner: CliRunner, tmp_path: Path) -> None:
-        """init should fail when aiogram is not installed."""
-        with (
-            patch.dict("sys.modules", {"aiogram": None}),
-            patch(
-                "weld.telegram.cli._check_telegram_deps",
-                side_effect=SystemExit(1),
-            ),
-        ):
-            result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
-            assert result.exit_code == 1
-
     def test_init_invalid_token_format(self, telegram_runner: CliRunner, config_dir: Path) -> None:
         """init should fail with invalid token format."""
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch(
                 "weld.telegram.config.get_config_path",
                 return_value=config_dir / "telegram.toml",
@@ -117,7 +120,6 @@ class TestTelegramInit:
     def test_init_empty_token(self, telegram_runner: CliRunner, config_dir: Path) -> None:
         """init should fail with empty token."""
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch(
                 "weld.telegram.config.get_config_path",
                 return_value=config_dir / "telegram.toml",
@@ -133,12 +135,14 @@ class TestTelegramInit:
     ) -> None:
         """init should fail when token validation fails."""
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch(
                 "weld.telegram.config.get_config_path",
                 return_value=config_dir / "telegram.toml",
             ),
-            patch("asyncio.run", return_value=(False, "Invalid token: unauthorized")),
+            patch(
+                "asyncio.run",
+                side_effect=mock_asyncio_run((False, "Invalid token: unauthorized")),
+            ),
         ):
             result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
             assert result.exit_code == 1
@@ -151,9 +155,8 @@ class TestTelegramInit:
         config_path = config_dir / "telegram.toml"
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
             assert result.exit_code == 0
@@ -171,7 +174,6 @@ class TestTelegramInit:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
         ):
             result = telegram_runner.invoke(app, ["telegram", "init", "-t", "new:token"])
@@ -189,9 +191,8 @@ class TestTelegramInit:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@newbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@newbot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "init", "-t", "new:token", "--force"])
             assert result.exit_code == 0
@@ -205,9 +206,8 @@ class TestTelegramInit:
         config_path = config_dir / "telegram.toml"
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
             patch("weld.telegram.cli._is_weld_globally_available", return_value=False),
         ):
             # Answer 'n' to the install prompt
@@ -224,9 +224,8 @@ class TestTelegramInit:
         config_path = config_dir / "telegram.toml"
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
             patch("weld.telegram.cli._is_weld_globally_available", return_value=True),
         ):
             result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
@@ -241,9 +240,8 @@ class TestTelegramInit:
         config_path = config_dir / "telegram.toml"
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
             patch("weld.telegram.cli._is_weld_globally_available", return_value=False),
             patch("weld.telegram.cli._install_weld_globally", return_value=True) as mock_install,
         ):
@@ -262,7 +260,6 @@ class TestTelegramWhoami:
         config_path = config_dir / "telegram.toml"
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
         ):
             result = telegram_runner.invoke(app, ["telegram", "whoami"])
@@ -278,7 +275,6 @@ class TestTelegramWhoami:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
         ):
             result = telegram_runner.invoke(app, ["telegram", "whoami"])
@@ -294,9 +290,11 @@ class TestTelegramWhoami:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(False, "Invalid token: unauthorized")),
+            patch(
+                "asyncio.run",
+                side_effect=mock_asyncio_run((False, "Invalid token: unauthorized")),
+            ),
         ):
             result = telegram_runner.invoke(app, ["telegram", "whoami"])
             assert result.exit_code == 1
@@ -314,9 +312,8 @@ class TestTelegramWhoami:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@mybot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@mybot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "whoami"])
             assert result.exit_code == 0
@@ -373,7 +370,7 @@ class TestTelegramDoctor:
 
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@mybot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@mybot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "doctor"])
             # Exit 0 because warnings don't cause failure
@@ -392,7 +389,7 @@ class TestTelegramDoctor:
 
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@mybot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@mybot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "doctor"])
             assert result.exit_code == 0
@@ -413,7 +410,7 @@ class TestTelegramDoctor:
 
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@mybot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@mybot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "doctor"])
             assert result.exit_code == 0
@@ -437,7 +434,7 @@ class TestTelegramDoctor:
 
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@mybot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@mybot"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "doctor"])
             assert result.exit_code == 0
@@ -655,9 +652,8 @@ class TestEnvironmentIsolation:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@bot_a")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@bot_a"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "whoami"])
             assert result.exit_code == 0
@@ -675,9 +671,8 @@ class TestEnvironmentIsolation:
         save_config(config, config_path)
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@bot_b")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@bot_b"))),
         ):
             result = telegram_runner.invoke(app, ["telegram", "whoami"])
             assert result.exit_code == 0

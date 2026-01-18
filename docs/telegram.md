@@ -18,23 +18,6 @@ The Telegram bot provides remote access to weld functionality:
 |------|----------|-------------|
 | **Telegram account** | Yes | For bot interaction |
 | **Bot token** | Yes | Create via [@BotFather](https://t.me/botfather) |
-| **weld** | Yes | Base weld installation |
-| **aiogram** | Yes | Installed with `weld[telegram]` extra |
-
-## Installation
-
-Install weld with Telegram support:
-
-```bash
-# Using uv
-uv tool install 'weld-cli[telegram]'
-
-# Or using pip
-pip install 'weld-cli[telegram]'
-
-# Verify telegram commands are available
-weld telegram --help
-```
 
 ## Quick Start
 
@@ -59,7 +42,7 @@ This creates `~/.config/weld/telegram.toml` with restricted permissions (0600).
 ### 3. Add Allowed Users
 
 ```bash
-# Add by username
+# Add by username (@ prefix is stripped automatically)
 weld telegram user add yourusername
 
 # Or add by user ID
@@ -108,6 +91,8 @@ weld telegram init [OPTIONS]
 | `--token` | `-t` | Bot token (prompts if not provided) |
 | `--force` | `-f` | Overwrite existing configuration |
 
+The init command validates the token with the Telegram API before saving. If weld is not available globally in PATH, it offers to install weld globally using `uv tool install`.
+
 ### weld telegram serve
 
 Start the bot server.
@@ -116,7 +101,7 @@ Start the bot server.
 weld telegram serve
 ```
 
-Runs until interrupted with `Ctrl+C`. Requires valid token and at least one allowed user.
+Runs until interrupted with `Ctrl+C`. Requires valid bot token. If no allowed users are configured, displays a warning but still starts (the bot will reject all messages).
 
 ### weld telegram whoami
 
@@ -147,20 +132,20 @@ Checks:
 
 - aiogram dependency installed
 - Configuration file exists and is valid
-- Bot token is valid (validates with Telegram API)
-- At least one allowed user configured
-- At least one project registered
-- All project paths exist
+- Bot token is set and valid (validates with Telegram API)
+- At least one allowed user configured (warning if none)
+- At least one project registered (warning if none)
+- All project paths exist and are directories
 
 ### weld telegram user
 
 Manage allowed users.
 
 ```bash
-# Add a user by username
+# Add a user by username (@ prefix stripped automatically)
 weld telegram user add <username>
 
-# Add a user by ID
+# Add a user by ID (numeric values treated as IDs)
 weld telegram user add <user_id>
 
 # Remove a user
@@ -170,14 +155,14 @@ weld telegram user remove <id_or_username>
 weld telegram user list
 ```
 
-Note: Usernames are stored without the `@` prefix (it's stripped automatically).
+Note: Usernames are stored without the `@` prefix (it's stripped automatically if provided).
 
 ### weld telegram projects
 
 Manage registered projects.
 
 ```bash
-# Add a project
+# Add a project (path must exist and be a directory)
 weld telegram projects add <name> <path> [-d "description"]
 
 # Remove a project
@@ -316,13 +301,14 @@ path = "/home/user/projects/backend"
 - **Token protection**: Config file is set to `0600` (owner read/write only)
 - **Project isolation**: Commands execute only in registered project directories
 - **Path validation**: `/fetch` and `/push` validate paths against registered projects
-- **Traversal protection**: Symlinks are resolved before path validation
+- **Traversal protection**: Symlinks are resolved before path validation to prevent escaping project boundaries
 
 ### Command Safety
 
 - **No shell**: All subprocess calls use explicit argument lists (never `shell=True`)
-- **Argument sanitization**: User input is sanitized to prevent injection
-- **Timeout enforcement**: All commands have execution timeouts
+- **Argument sanitization**: User input is sanitized to remove shell metacharacters (`;`, `&`, `|`, `$`, `` ` ``, etc.)
+- **Unicode normalization**: Telegram auto-converts `--` to em-dash; the bot normalizes these back to regular hyphens
+- **Timeout enforcement**: Commands have a 10-minute execution timeout with graceful SIGTERM then SIGKILL
 
 ## Architecture
 
@@ -344,6 +330,7 @@ path = "/home/user/projects/backend"
 | `runner.py` | Async subprocess execution with streaming |
 | `format.py` | Message formatting with rate-limited editing |
 | `files.py` | File upload/download with path validation |
+| `errors.py` | Error hierarchy (TelegramError, TelegramAuthError, TelegramRunError) |
 
 ### Message Flow
 
@@ -362,6 +349,14 @@ Runner (async subprocess with streaming)
     ↓
 Message Editor (rate-limited status updates)
 ```
+
+### Interactive Prompts
+
+Commands that require user input (like `weld commit` session selection) display inline keyboard buttons. The bot detects prompts matching `Select [options]:` pattern and presents options as clickable buttons.
+
+### Large File Handling
+
+For files larger than 50MB, `/fetch` falls back to uploading the file to GitHub Gist (text files only) and returns the gist URL instead of the file directly.
 
 ## Troubleshooting
 
@@ -392,11 +387,15 @@ chmod 600 ~/.config/weld/telegram.toml
 
 ### Commands timing out
 
-Long-running commands may hit the default timeout. Consider:
+Long-running commands have a 10-minute timeout. Consider:
 
 - Breaking work into smaller steps
 - Using `/status` to monitor progress
 - Using `/cancel` if a command is stuck
+
+### Cannot switch projects
+
+You cannot switch projects while a command is running. Wait for the current command to complete or use `/cancel` first.
 
 ## See Also
 

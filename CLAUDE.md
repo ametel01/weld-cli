@@ -269,13 +269,7 @@ State database: `~/.weld/telegram/state.db` (SQLite)
 
 #### Installation
 
-Telegram support is an optional dependency:
-
-```bash
-pip install weld[telegram]
-```
-
-Requires `aiogram` for async Telegram API interaction.
+Telegram support is included in the standard weld installation. No additional setup required.
 
 ## Git Commits
 

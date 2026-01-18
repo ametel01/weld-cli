@@ -38,22 +38,6 @@ user_app = typer.Typer(
 telegram_app.add_typer(user_app, name="user")
 
 
-def _check_telegram_deps() -> None:
-    """Check if telegram dependencies are installed.
-
-    Raises:
-        typer.Exit: If aiogram is not installed.
-    """
-    try:
-        import aiogram  # noqa: F401
-    except ImportError:
-        typer.echo(
-            "Telegram dependencies not installed. Install with: pip install weld[telegram]",
-            err=True,
-        )
-        raise typer.Exit(1) from None
-
-
 def _is_weld_globally_available() -> bool:
     """Check if weld is available globally in PATH.
 
@@ -445,8 +429,6 @@ def whoami() -> None:
     Displays the bot token status and bot identity if configured.
     Validates the token with Telegram API to confirm it's still valid.
     """
-    _check_telegram_deps()
-
     config, config_path = _load_config_or_exit()
 
     if not config.bot_token:
@@ -628,8 +610,6 @@ def init(
     Get a bot token from @BotFather on Telegram:
     https://core.telegram.org/bots#botfather
     """
-    _check_telegram_deps()
-
     from weld.telegram.config import get_config_path, load_config, save_config
 
     config_path = get_config_path()
@@ -735,8 +715,6 @@ def serve() -> None:
     - Valid bot token (run 'weld telegram init' first)
     - At least one allowed user configured
     """
-    _check_telegram_deps()
-
     from weld.telegram.config import get_config_path, load_config
 
     config_path = get_config_path()

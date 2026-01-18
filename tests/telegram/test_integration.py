@@ -4,7 +4,9 @@ Tests the full flow: init → projects add → use → doctor → status
 with mocked aiogram Bot.
 """
 
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,6 +20,20 @@ from weld.telegram.config import (
     load_config,
     save_config,
 )
+
+
+def mock_asyncio_run(return_value: Any) -> Any:
+    """Create a mock for asyncio.run that properly closes coroutines.
+
+    This prevents 'coroutine was never awaited' warnings by closing
+    the coroutine before returning the mocked value.
+    """
+
+    def _mock_run(coro: Coroutine[Any, Any, Any]) -> Any:
+        coro.close()
+        return return_value
+
+    return _mock_run
 
 
 @pytest.fixture
@@ -80,9 +96,8 @@ class TestEndToEndFlow:
 
         # Step 1: Initialize with valid token
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = integration_runner.invoke(app, ["telegram", "init", "-t", "123456:ABC"])
             assert result.exit_code == 0, f"init failed: {get_output(result)}"
@@ -137,7 +152,7 @@ class TestEndToEndFlow:
 
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = integration_runner.invoke(app, ["telegram", "doctor"])
             assert result.exit_code == 0, f"doctor failed: {get_output(result)}"
@@ -146,9 +161,8 @@ class TestEndToEndFlow:
 
         # Step 5: Check whoami
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = integration_runner.invoke(app, ["telegram", "whoami"])
             assert result.exit_code == 0, f"whoami failed: {get_output(result)}"
@@ -169,9 +183,8 @@ class TestEndToEndFlow:
 
         # Initialize
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = integration_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
             assert result.exit_code == 0
@@ -186,7 +199,7 @@ class TestEndToEndFlow:
         # Doctor should warn about no allowed users but still exit 0
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = integration_runner.invoke(app, ["telegram", "doctor"])
             assert result.exit_code == 0
@@ -275,7 +288,6 @@ class TestEndToEndFlow:
 
         # Reinitialize without --force should fail
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
         ):
             result = integration_runner.invoke(app, ["telegram", "init", "-t", "new:token"])
@@ -284,9 +296,8 @@ class TestEndToEndFlow:
 
         # Reinitialize with --force
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@newbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@newbot"))),
         ):
             result = integration_runner.invoke(
                 app, ["telegram", "init", "-t", "new:token", "--force"]
@@ -317,9 +328,8 @@ class TestErrorRecovery:
 
         # Init should be able to overwrite the invalid config
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             # Without --force, init should allow overwriting invalid config
             result = integration_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
@@ -350,7 +360,7 @@ class TestErrorRecovery:
 
         with (
             patch("weld.telegram.config.get_config_path", return_value=config_path),
-            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("asyncio.run", side_effect=mock_asyncio_run((True, "@testbot"))),
         ):
             result = integration_runner.invoke(app, ["telegram", "doctor"])
             # Should succeed but with warnings
@@ -381,7 +391,6 @@ class TestCommandSequencing:
             assert "Configuration not found" in output or "weld telegram init" in output
 
         with (
-            patch("weld.telegram.cli._check_telegram_deps"),
             patch("weld.telegram.config.get_config_path", return_value=config_path),
         ):
             # whoami should fail

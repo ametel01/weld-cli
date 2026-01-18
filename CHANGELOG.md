@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Telegram support is now included in standard installation (no longer requires `weld[telegram]` extra)
+
+### Changed
 - Telegram bot support is now included in standard installation (no longer requires `[telegram]` extra)
 
 ### Changed
