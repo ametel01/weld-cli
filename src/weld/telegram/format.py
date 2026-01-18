@@ -116,8 +116,8 @@ def format_status(run: Run) -> str:
         lines.append(f"Completed: {run.completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
     if run.result:
-        # Truncate result if too long, reserving space for the header
-        result_preview = run.result[:500] + "..." if len(run.result) > 500 else run.result
+        # Truncate result if too long - show LAST 500 chars since errors appear at the end
+        result_preview = "..." + run.result[-500:] if len(run.result) > 500 else run.result
         lines.append(f"\nOutput:\n```\n{result_preview}\n```")
 
     return "\n".join(lines)

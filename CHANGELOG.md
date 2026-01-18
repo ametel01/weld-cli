@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Telegram bot status output now shows error messages instead of truncating them
+
+### Added
+- Interactive prompt support in Telegram bot with inline keyboard buttons for command options
+
 ### Added
 - Interactive prompt support in Telegram bot for responding to weld command prompts
 

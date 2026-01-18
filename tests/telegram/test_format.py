@@ -246,6 +246,24 @@ class TestFormatStatus:
         # Result preview should be max 500 chars + "..."
         assert "x" * 501 not in result
 
+    def test_status_result_truncation_preserves_end(self) -> None:
+        """Truncation preserves the END of output where errors appear."""
+        # Simulate long output with error at the end
+        long_output = "x" * 600 + "\nError: Command failed"
+        run = Run(
+            id=1,
+            user_id=1,
+            project_name="p",
+            command="c",
+            status="failed",
+            result=long_output,
+        )
+        result = format_status(run)
+        # Error at the end should be visible
+        assert "Error: Command failed" in result
+        # Start should be truncated with ellipsis
+        assert result.count("...") >= 1
+
 
 @pytest.mark.unit
 class TestFormatError:

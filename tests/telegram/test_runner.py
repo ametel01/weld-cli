@@ -40,7 +40,7 @@ class TestCancelRun:
         mock_proc.returncode = 0  # Already exited
         mock_proc.pid = 12345
 
-        _active_runs[1] = mock_proc
+        _active_runs[1] = (mock_proc, asyncio.Queue())
 
         result = await cancel_run(1)
         assert result is False
@@ -61,7 +61,7 @@ class TestCancelRun:
 
         mock_proc.wait = mock_wait
 
-        _active_runs[1] = mock_proc
+        _active_runs[1] = (mock_proc, asyncio.Queue())
 
         result = await cancel_run(1)
 
@@ -96,7 +96,7 @@ class TestCancelRun:
         mock_proc.wait = mock_wait
         mock_proc.kill = mock_kill
 
-        _active_runs[1] = mock_proc
+        _active_runs[1] = (mock_proc, asyncio.Queue())
 
         result = await cancel_run(1)
 
@@ -117,8 +117,8 @@ class TestCancelRun:
 
         mock_proc.wait = mock_wait
 
-        _active_runs[1] = mock_proc
-        _active_runs[2] = MagicMock()  # Another run that shouldn't be affected
+        _active_runs[1] = (mock_proc, asyncio.Queue())
+        _active_runs[2] = (MagicMock(), asyncio.Queue())  # Another run that shouldn't be affected
 
         await cancel_run(1)
 
