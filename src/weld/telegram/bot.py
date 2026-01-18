@@ -95,10 +95,13 @@ async def handle_prompt_callback(callback: CallbackQuery) -> None:
         # Acknowledge the callback
         await callback.answer(f"Selected option {option}")
 
-        # Remove the keyboard from the message
+        # Update the message to show selection was received and command is continuing
         if isinstance(callback.message, Message):
             with contextlib.suppress(Exception):
-                await callback.message.edit_reply_markup(reply_markup=None)
+                await callback.message.edit_text(
+                    f"*Run #{run_id}*\n\n✓ Selected option {option}\n\n_Command continuing..._",
+                    parse_mode="Markdown",
+                )
     else:
         await callback.answer("Command no longer running", show_alert=True)
 
@@ -989,6 +992,9 @@ async def run_consumer(
     weld_subcommand = parts[1]
     weld_args = parts[2:] if len(parts) > 2 else None
 
+    # Track prompt message for final update
+    prompt_message_id: int | None = None
+
     try:
         async for chunk_type, data in execute_run(
             run_id=run_id,
@@ -1010,7 +1016,8 @@ async def run_consumer(
                         "Select an option:"
                     )
                     try:
-                        await bot.send_message(chat_id, prompt_text, reply_markup=keyboard)
+                        msg = await bot.send_message(chat_id, prompt_text, reply_markup=keyboard)
+                        prompt_message_id = msg.message_id
                     except Exception:
                         logger.exception(f"Failed to send prompt for run {run_id}")
                 continue
@@ -1065,3 +1072,37 @@ async def run_consumer(
         await editor.send_or_edit(chat_id, final_chunked)
     except Exception:
         logger.exception(f"Failed to send final status for run {run_id}")
+
+    # Update prompt message with final result (if one was shown)
+    if prompt_message_id is not None:
+        try:
+            if run.status == "completed":
+                # Extract key info from output for summary
+                result_summary = ""
+                if run.result:
+                    # Look for commit summary or other success indicators
+                    lines = run.result.split("\n")
+                    for line in reversed(lines):
+                        if "Created" in line and "commit" in line:
+                            result_summary = line.strip()
+                            break
+                        if "Committed:" in line:
+                            result_summary = line.strip()
+                            break
+
+                prompt_final = (
+                    f"✅ *Run #{run_id} completed*\n\n"
+                    f"{result_summary if result_summary else 'Command finished successfully.'}"
+                )
+            else:
+                error_msg = run.error[:200] if run.error else "Unknown error"
+                prompt_final = f"❌ *Run #{run_id} failed*\n\n`{error_msg}`"
+
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=prompt_message_id,
+                text=prompt_final,
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.warning(f"Failed to update prompt message for run {run_id}")

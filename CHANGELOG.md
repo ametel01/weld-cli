@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Telegram bot prompt messages now show selection confirmation and final command result
+
+### Changed
 - Telegram bot support is now included in standard installation (no longer optional)
 
 ### Added
