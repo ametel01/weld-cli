@@ -72,6 +72,7 @@ class TestTelegramHelp:
         assert "whoami" in output
         assert "doctor" in output
         assert "projects" in output
+        assert "user" in output
         assert "serve" in output
 
     def test_telegram_no_args(self, telegram_runner: CliRunner) -> None:
@@ -196,6 +197,60 @@ class TestTelegramInit:
             assert result.exit_code == 0
             output = get_output(result)
             assert "@newbot" in output
+
+    def test_init_prompts_global_install_when_not_available(
+        self, telegram_runner: CliRunner, config_dir: Path
+    ) -> None:
+        """init should prompt to install weld globally when not in PATH."""
+        config_path = config_dir / "telegram.toml"
+
+        with (
+            patch("weld.telegram.cli._check_telegram_deps"),
+            patch("weld.telegram.config.get_config_path", return_value=config_path),
+            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("weld.telegram.cli._is_weld_globally_available", return_value=False),
+        ):
+            # Answer 'n' to the install prompt
+            result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"], input="n\n")
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "not available globally" in output
+            assert "Install weld globally" in output
+
+    def test_init_skips_prompt_when_weld_available(
+        self, telegram_runner: CliRunner, config_dir: Path
+    ) -> None:
+        """init should not prompt when weld is already globally available."""
+        config_path = config_dir / "telegram.toml"
+
+        with (
+            patch("weld.telegram.cli._check_telegram_deps"),
+            patch("weld.telegram.config.get_config_path", return_value=config_path),
+            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("weld.telegram.cli._is_weld_globally_available", return_value=True),
+        ):
+            result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "not available globally" not in output
+
+    def test_init_installs_globally_when_confirmed(
+        self, telegram_runner: CliRunner, config_dir: Path
+    ) -> None:
+        """init should install weld globally when user confirms."""
+        config_path = config_dir / "telegram.toml"
+
+        with (
+            patch("weld.telegram.cli._check_telegram_deps"),
+            patch("weld.telegram.config.get_config_path", return_value=config_path),
+            patch("asyncio.run", return_value=(True, "@testbot")),
+            patch("weld.telegram.cli._is_weld_globally_available", return_value=False),
+            patch("weld.telegram.cli._install_weld_globally", return_value=True) as mock_install,
+        ):
+            # Answer 'y' to the install prompt
+            result = telegram_runner.invoke(app, ["telegram", "init", "-t", "123:ABC"], input="y\n")
+            assert result.exit_code == 0
+            mock_install.assert_called_once()
 
 
 @pytest.mark.cli
@@ -646,3 +701,216 @@ class TestEnvironmentIsolation:
             output = get_output(result)
             # Error mentions config not found or running init
             assert "Configuration not found" in output or "weld telegram init" in output
+
+
+@pytest.mark.cli
+class TestTelegramUser:
+    """Tests for weld telegram user subcommands."""
+
+    def test_user_help(self, telegram_runner: CliRunner) -> None:
+        """weld telegram user --help should show subcommands."""
+        result = telegram_runner.invoke(app, ["telegram", "user", "--help"])
+        assert result.exit_code == 0
+        output = get_output(result)
+        assert "add" in output
+        assert "remove" in output
+        assert "list" in output
+
+    def test_user_list_no_config(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user list should fail when config doesn't exist."""
+        config_path = config_dir / "telegram.toml"
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "list"])
+            assert result.exit_code == 1
+            output = get_output(result)
+            assert "Configuration not found" in output or "weld telegram init" in output
+
+    def test_user_list_empty(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user list should show message when no users."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(bot_token="test:token")
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "list"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "No users in allowlist" in output
+
+    def test_user_list_with_users(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user list should show all allowed users."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(
+            bot_token="test:token",
+            auth=TelegramAuth(allowed_user_ids=[12345, 67890], allowed_usernames=["alice", "bob"]),
+        )
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "list"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "12345" in output
+            assert "67890" in output
+            assert "@alice" in output
+            assert "@bob" in output
+
+    def test_user_add_by_id(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user add should add user by numeric ID."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(bot_token="test:token")
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "add", "12345"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "Added user ID 12345" in output
+
+        # Verify user was persisted
+        from weld.telegram.config import load_config
+
+        loaded = load_config(config_path)
+        assert 12345 in loaded.auth.allowed_user_ids
+
+    def test_user_add_by_username(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user add should add user by username."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(bot_token="test:token")
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "add", "alice"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "Added username 'alice'" in output
+
+        # Verify user was persisted
+        from weld.telegram.config import load_config
+
+        loaded = load_config(config_path)
+        assert "alice" in loaded.auth.allowed_usernames
+
+    def test_user_add_strips_at_prefix(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user add should strip @ prefix from usernames."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(bot_token="test:token")
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "add", "@alice"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "Added username 'alice'" in output
+
+        # Verify username stored without @
+        from weld.telegram.config import load_config
+
+        loaded = load_config(config_path)
+        assert "alice" in loaded.auth.allowed_usernames
+        assert "@alice" not in loaded.auth.allowed_usernames
+
+    def test_user_add_duplicate_id(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user add should not add duplicate user ID."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(
+            bot_token="test:token",
+            auth=TelegramAuth(allowed_user_ids=[12345]),
+        )
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "add", "12345"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "already in the allowlist" in output
+
+    def test_user_add_duplicate_username(
+        self, telegram_runner: CliRunner, config_dir: Path
+    ) -> None:
+        """user add should not add duplicate username."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(
+            bot_token="test:token",
+            auth=TelegramAuth(allowed_usernames=["alice"]),
+        )
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "add", "alice"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "already in the allowlist" in output
+
+    def test_user_remove_id_success(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user remove should remove user by ID."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(
+            bot_token="test:token",
+            auth=TelegramAuth(allowed_user_ids=[12345, 67890]),
+        )
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "remove", "12345"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "Removed user ID 12345" in output
+
+        # Verify user was removed
+        from weld.telegram.config import load_config
+
+        loaded = load_config(config_path)
+        assert 12345 not in loaded.auth.allowed_user_ids
+        assert 67890 in loaded.auth.allowed_user_ids
+
+    def test_user_remove_username_success(
+        self, telegram_runner: CliRunner, config_dir: Path
+    ) -> None:
+        """user remove should remove user by username."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(
+            bot_token="test:token",
+            auth=TelegramAuth(allowed_usernames=["alice", "bob"]),
+        )
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "remove", "alice"])
+            assert result.exit_code == 0
+            output = get_output(result)
+            assert "Removed username 'alice'" in output
+
+        # Verify user was removed
+        from weld.telegram.config import load_config
+
+        loaded = load_config(config_path)
+        assert "alice" not in loaded.auth.allowed_usernames
+        assert "bob" in loaded.auth.allowed_usernames
+
+    def test_user_remove_id_not_found(self, telegram_runner: CliRunner, config_dir: Path) -> None:
+        """user remove should fail when user ID not found."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(bot_token="test:token")
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "remove", "99999"])
+            assert result.exit_code == 1
+            output = get_output(result)
+            assert "not found" in output
+
+    def test_user_remove_username_not_found(
+        self, telegram_runner: CliRunner, config_dir: Path
+    ) -> None:
+        """user remove should fail when username not found."""
+        config_path = config_dir / "telegram.toml"
+        config = TelegramConfig(bot_token="test:token")
+        save_config(config, config_path)
+
+        with patch("weld.telegram.config.get_config_path", return_value=config_path):
+            result = telegram_runner.invoke(app, ["telegram", "user", "remove", "nobody"])
+            assert result.exit_code == 1
+            output = get_output(result)
+            assert "not found" in output
