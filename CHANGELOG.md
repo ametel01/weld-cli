@@ -8,16 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `weld plan` default output now saves to same directory as input file with `_PLAN.md` suffix
+  - Example: `weld plan /path/to/SPEC.md` → `/path/to/SPEC_PLAN.md`
+  - Previously saved to `.weld/plan/{filename}-{timestamp}.md`
+- `weld implement --autopilot` now respects `--no-review` flag (previously ignored)
+- `weld implement --autopilot` now displays all active options (autopilot, auto-commit, no-review)
 - Telegram support is now included in standard installation (no longer requires `weld[telegram]` extra)
-
-### Changed
-- Telegram bot support is now included in standard installation (no longer requires `[telegram]` extra)
-
-### Changed
-- Telegram bot prompt messages now show selection confirmation and final command result
-
-### Changed
-- Telegram bot support is now included in standard installation (no longer optional)
 
 ### Added
 - Telegram user management commands: `weld telegram user add/remove/list`

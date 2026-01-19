@@ -6,7 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from weld.cli import app
-from weld.commands.plan import generate_plan_prompt, get_plan_dir
+from weld.commands.plan import generate_plan_prompt
 
 runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "200"})
 
@@ -161,44 +161,6 @@ This is a detailed specification.
         prompt = generate_plan_prompt([("spec.md", "content")])
         assert "## Specification: spec.md" in prompt
         assert "## Specifications" not in prompt
-
-
-@pytest.mark.unit
-class TestGetPlanDir:
-    """Tests for get_plan_dir function."""
-
-    def test_creates_plan_dir(self, tmp_path: Path) -> None:
-        """Creates plan directory if it doesn't exist."""
-        weld_dir = tmp_path / ".weld"
-        weld_dir.mkdir()
-
-        plan_dir = get_plan_dir(weld_dir)
-
-        assert plan_dir.exists()
-        assert plan_dir.is_dir()
-        assert plan_dir.name == "plan"
-
-    def test_returns_existing_plan_dir(self, tmp_path: Path) -> None:
-        """Returns existing plan directory."""
-        weld_dir = tmp_path / ".weld"
-        weld_dir.mkdir()
-        existing = weld_dir / "plan"
-        existing.mkdir()
-        (existing / "test.txt").write_text("existing")
-
-        plan_dir = get_plan_dir(weld_dir)
-
-        assert plan_dir == existing
-        assert (plan_dir / "test.txt").exists()
-
-    def test_plan_dir_path(self, tmp_path: Path) -> None:
-        """Plan dir is at .weld/plan."""
-        weld_dir = tmp_path / ".weld"
-        weld_dir.mkdir()
-
-        plan_dir = get_plan_dir(weld_dir)
-
-        assert plan_dir == weld_dir / "plan"
 
 
 @pytest.mark.cli

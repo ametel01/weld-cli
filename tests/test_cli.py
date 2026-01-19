@@ -951,10 +951,10 @@ This is a test commit message.
 class TestDefaultOutputPaths:
     """Tests for default output path behavior when --output is omitted."""
 
-    def test_plan_default_output_in_weld_dir(
+    def test_plan_default_output_same_dir_as_input(
         self, runner: CliRunner, initialized_weld: Path
     ) -> None:
-        """plan without --output should write to .weld/plan/."""
+        """plan without --output should write to same dir as input with _PLAN.md suffix."""
         spec_file = initialized_weld / "spec.md"
         spec_file.write_text("# Test Spec")
 
@@ -962,21 +962,21 @@ class TestDefaultOutputPaths:
             result = runner.invoke(app, ["plan", str(spec_file)])
 
         assert result.exit_code == 0
-        plan_dir = initialized_weld / ".weld" / "plan"
-        assert plan_dir.exists()
-        plan_files = list(plan_dir.glob("spec-*.md"))
-        assert len(plan_files) == 1
-        assert plan_files[0].read_text() == "# Plan"
+        expected_output = initialized_weld / "spec_PLAN.md"
+        assert expected_output.exists()
+        assert expected_output.read_text() == "# Plan"
 
-    def test_plan_without_weld_init_fails(self, runner: CliRunner, temp_git_repo: Path) -> None:
-        """plan without --output should fail if weld not initialized."""
+    def test_plan_without_weld_init_succeeds(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """plan without --output should work even if weld not initialized."""
         spec_file = temp_git_repo / "spec.md"
         spec_file.write_text("# Test Spec")
 
-        result = runner.invoke(app, ["plan", str(spec_file)])
+        with patch("weld.commands.plan.run_claude", return_value="# Plan"):
+            result = runner.invoke(app, ["plan", str(spec_file)])
 
-        assert result.exit_code == 1
-        assert "not initialized" in result.stdout.lower()
+        assert result.exit_code == 0
+        expected_output = temp_git_repo / "spec_PLAN.md"
+        assert expected_output.exists()
 
     def test_research_default_output_in_weld_dir(
         self, runner: CliRunner, initialized_weld: Path

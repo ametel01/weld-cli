@@ -1,6 +1,5 @@
 """Plan command implementation."""
 
-from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -10,20 +9,6 @@ from ..config import load_config
 from ..core import get_weld_dir, log_command, validate_input_file, validate_output_path
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
-
-
-def get_plan_dir(weld_dir: Path) -> Path:
-    """Get or create plan output directory.
-
-    Args:
-        weld_dir: Path to .weld directory
-
-    Returns:
-        Path to .weld/plan/ directory
-    """
-    plan_dir = weld_dir / "plan"
-    plan_dir.mkdir(exist_ok=True)
-    return plan_dir
 
 
 def generate_plan_prompt(specs: list[tuple[str, str]]) -> str:
@@ -222,6 +207,7 @@ Before outputting your plan, verify:
 
 CRITICAL: This is a CLI tool. Your output will be written directly to a file.
 Do NOT ask questions. Do NOT offer alternatives. Do NOT include any text after the final `---`.
+Do NOT use the Write tool to create any files. Just output the plan content directly.
 Output ONLY the structured plan now. Begin with `## Phase 1:`
 """
 
@@ -253,7 +239,8 @@ def plan(
 ) -> None:
     """Generate an implementation plan from one or more specifications.
 
-    If --output is not specified, writes to .weld/plan/{filename}-{timestamp}.md
+    If --output is not specified, writes to same directory as input file
+    with _PLAN.md suffix (e.g., spec.md -> spec_PLAN.md).
 
     Note: Claude often needs to explore the codebase (read files, search for patterns)
     to create a proper plan. Use --dangerously-skip-permissions to allow this.
@@ -288,16 +275,9 @@ def plan(
 
     # Determine output path
     if output is None:
-        if weld_dir is None:
-            ctx.error("Not a git repository. Use --output to specify output path.")
-            raise typer.Exit(1)
-        if not weld_dir.exists():
-            ctx.error("Weld not initialized. Use --output or run 'weld init' first.")
-            raise typer.Exit(1)
-        plan_dir = get_plan_dir(weld_dir)
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        # Use first file's stem for output filename
-        output = plan_dir / f"{input_files[0].stem}-{timestamp}.md"
+        # Default: save in same directory as input file, named <stem>_PLAN.md
+        input_file = input_files[0]
+        output = input_file.parent / f"{input_file.stem}_PLAN.md"
 
     # Read all spec files and build prompt
     specs = [(f.name, f.read_text()) for f in input_files]

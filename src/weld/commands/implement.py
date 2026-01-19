@@ -243,6 +243,7 @@ def implement(
                 weld_dir=weld_dir,
                 quiet=quiet,
                 timeout=effective_timeout,
+                no_review=no_review,
             )
             raise typer.Exit(exit_code)
 
@@ -1021,18 +1022,29 @@ def _implement_autopilot(
     weld_dir: Path,
     quiet: bool,
     timeout: int,
+    no_review: bool,
 ) -> int:
     """Run fully automated implementation of all plan steps.
 
     For each incomplete step:
     1. Execute the step with Claude
-    2. Run code review with --apply (auto-fix issues)
+    2. Run code review with --apply (auto-fix issues) unless no_review
     3. Stage and commit changes
 
     Stops on first Claude failure.
     Returns exit code (0 for success, 21 for Claude failure).
     """
-    ctx.console.print(Panel(f"[bold]Autopilot:[/bold] {plan.path.name}", style="blue"))
+    # Build options display
+    options = ["autopilot", "auto-commit"]
+    if no_review:
+        options.append("no-review")
+    options_str = ", ".join(options)
+    ctx.console.print(
+        Panel(
+            f"[bold]Autopilot:[/bold] {plan.path.name}\n[dim]Options: {options_str}[/dim]",
+            style="blue",
+        )
+    )
 
     # Collect all incomplete steps across all phases
     all_steps: list[tuple[Phase, Step]] = []
@@ -1065,6 +1077,7 @@ def _implement_autopilot(
             quiet=quiet,
             timeout=timeout,
             registry=registry,
+            no_review=no_review,
         )
 
         if not success:
@@ -1095,12 +1108,13 @@ def _execute_step_autopilot(
     quiet: bool,
     timeout: int,
     registry: SessionRegistry,
+    no_review: bool,
 ) -> bool:
     """Execute a single step in autopilot mode.
 
     1. Run Claude to implement step
     2. Mark step complete
-    3. Run review with --apply mode (non-blocking)
+    3. Run review with --apply mode (non-blocking) unless no_review
     4. Stage and commit all changes (non-blocking)
 
     Returns True on success, False on Claude failure.
@@ -1166,13 +1180,14 @@ When complete, confirm the implementation is done.
         return False
 
     # Run review with apply mode (non-blocking - errors don't stop autopilot)
-    _autopilot_review_and_fix(
-        ctx=ctx,
-        step=step,
-        config=config,
-        repo_root=repo_root,
-        weld_dir=weld_dir,
-    )
+    if not no_review:
+        _autopilot_review_and_fix(
+            ctx=ctx,
+            step=step,
+            config=config,
+            repo_root=repo_root,
+            weld_dir=weld_dir,
+        )
 
     # Commit changes (non-blocking - errors don't stop autopilot)
     _autopilot_commit(
