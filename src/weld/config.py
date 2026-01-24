@@ -113,6 +113,74 @@ class TranscriptsConfig(BaseModel):
     visibility: str = "secret"  # "secret" or "public"
 
 
+class PromptCustomization(BaseModel):
+    """Customization for a single prompt type.
+
+    Allows adding prefix/suffix text and setting the default focus
+    for prompts like research, plan, discover, etc.
+    """
+
+    prefix: str | None = Field(
+        default=None,
+        description="Text to prepend to the prompt (e.g., project context, constraints)",
+    )
+    suffix: str | None = Field(
+        default=None,
+        description="Text to append to the prompt (e.g., output format requirements)",
+    )
+    default_focus: str | None = Field(
+        default=None,
+        description="Default focus area when --focus is not specified on command line",
+    )
+
+
+class PromptsConfig(BaseModel):
+    """Container for all prompt customizations.
+
+    Provides global defaults and per-task overrides for prompt customization.
+    Task-specific settings override global settings when both are present.
+    """
+
+    # Global defaults applied to all prompts unless overridden
+    default: PromptCustomization = Field(default_factory=PromptCustomization)
+
+    # Per-task customizations (field names match TaskType enum values)
+    discover: PromptCustomization = Field(default_factory=PromptCustomization)
+    interview: PromptCustomization = Field(default_factory=PromptCustomization)
+    research: PromptCustomization = Field(default_factory=PromptCustomization)
+    research_review: PromptCustomization = Field(default_factory=PromptCustomization)
+    plan_generation: PromptCustomization = Field(default_factory=PromptCustomization)
+    plan_review: PromptCustomization = Field(default_factory=PromptCustomization)
+    implementation: PromptCustomization = Field(default_factory=PromptCustomization)
+    implementation_review: PromptCustomization = Field(default_factory=PromptCustomization)
+    fix_generation: PromptCustomization = Field(default_factory=PromptCustomization)
+
+    def get_customization(self, task: TaskType) -> PromptCustomization:
+        """Get prompt customization for a specific task type.
+
+        Returns the task-specific customization. Use get_effective_customization()
+        to get merged global + task settings.
+        """
+        return getattr(self, task.value)
+
+    def get_effective_customization(self, task: TaskType) -> PromptCustomization:
+        """Get effective customization with global defaults merged.
+
+        Task-specific values override global defaults. If a task field is None,
+        the global default is used instead.
+        """
+        task_config = self.get_customization(task)
+        return PromptCustomization(
+            prefix=task_config.prefix if task_config.prefix is not None else self.default.prefix,
+            suffix=task_config.suffix if task_config.suffix is not None else self.default.suffix,
+            default_focus=(
+                task_config.default_focus
+                if task_config.default_focus is not None
+                else self.default.default_focus
+            ),
+        )
+
+
 class ClaudeConfig(BaseModel):
     """Configuration for Claude-related settings."""
 
