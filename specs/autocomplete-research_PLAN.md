@@ -11,7 +11,7 @@ I have all the information needed. Here is the implementation plan:
 - Completion functions are invoked at shell time, so lazy imports are critical to avoid slow startup
 `─────────────────────────────────────────────────`
 
-## Phase 1: Create Completion Module
+## Phase 1: Create Completion Module **COMPLETE**
 
 Create the core completion functions module with static completions for TaskType enum and export formats.
 
@@ -67,7 +67,7 @@ Implement markdown file and step/phase completion functions that follow user inp
 .venv/bin/python -c "from weld.completions import complete_markdown_file, complete_step_number, complete_phase_number; print('OK')"
 ```
 
-### Step 3: Add markdown file completion function
+### Step 3: Add markdown file completion function **COMPLETE**
 
 #### Goal
 Create `complete_markdown_file` function that returns `.md` files following the user's typed path, with alphabetical ordering and 20-result cap.

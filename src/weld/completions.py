@@ -1,5 +1,7 @@
 """Shell completion helpers for weld CLI."""
 
+from pathlib import Path
+
 from weld.config import TaskType
 
 
@@ -41,3 +43,71 @@ def complete_export_format(incomplete: str) -> list[str]:
 
     # Sort alphabetically and filter by prefix
     return sorted(f for f in formats if f.startswith(incomplete.lower()))
+
+
+def complete_markdown_file(incomplete: str) -> list[str]:
+    """Return markdown files and directories matching the given path prefix.
+
+    Used for shell completion of markdown file arguments in CLI commands.
+    Provides file system path completion filtered to .md files only.
+
+    Args:
+        incomplete: The partial path typed by the user (may be empty)
+
+    Returns:
+        List of matching paths, alphabetically sorted, capped at 20 results.
+        Directories include a trailing slash to indicate they can be expanded.
+    """
+    max_results = 20
+
+    # Handle empty input - start from current directory
+    if not incomplete:
+        search_dir = Path(".")
+        prefix = ""
+    else:
+        path = Path(incomplete)
+        # If the incomplete path ends with /, list contents of that directory
+        if incomplete.endswith("/") or incomplete.endswith("\\"):
+            search_dir = path
+            prefix = ""
+        # Otherwise, search in the parent directory for matches
+        elif path.is_dir():
+            # User typed a directory name without trailing slash
+            search_dir = path
+            prefix = ""
+        else:
+            search_dir = path.parent if path.parent != path else Path(".")
+            prefix = path.name
+
+    results: list[str] = []
+
+    try:
+        if not search_dir.exists() or not search_dir.is_dir():
+            return []
+
+        for entry in search_dir.iterdir():
+            # Skip hidden files
+            if entry.name.startswith("."):
+                continue
+
+            # Check if name matches prefix
+            if prefix and not entry.name.lower().startswith(prefix.lower()):
+                continue
+
+            try:
+                if entry.is_dir():
+                    # Add directories with trailing slash
+                    results.append(str(entry) + "/")
+                elif entry.is_file() and entry.suffix.lower() == ".md":
+                    # Add markdown files
+                    results.append(str(entry))
+            except PermissionError:
+                # Skip entries we can't access
+                continue
+
+    except PermissionError:
+        # Can't read directory, return empty
+        return []
+
+    # Sort alphabetically and cap at max_results
+    return sorted(results)[:max_results]
