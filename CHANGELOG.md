@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Telegram bot extended prompt detection for y/n confirmations, default prompts ([Y/n], [y/N]), Continue?/Proceed?/Apply? questions, and arrow-key menus
+- Universal `/weld <command>` for running any weld subcommand via Telegram
+- Document upload handling with automatic save to `.weld/telegram/uploads/`
+- Reply-to-document auto-injection of uploaded file path in commands
+- Output file detection with Download button for created files
+
+### Added
+- Telegram bot now detects additional interactive prompt patterns including y/n confirmations and arrow-key menus
+
+### Added
 - Project sync method for Telegram bot to synchronize config projects with database on startup
 
 ### Added

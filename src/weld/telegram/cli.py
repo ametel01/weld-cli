@@ -757,24 +757,38 @@ async def _run_bot(config: "TelegramConfig") -> None:
     Args:
         config: Validated TelegramConfig with bot token.
     """
+    from aiogram import F
     from aiogram.filters import Command, CommandObject
     from aiogram.types import CallbackQuery, Message
 
     from weld.telegram.auth import check_auth
     from weld.telegram.bot import (
         cancel_command,
+        cat_command,
         commit_command,
         create_bot,
         doctor_command,
+        document_handler,
         fetch_command,
+        file_command,
+        find_command,
+        grep_command,
+        handle_fetch_callback,
         handle_prompt_callback,
+        head_command,
         implement_command,
         interview_command,
+        logs_command,
+        ls_command,
         plan_command,
         push_command,
         run_consumer,
+        runs_command,
         status_command,
+        tail_command,
+        tree_command,
         use_command,
+        weld_command,
     )
     from weld.telegram.errors import TelegramAuthError
     from weld.telegram.format import MessageEditor
@@ -832,6 +846,7 @@ async def _run_bot(config: "TelegramConfig") -> None:
             "  /interview - Interactive spec refinement\n"
             "  /implement - Execute plan steps\n"
             "  /commit - Create commits with transcripts\n"
+            "  /ls [path] - List directory contents\n"
             "  /fetch <path> - Download a file\n"
             "  /push <path> - Upload a file (reply to document)"
         )
@@ -853,9 +868,13 @@ async def _run_bot(config: "TelegramConfig") -> None:
             "  `/interview [spec.md]` - Refine spec\n"
             "  `/implement <plan.md>` - Execute plan\n"
             "  `/commit [-m msg]` - Commit changes\n\n"
-            "*File Transfer:*\n"
+            "*File Operations:*\n"
+            "  `/ls [path]` - List directory contents\n"
             "  `/fetch <path>` - Download file\n"
-            "  `/push <path>` - Upload file (reply to doc)"
+            "  `/push <path>` - Upload file (reply to doc)\n\n"
+            "*Universal Command:*\n"
+            "  `/weld <cmd> [args]` - Run any weld command\n"
+            "  Examples: `/weld research`, `/weld discover`"
         )
 
     @dp.message(Command("use"))
@@ -864,9 +883,9 @@ async def _run_bot(config: "TelegramConfig") -> None:
         await use_command(message, command, state_store, config)
 
     @dp.message(Command("status"))
-    async def status_handler(message: Message) -> None:
+    async def status_handler(message: Message, command: CommandObject) -> None:
         """Handle /status command."""
-        await status_command(message, state_store, queue_manager)
+        await status_command(message, command, state_store, queue_manager)
 
     @dp.message(Command("cancel"))
     async def cancel_handler(message: Message) -> None:
@@ -876,27 +895,27 @@ async def _run_bot(config: "TelegramConfig") -> None:
     @dp.message(Command("doctor"))
     async def doctor_handler(message: Message, command: CommandObject) -> None:
         """Handle /doctor command."""
-        await doctor_command(message, command, state_store, queue_manager)
+        await doctor_command(message, command, state_store, queue_manager, config)
 
     @dp.message(Command("plan"))
     async def plan_handler(message: Message, command: CommandObject) -> None:
         """Handle /plan command."""
-        await plan_command(message, command, state_store, queue_manager)
+        await plan_command(message, command, state_store, queue_manager, config)
 
     @dp.message(Command("interview"))
     async def interview_handler(message: Message, command: CommandObject) -> None:
         """Handle /interview command."""
-        await interview_command(message, command, state_store, queue_manager)
+        await interview_command(message, command, state_store, queue_manager, config)
 
     @dp.message(Command("implement"))
     async def implement_handler(message: Message, command: CommandObject) -> None:
         """Handle /implement command."""
-        await implement_command(message, command, state_store, queue_manager)
+        await implement_command(message, command, state_store, queue_manager, config)
 
     @dp.message(Command("commit"))
     async def commit_handler(message: Message, command: CommandObject) -> None:
         """Handle /commit command."""
-        await commit_command(message, command, state_store, queue_manager)
+        await commit_command(message, command, state_store, queue_manager, config)
 
     @dp.message(Command("fetch"))
     async def fetch_handler(message: Message, command: CommandObject) -> None:
@@ -908,10 +927,75 @@ async def _run_bot(config: "TelegramConfig") -> None:
         """Handle /push command."""
         await push_command(message, command, config, bot)
 
+    @dp.message(Command("ls"))
+    async def ls_handler(message: Message, command: CommandObject) -> None:
+        """Handle /ls command."""
+        await ls_command(message, command, state_store, config)
+
+    @dp.message(Command("tree"))
+    async def tree_handler(message: Message, command: CommandObject) -> None:
+        """Handle /tree command."""
+        await tree_command(message, command, state_store, config)
+
+    @dp.message(Command("grep"))
+    async def grep_handler(message: Message, command: CommandObject) -> None:
+        """Handle /grep command."""
+        await grep_command(message, command, state_store, config)
+
+    @dp.message(Command("find"))
+    async def find_handler(message: Message, command: CommandObject) -> None:
+        """Handle /find command."""
+        await find_command(message, command, state_store, config)
+
+    @dp.message(Command("cat"))
+    async def cat_handler(message: Message, command: CommandObject) -> None:
+        """Handle /cat command."""
+        await cat_command(message, command, config)
+
+    @dp.message(Command("head"))
+    async def head_handler(message: Message, command: CommandObject) -> None:
+        """Handle /head command."""
+        await head_command(message, command, config)
+
+    @dp.message(Command("weld"))
+    async def weld_handler(message: Message, command: CommandObject) -> None:
+        """Handle /weld command."""
+        await weld_command(message, command, state_store, queue_manager, config)
+
+    @dp.message(Command("runs"))
+    async def runs_handler(message: Message, command: CommandObject) -> None:
+        """Handle /runs command."""
+        await runs_command(message, command, state_store)
+
+    @dp.message(Command("logs"))
+    async def logs_handler(message: Message, command: CommandObject) -> None:
+        """Handle /logs command."""
+        await logs_command(message, command, state_store)
+
+    @dp.message(Command("tail"))
+    async def tail_handler(message: Message, command: CommandObject) -> None:
+        """Handle /tail command."""
+        await tail_command(message, command, state_store, bot)
+
+    @dp.message(Command("file"))
+    async def file_handler(message: Message, command: CommandObject) -> None:
+        """Handle /file command."""
+        await file_command(message, command, config)
+
     @dp.callback_query(lambda c: c.data and c.data.startswith("prompt:"))
     async def prompt_callback_handler(callback: CallbackQuery) -> None:
         """Handle prompt button callbacks."""
         await handle_prompt_callback(callback)
+
+    @dp.callback_query(lambda c: c.data and c.data.startswith("fetch:"))
+    async def fetch_callback_handler(callback: CallbackQuery) -> None:
+        """Handle download button callbacks."""
+        await handle_fetch_callback(callback, config, bot, state_store)
+
+    @dp.message(F.document)
+    async def doc_upload_handler(message: Message) -> None:
+        """Handle document uploads for automatic file saving."""
+        await document_handler(message, state_store, config, bot)
 
     # Queue consumer task
     async def queue_consumer() -> None:

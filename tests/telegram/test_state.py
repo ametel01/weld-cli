@@ -1,9 +1,11 @@
 """Tests for Telegram bot state store."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
+from weld.telegram.config import TelegramConfig, TelegramProject
 from weld.telegram.state import (
     Project,
     Run,
@@ -336,3 +338,370 @@ class TestStateStoreErrors:
             await store.upsert_context(UserContext(user_id=1))
 
         assert db_path.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+class TestMarkOrphanedRunsFailed:
+    """Tests for mark_orphaned_runs_failed startup housekeeping."""
+
+    async def test_marks_running_runs_as_failed(self, state_store: StateStore) -> None:
+        """Running runs should be marked as failed."""
+        run = Run(user_id=1, project_name="proj", command="cmd", status="running")
+        run_id = await state_store.create_run(run)
+
+        count = await state_store.mark_orphaned_runs_failed()
+
+        assert count == 1
+        result = await state_store.get_run(run_id)
+        assert result is not None
+        assert result.status == "failed"
+        assert result.error == "Bot restarted during execution"
+        assert result.completed_at is not None
+
+    async def test_marks_pending_runs_as_failed(self, state_store: StateStore) -> None:
+        """Pending runs should be marked as failed."""
+        run = Run(user_id=1, project_name="proj", command="cmd", status="pending")
+        run_id = await state_store.create_run(run)
+
+        count = await state_store.mark_orphaned_runs_failed()
+
+        assert count == 1
+        result = await state_store.get_run(run_id)
+        assert result is not None
+        assert result.status == "failed"
+
+    async def test_leaves_completed_runs_unchanged(self, state_store: StateStore) -> None:
+        """Completed runs should not be affected."""
+        run = Run(user_id=1, project_name="proj", command="cmd", status="completed")
+        run_id = await state_store.create_run(run)
+
+        count = await state_store.mark_orphaned_runs_failed()
+
+        assert count == 0
+        result = await state_store.get_run(run_id)
+        assert result is not None
+        assert result.status == "completed"
+
+    async def test_leaves_failed_runs_unchanged(self, state_store: StateStore) -> None:
+        """Already-failed runs should not be affected."""
+        run = Run(
+            user_id=1, project_name="proj", command="cmd", status="failed", error="Original error"
+        )
+        run_id = await state_store.create_run(run)
+
+        count = await state_store.mark_orphaned_runs_failed()
+
+        assert count == 0
+        result = await state_store.get_run(run_id)
+        assert result is not None
+        assert result.error == "Original error"
+
+    async def test_marks_multiple_orphaned_runs(self, state_store: StateStore) -> None:
+        """Multiple orphaned runs should all be marked."""
+        await state_store.create_run(
+            Run(user_id=1, project_name="p", command="c", status="running")
+        )
+        await state_store.create_run(
+            Run(user_id=2, project_name="p", command="c", status="pending")
+        )
+        await state_store.create_run(
+            Run(user_id=3, project_name="p", command="c", status="running")
+        )
+        await state_store.create_run(
+            Run(user_id=4, project_name="p", command="c", status="completed")
+        )
+
+        count = await state_store.mark_orphaned_runs_failed()
+
+        assert count == 3
+
+    async def test_returns_zero_when_no_orphans(self, state_store: StateStore) -> None:
+        """Returns 0 when no orphaned runs exist."""
+        await state_store.create_run(
+            Run(user_id=1, project_name="p", command="c", status="completed")
+        )
+        await state_store.create_run(Run(user_id=2, project_name="p", command="c", status="failed"))
+
+        count = await state_store.mark_orphaned_runs_failed()
+
+        assert count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+class TestPruneOldRuns:
+    """Tests for prune_old_runs startup housekeeping."""
+
+    async def test_prunes_runs_exceeding_limit(self, state_store: StateStore) -> None:
+        """Runs exceeding the limit per user should be deleted."""
+        # Create 5 runs for user 1
+        for i in range(5):
+            await state_store.create_run(Run(user_id=1, project_name="p", command=f"cmd{i}"))
+
+        count = await state_store.prune_old_runs(keep_per_user=3)
+
+        assert count == 2
+        runs = await state_store.list_runs_by_user(1)
+        assert len(runs) == 3
+
+    async def test_keeps_most_recent_runs(self, state_store: StateStore) -> None:
+        """The most recent runs (by ID) should be kept."""
+        run_ids = []
+        for i in range(5):
+            run_id = await state_store.create_run(
+                Run(user_id=1, project_name="p", command=f"cmd{i}")
+            )
+            run_ids.append(run_id)
+
+        await state_store.prune_old_runs(keep_per_user=3)
+
+        # Only the last 3 runs should remain
+        runs = await state_store.list_runs_by_user(1)
+        remaining_ids = [r.id for r in runs if r.id is not None]
+        assert sorted(remaining_ids) == sorted(run_ids[-3:])
+
+    async def test_prunes_per_user_independently(self, state_store: StateStore) -> None:
+        """Each user's runs should be pruned independently."""
+        # Create 4 runs for user 1 and 3 runs for user 2
+        for i in range(4):
+            await state_store.create_run(Run(user_id=1, project_name="p", command=f"u1cmd{i}"))
+        for i in range(3):
+            await state_store.create_run(Run(user_id=2, project_name="p", command=f"u2cmd{i}"))
+
+        count = await state_store.prune_old_runs(keep_per_user=2)
+
+        # User 1 should have 2 runs deleted (4 - 2 = 2)
+        # User 2 should have 1 run deleted (3 - 2 = 1)
+        assert count == 3
+
+        runs_user1 = await state_store.list_runs_by_user(1)
+        runs_user2 = await state_store.list_runs_by_user(2)
+        assert len(runs_user1) == 2
+        assert len(runs_user2) == 2
+
+    async def test_no_pruning_under_limit(self, state_store: StateStore) -> None:
+        """No runs deleted if under the limit."""
+        for i in range(3):
+            await state_store.create_run(Run(user_id=1, project_name="p", command=f"cmd{i}"))
+
+        count = await state_store.prune_old_runs(keep_per_user=5)
+
+        assert count == 0
+        runs = await state_store.list_runs_by_user(1)
+        assert len(runs) == 3
+
+    async def test_returns_zero_when_no_runs(self, state_store: StateStore) -> None:
+        """Returns 0 when no runs exist."""
+        count = await state_store.prune_old_runs(keep_per_user=10)
+        assert count == 0
+
+    async def test_default_keep_per_user_is_100(self, state_store: StateStore) -> None:
+        """Default keep_per_user should be 100."""
+        # Create 5 runs (well under 100)
+        for i in range(5):
+            await state_store.create_run(Run(user_id=1, project_name="p", command=f"cmd{i}"))
+
+        count = await state_store.prune_old_runs()  # Uses default
+
+        assert count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+class TestSyncProjectsFromConfig:
+    """Tests for sync_projects_from_config startup housekeeping."""
+
+    async def test_adds_new_projects(self, state_store: StateStore, tmp_path: Path) -> None:
+        """Projects in config but not in DB should be added."""
+        # Create real directories for path resolution
+        proj_path = tmp_path / "myproject"
+        proj_path.mkdir()
+
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[TelegramProject(name="myproject", path=proj_path, description="Test proj")],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["added"] == 1
+        assert result["updated"] == 0
+        assert result["removed"] == 0
+        assert result["skipped"] == 0
+
+        project = await state_store.get_project("myproject")
+        assert project is not None
+        assert project.path == str(proj_path.resolve())
+        assert project.description == "Test proj"
+
+    async def test_updates_existing_projects(self, state_store: StateStore, tmp_path: Path) -> None:
+        """Projects in both config and DB should be updated."""
+        proj_path = tmp_path / "proj"
+        proj_path.mkdir()
+
+        # Add existing project to DB
+        await state_store.upsert_project(
+            Project(name="proj", path="/old/path", description="Old desc")
+        )
+        # Touch to set last_accessed_at
+        await state_store.touch_project("proj")
+        existing = await state_store.get_project("proj")
+        original_accessed_at = existing.last_accessed_at if existing else None
+
+        # Config has updated path/description
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[TelegramProject(name="proj", path=proj_path, description="New desc")],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["updated"] == 1
+        assert result["added"] == 0
+
+        project = await state_store.get_project("proj")
+        assert project is not None
+        assert project.path == str(proj_path.resolve())
+        assert project.description == "New desc"
+        # last_accessed_at should be preserved
+        assert project.last_accessed_at == original_accessed_at
+
+    async def test_removes_projects_not_in_config(
+        self, state_store: StateStore, tmp_path: Path
+    ) -> None:
+        """Projects in DB but not in config should be removed."""
+        # Add project to DB that won't be in config
+        await state_store.upsert_project(Project(name="old_proj", path="/old"))
+
+        proj_path = tmp_path / "new_proj"
+        proj_path.mkdir()
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[TelegramProject(name="new_proj", path=proj_path)],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["removed"] == 1
+        assert result["added"] == 1
+
+        # old_proj should be gone
+        assert await state_store.get_project("old_proj") is None
+        # new_proj should exist
+        assert await state_store.get_project("new_proj") is not None
+
+    async def test_skips_removal_with_active_runs(
+        self, state_store: StateStore, tmp_path: Path
+    ) -> None:
+        """Projects with active runs should not be removed."""
+        # Add project to DB with an active run
+        await state_store.upsert_project(Project(name="active_proj", path="/active"))
+        await state_store.create_run(
+            Run(user_id=1, project_name="active_proj", command="cmd", status="running")
+        )
+
+        proj_path = tmp_path / "new_proj"
+        proj_path.mkdir()
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[TelegramProject(name="new_proj", path=proj_path)],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["skipped"] == 1
+        assert result["removed"] == 0
+
+        # active_proj should still exist
+        assert await state_store.get_project("active_proj") is not None
+
+    async def test_skips_removal_with_pending_runs(
+        self, state_store: StateStore, tmp_path: Path
+    ) -> None:
+        """Projects with pending runs should not be removed."""
+        await state_store.upsert_project(Project(name="pending_proj", path="/pending"))
+        await state_store.create_run(
+            Run(user_id=1, project_name="pending_proj", command="cmd", status="pending")
+        )
+
+        proj_path = tmp_path / "new_proj"
+        proj_path.mkdir()
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[TelegramProject(name="new_proj", path=proj_path)],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["skipped"] == 1
+        assert await state_store.get_project("pending_proj") is not None
+
+    async def test_removes_with_completed_runs(
+        self, state_store: StateStore, tmp_path: Path
+    ) -> None:
+        """Projects with only completed/failed runs can be removed."""
+        await state_store.upsert_project(Project(name="old_proj", path="/old"))
+        await state_store.create_run(
+            Run(user_id=1, project_name="old_proj", command="cmd", status="completed")
+        )
+        await state_store.create_run(
+            Run(user_id=2, project_name="old_proj", command="cmd2", status="failed")
+        )
+
+        proj_path = tmp_path / "new_proj"
+        proj_path.mkdir()
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[TelegramProject(name="new_proj", path=proj_path)],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["removed"] == 1
+        assert result["skipped"] == 0
+        assert await state_store.get_project("old_proj") is None
+
+    async def test_empty_config_removes_all_projects(self, state_store: StateStore) -> None:
+        """Empty config should remove all projects without active runs."""
+        await state_store.upsert_project(Project(name="proj1", path="/p1"))
+        await state_store.upsert_project(Project(name="proj2", path="/p2"))
+
+        config = TelegramConfig(bot_token="token", projects=[])
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["removed"] == 2
+        projects = await state_store.list_projects()
+        assert len(projects) == 0
+
+    async def test_handles_multiple_projects(self, state_store: StateStore, tmp_path: Path) -> None:
+        """Handles mix of adds, updates, and removes."""
+        # Existing: proj1 (will be updated), proj2 (will be removed)
+        await state_store.upsert_project(Project(name="proj1", path="/old1"))
+        await state_store.upsert_project(Project(name="proj2", path="/old2"))
+
+        # Config: proj1 (update), proj3 (add)
+        path1 = tmp_path / "proj1"
+        path3 = tmp_path / "proj3"
+        path1.mkdir()
+        path3.mkdir()
+
+        config = TelegramConfig(
+            bot_token="token",
+            projects=[
+                TelegramProject(name="proj1", path=path1, description="Updated"),
+                TelegramProject(name="proj3", path=path3, description="New"),
+            ],
+        )
+
+        result = await state_store.sync_projects_from_config(config)
+
+        assert result["added"] == 1
+        assert result["updated"] == 1
+        assert result["removed"] == 1
+        assert result["skipped"] == 0
+
+        projects = await state_store.list_projects()
+        project_names = [p.name for p in projects]
+        assert sorted(project_names) == ["proj1", "proj3"]

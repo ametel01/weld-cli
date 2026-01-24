@@ -35,6 +35,7 @@ dependencies = [
   "simple-term-menu>=1.6",
   "aiosqlite>=0.19",
   "aiogram>=3.22",
+  "pathspec>=0.12",
 ]
 
 [project.scripts]

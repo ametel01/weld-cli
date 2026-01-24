@@ -9,6 +9,9 @@ from weld.telegram.config import TelegramConfig, TelegramProject
 from weld.telegram.files import (
     PathNotAllowedError,
     PathNotFoundError,
+    get_uploads_dir,
+    resolve_upload_filename,
+    sanitize_filename,
     validate_fetch_path,
     validate_push_path,
 )
@@ -305,3 +308,204 @@ class TestPathValidationEdgeCases:
         traversal_in_project = nested / ".." / ".." / "README.md"
         result = validate_fetch_path(traversal_in_project, config_with_project)
         assert result == target.resolve()
+
+
+@pytest.mark.unit
+class TestSanitizeFilename:
+    """Tests for sanitize_filename function."""
+
+    def test_preserves_safe_filename(self) -> None:
+        """Preserves alphanumeric filename with extension."""
+        assert sanitize_filename("spec.md") == "spec.md"
+        assert sanitize_filename("my-file_v2.txt") == "my-file_v2.txt"
+
+    def test_removes_path_separators(self) -> None:
+        """Removes path separators from filename."""
+        assert sanitize_filename("path/to/file.md") == "path_to_file.md"
+        assert sanitize_filename("path\\to\\file.md") == "path_to_file.md"
+
+    def test_removes_traversal_sequences(self) -> None:
+        """Removes directory traversal sequences."""
+        # After sanitization and stripping leading underscores/dots
+        assert sanitize_filename("../../../etc/passwd") == "etc_passwd"
+        assert sanitize_filename("..spec.md") == "spec.md"
+
+    def test_removes_dangerous_characters(self) -> None:
+        """Removes shell metacharacters and special characters."""
+        assert sanitize_filename("file;rm -rf.md") == "file_rm_-rf.md"
+        assert sanitize_filename("file`id`.md") == "file_id_.md"
+        # Leading underscore stripped, but trailing preserved before extension
+        assert sanitize_filename("$(whoami).txt") == "whoami_.txt"
+
+    def test_collapses_multiple_underscores(self) -> None:
+        """Collapses consecutive underscores to single underscore."""
+        # After removing dangerous chars, consecutive underscores are collapsed
+        result = sanitize_filename("file;;;name.md")
+        assert "__" not in result
+
+    def test_strips_leading_trailing_underscores_dots(self) -> None:
+        """Strips leading/trailing underscores and dots."""
+        assert sanitize_filename("___file.md") == "file.md"
+        assert sanitize_filename("file.md___") == "file.md"
+        assert sanitize_filename("...file.md") == "file.md"
+
+    def test_handles_empty_string(self) -> None:
+        """Handles empty filename."""
+        assert sanitize_filename("") == "unnamed_file"
+
+    def test_handles_all_dangerous_chars(self) -> None:
+        """Handles filename that becomes empty after sanitization."""
+        assert sanitize_filename(";;;") == "unnamed_file"
+        assert sanitize_filename("...") == "unnamed_file"
+
+    def test_truncates_long_filename(self) -> None:
+        """Truncates filenames longer than 200 characters."""
+        long_name = "a" * 250 + ".md"
+        result = sanitize_filename(long_name)
+        assert len(result) <= 200
+        # Should preserve extension
+        assert result.endswith(".md")
+
+    def test_truncates_without_extension(self) -> None:
+        """Truncates filename without extension correctly."""
+        long_name = "a" * 250
+        result = sanitize_filename(long_name)
+        assert len(result) <= 200
+
+    def test_preserves_extension_on_truncation(self) -> None:
+        """Preserves file extension when truncating."""
+        long_name = "a" * 250 + ".yaml"
+        result = sanitize_filename(long_name)
+        assert result.endswith(".yaml")
+
+    def test_handles_unicode_characters(self) -> None:
+        """Replaces unicode characters with underscores."""
+        result = sanitize_filename("файл.md")
+        # Unicode chars become underscores, then collapsed and stripped
+        # ".md" extension may be stripped if base becomes empty
+        # Just verify the result is a valid sanitized filename
+        assert result in ("md", "unnamed_file") or result.endswith(".md")
+
+
+@pytest.mark.unit
+class TestResolveUploadFilename:
+    """Tests for resolve_upload_filename function (conflict handling)."""
+
+    def test_returns_original_when_no_conflict(self, tmp_path: Path) -> None:
+        """Returns original filename when it doesn't exist."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+
+        result = resolve_upload_filename(uploads_dir, "spec.md")
+        assert result == uploads_dir / "spec.md"
+
+    def test_adds_numeric_suffix_on_conflict(self, tmp_path: Path) -> None:
+        """Adds .1 suffix when file exists."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        (uploads_dir / "spec.md").write_text("existing")
+
+        result = resolve_upload_filename(uploads_dir, "spec.md")
+        assert result == uploads_dir / "spec.1.md"
+
+    def test_increments_suffix_for_multiple_conflicts(self, tmp_path: Path) -> None:
+        """Increments suffix for multiple conflicting files."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        (uploads_dir / "spec.md").write_text("original")
+        (uploads_dir / "spec.1.md").write_text("first conflict")
+        (uploads_dir / "spec.2.md").write_text("second conflict")
+
+        result = resolve_upload_filename(uploads_dir, "spec.md")
+        assert result == uploads_dir / "spec.3.md"
+
+    def test_handles_file_without_extension(self, tmp_path: Path) -> None:
+        """Handles files without extension."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        (uploads_dir / "Makefile").write_text("existing")
+
+        result = resolve_upload_filename(uploads_dir, "Makefile")
+        assert result == uploads_dir / "Makefile.1"
+
+    def test_handles_multiple_dots_in_filename(self, tmp_path: Path) -> None:
+        """Handles filenames with multiple dots (e.g., archive.tar.gz)."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        # Note: sanitize_filename handles tar.gz by only using last extension
+        (uploads_dir / "archive.tar.gz").write_text("existing")
+
+        result = resolve_upload_filename(uploads_dir, "archive.tar.gz")
+        # Should insert numeric suffix before last extension
+        assert result == uploads_dir / "archive.tar.1.gz"
+
+    def test_preserves_extension_format(self, tmp_path: Path) -> None:
+        """Preserves original extension when adding suffix."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        (uploads_dir / "config.yaml").write_text("existing")
+
+        result = resolve_upload_filename(uploads_dir, "config.yaml")
+        assert result.suffix == ".yaml"
+        assert result.name == "config.1.yaml"
+
+    def test_handles_empty_directory(self, tmp_path: Path) -> None:
+        """Works correctly with empty uploads directory."""
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+
+        result = resolve_upload_filename(uploads_dir, "newfile.md")
+        assert result == uploads_dir / "newfile.md"
+        assert not result.exists()
+
+
+@pytest.mark.unit
+class TestGetUploadsDir:
+    """Tests for get_uploads_dir function."""
+
+    def test_creates_uploads_directory(self, tmp_path: Path) -> None:
+        """Creates .weld/telegram/uploads directory if it doesn't exist."""
+        project_root = tmp_path / "myproject"
+        project_root.mkdir()
+
+        result = get_uploads_dir(project_root)
+
+        assert result.exists()
+        assert result.is_dir()
+        assert result == project_root / ".weld" / "telegram" / "uploads"
+
+    def test_returns_existing_directory(self, tmp_path: Path) -> None:
+        """Returns existing uploads directory without error."""
+        project_root = tmp_path / "myproject"
+        project_root.mkdir()
+        uploads_dir = project_root / ".weld" / "telegram" / "uploads"
+        uploads_dir.mkdir(parents=True)
+
+        result = get_uploads_dir(project_root)
+
+        assert result == uploads_dir
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        """Creates all parent directories (.weld/telegram/) if needed."""
+        project_root = tmp_path / "myproject"
+        project_root.mkdir()
+
+        result = get_uploads_dir(project_root)
+
+        assert (project_root / ".weld").exists()
+        assert (project_root / ".weld" / "telegram").exists()
+        assert result.exists()
+
+    def test_preserves_existing_files(self, tmp_path: Path) -> None:
+        """Doesn't delete existing files in uploads directory."""
+        project_root = tmp_path / "myproject"
+        project_root.mkdir()
+        uploads_dir = project_root / ".weld" / "telegram" / "uploads"
+        uploads_dir.mkdir(parents=True)
+        existing_file = uploads_dir / "existing.md"
+        existing_file.write_text("content")
+
+        get_uploads_dir(project_root)
+
+        assert existing_file.exists()
+        assert existing_file.read_text() == "content"

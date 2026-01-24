@@ -12,7 +12,6 @@ from weld.telegram.config import (
 from weld.telegram.errors import (
     TelegramAuthError,
     TelegramError,
-    TelegramFileError,
     TelegramRunError,
 )
 from weld.telegram.state import (
@@ -35,7 +34,6 @@ __all__ = [
     "TelegramAuthError",
     "TelegramConfig",
     "TelegramError",
-    "TelegramFileError",
     "TelegramProject",
     "TelegramRunError",
     "UserContext",

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 # Default timeout for command execution (10 minutes)
 DEFAULT_TIMEOUT = 600
 
+# Timeout for prompt responses (5 minutes)
+# This is separate from command timeout - prompts always get full 5 minutes
+PROMPT_TIMEOUT = 300.0
+
 # Graceful shutdown timeout before SIGKILL
 GRACEFUL_SHUTDOWN_TIMEOUT = 5.0
 
@@ -24,8 +28,51 @@ _active_runs: dict[int, tuple[asyncio.subprocess.Process, asyncio.Queue[str]]] =
 # Chunk type for distinguishing stdout from stderr
 ChunkType = Literal["stdout", "stderr", "prompt"]
 
-# Pattern to detect interactive prompts
-PROMPT_PATTERN = re.compile(r"Select \[([^\]]+)\].*:")
+# Prompt types for distinguishing interaction styles
+PromptType = Literal["select", "yes_no", "confirm", "arrow_menu"]
+
+# Patterns to detect interactive prompts
+# Each pattern is a tuple of (compiled_regex, option_extractor_function, prompt_type)
+# The extractor takes the match and returns a list of valid options
+PROMPT_PATTERNS: list[tuple[re.Pattern[str], Callable[[re.Match[str]], list[str]], PromptType]] = [
+    # Select [1/2/3] style prompts (weld implement menu)
+    (
+        re.compile(r"Select \[([^\]]+)\].*:"),
+        lambda m: [opt.strip() for opt in m.group(1).split("/")],
+        "select",
+    ),
+    # (y/n) style prompts - case insensitive options
+    (
+        re.compile(r"\(y/n\)\s*[:\?]?\s*$", re.IGNORECASE),
+        lambda m: ["y", "n"],
+        "yes_no",
+    ),
+    # [Y/n] style prompts - capital is default
+    (
+        re.compile(r"\[Y/n\]\s*[:\?]?\s*$"),
+        lambda m: ["Y", "n", "y", ""],  # Y is default, empty string = default
+        "yes_no",
+    ),
+    # [y/N] style prompts - capital is default
+    (
+        re.compile(r"\[y/N\]\s*[:\?]?\s*$"),
+        lambda m: ["y", "N", "n", ""],  # N is default, empty string = default
+        "yes_no",
+    ),
+    # Continue? / Proceed? / Apply? style prompts at end of line
+    (
+        re.compile(r"(Continue|Proceed|Apply|Confirm)\s*\?\s*$", re.IGNORECASE),
+        lambda m: ["y", "n", "yes", "no"],
+        "confirm",
+    ),
+    # Arrow menu pattern: "> [x] Item" or "> [ ] Item" (simple-term-menu)
+    # This detects when a menu is being displayed and awaiting arrow key input
+    (
+        re.compile(r"^\s*>\s*\[[x ]\]\s+.+", re.MULTILINE),
+        lambda m: ["enter", "up", "down", "q"],  # Arrow menu navigation
+        "arrow_menu",
+    ),
+]
 
 
 @dataclass
@@ -34,10 +81,17 @@ class PromptInfo:
 
     text: str  # The full prompt text
     options: list[str]  # Available options (e.g., ["1", "2", "3"])
+    prompt_type: PromptType  # Type of prompt (select, yes_no, confirm, arrow_menu)
 
 
 def detect_prompt(text: str) -> PromptInfo | None:
     """Detect if text contains an interactive prompt.
+
+    Checks against multiple prompt patterns including:
+    - Select [N/N/N] style menus
+    - (y/n), [Y/n], [y/N] confirmation prompts
+    - Continue?, Proceed?, Apply? questions
+    - Arrow-key menu indicators (> [x] Item)
 
     Args:
         text: Output text to check
@@ -45,11 +99,11 @@ def detect_prompt(text: str) -> PromptInfo | None:
     Returns:
         PromptInfo if a prompt is detected, None otherwise
     """
-    match = PROMPT_PATTERN.search(text)
-    if match:
-        options_str = match.group(1)
-        options = [opt.strip() for opt in options_str.split("/")]
-        return PromptInfo(text=text, options=options)
+    for pattern, extractor, prompt_type in PROMPT_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            options = extractor(match)
+            return PromptInfo(text=text, options=options, prompt_type=prompt_type)
     return None
 
 
@@ -181,18 +235,24 @@ async def execute_run(
                         yield ("prompt", output_buffer)
                         output_buffer = ""
 
-                        # Wait for user input with timeout
+                        # Wait for user input with dedicated prompt timeout (5 minutes)
+                        # This is separate from command timeout - prompts always get full time
                         try:
                             response = await asyncio.wait_for(
-                                input_queue.get(), timeout=timeout - elapsed
+                                input_queue.get(), timeout=PROMPT_TIMEOUT
                             )
                             logger.info(f"Run {run_id}: Received input: {response}")
                             if proc.stdin:
                                 proc.stdin.write(f"{response}\n".encode())
                                 await proc.stdin.drain()
                         except TimeoutError:
-                            logger.error(f"Run {run_id}: Timeout waiting for prompt response")
-                            raise TimeoutError("Timeout waiting for prompt response") from None
+                            logger.error(
+                                f"Run {run_id}: Prompt response timeout after "
+                                f"{PROMPT_TIMEOUT} seconds, cancelling run"
+                            )
+                            raise TimeoutError(
+                                f"Prompt not answered within {int(PROMPT_TIMEOUT // 60)} minutes"
+                            ) from None
                     else:
                         yield result
 
@@ -278,6 +338,71 @@ async def execute_run(
     finally:
         # Always unregister the run
         _active_runs.pop(run_id, None)
+
+
+@dataclass
+class ArrowMenuItem:
+    """A parsed menu item from simple-term-menu style output."""
+
+    text: str  # The menu item text
+    checked: bool  # Whether the item is checked [x] vs [ ]
+    selected: bool  # Whether this is the currently selected item (has > prefix)
+
+
+def parse_arrow_menu(text: str) -> list[ArrowMenuItem]:
+    """Parse arrow menu items from simple-term-menu style output.
+
+    Extracts menu items from output containing lines like:
+        > [x] Selected checked item
+          [ ] Unselected unchecked item
+          [x] Unselected checked item
+
+    The > prefix indicates the currently selected (cursor) item.
+    [x] indicates a checked item, [ ] indicates unchecked.
+
+    Args:
+        text: Output text containing arrow menu lines
+
+    Returns:
+        List of ArrowMenuItem with text, checked state, and selected state.
+        Returns empty list if no menu items found.
+
+    Example:
+        >>> text = '''
+        ... > [x] Step 1: Initialize
+        ...   [ ] Step 2: Configure
+        ...   [x] Step 3: Complete
+        ... '''
+        >>> items = parse_arrow_menu(text)
+        >>> items[0].text
+        'Step 1: Initialize'
+        >>> items[0].checked
+        True
+        >>> items[0].selected
+        True
+    """
+    # Pattern matches:
+    # - Optional leading whitespace
+    # - Optional > (selected indicator) with optional whitespace
+    # - [x] or [ ] checkbox
+    # - The menu item text
+    pattern = re.compile(r"^(\s*)(>)?\s*\[([ x])\]\s+(.+)$", re.MULTILINE)
+
+    items: list[ArrowMenuItem] = []
+    for match in pattern.finditer(text):
+        selected_marker = match.group(2)  # ">" or None
+        checkbox_state = match.group(3)  # "x" or " "
+        item_text = match.group(4).rstrip()
+
+        items.append(
+            ArrowMenuItem(
+                text=item_text,
+                checked=checkbox_state == "x",
+                selected=selected_marker == ">",
+            )
+        )
+
+    return items
 
 
 async def cancel_run(run_id: int) -> bool:
