@@ -573,3 +573,33 @@ class StateStore:
                     )
                 )
         return runs
+
+    async def mark_orphaned_runs_failed(self) -> int:
+        """Mark any running or pending runs as failed on startup.
+
+        This should be called during bot initialization to clean up
+        runs that were interrupted by a bot restart or crash.
+
+        Returns:
+            Number of runs marked as failed
+        """
+        if self._conn is None:
+            raise RuntimeError("Database not initialized")
+
+        now = _serialize_datetime(datetime.now(UTC))
+        cursor = await self._conn.execute(
+            """
+            UPDATE runs
+            SET status = 'failed',
+                completed_at = ?,
+                error = 'Bot restarted during execution'
+            WHERE status IN ('running', 'pending')
+            """,
+            (now,),
+        )
+        await self._conn.commit()
+
+        count = cursor.rowcount
+        if count > 0:
+            logger.info(f"Marked {count} orphaned run(s) as failed")
+        return count

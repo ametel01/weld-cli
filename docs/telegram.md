@@ -7,10 +7,10 @@ Remote weld interaction via Telegram. Run weld commands on registered projects f
 The Telegram bot provides remote access to weld functionality:
 
 - Execute weld commands on your projects remotely
-- Real-time streaming output updates
+- Rate-limited status updates with output tails
 - File transfers (upload/download) with path validation
-- Queue system for command ordering
-- Allowlist-based user authentication
+- Per-chat queue system for command ordering
+- Allowlist-based user authentication (supports multiple users)
 
 ## Prerequisites
 
@@ -209,6 +209,10 @@ Once the bot is running, use these commands in Telegram:
 | `/fetch <path>` | Download file from project |
 | `/push <path>` | Upload file (reply to a document message) |
 
+Notes:
+- `/push` must be sent as a reply to a document message.
+- `/fetch` uses GitHub Gist as a fallback only for large text files and requires the `gh` CLI with `gh auth login`.
+
 ## Usage Examples
 
 ### Basic Workflow
@@ -352,11 +356,11 @@ Message Editor (rate-limited status updates)
 
 ### Interactive Prompts
 
-Commands that require user input (like `weld commit` session selection) display inline keyboard buttons. The bot detects prompts matching `Select [options]:` pattern and presents options as clickable buttons.
+Commands that require user input (like `weld commit` session selection) display inline keyboard buttons. The bot currently detects prompts matching the `Select [options]:` pattern and presents options as clickable buttons.
 
 ### Large File Handling
 
-For files larger than 50MB, `/fetch` falls back to uploading the file to GitHub Gist (text files only) and returns the gist URL instead of the file directly.
+For files larger than 50MB, `/fetch` falls back to uploading the file to GitHub Gist (text files only) and returns the gist URL instead of the file directly. This requires the `gh` CLI to be installed and authenticated; binary files are rejected.
 
 ## Troubleshooting
 
