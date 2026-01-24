@@ -205,7 +205,7 @@ Add `autocompletion=complete_task_type` to the `task` argument in `src/weld/comm
 
 ---
 
-### Step 10: Add completion to prompt export command --format option
+### Step 10: Add completion to prompt export command --format option **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_export_format` to the `--format` option in `src/weld/commands/prompt.py` export_prompts function.

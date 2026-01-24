@@ -9,7 +9,7 @@ from typing import Annotated
 
 import typer
 
-from ..completions import complete_task_type
+from ..completions import complete_export_format, complete_task_type
 from ..config import TaskType, load_config
 from ..core import get_weld_dir
 from ..output import get_output_context
@@ -408,6 +408,7 @@ def export_prompts(
             "--format",
             "-f",
             help="Export format for config (toml or json), ignored with --raw",
+            autocompletion=complete_export_format,
         ),
     ] = "toml",
 ) -> None:
