@@ -39,7 +39,7 @@ Create the new `src/weld/completions.py` module with the `complete_task_type` fu
 
 ---
 
-### Step 2: Add export format completion function
+### Step 2: Add export format completion function **COMPLETE**
 
 #### Goal
 Add `complete_export_format` function that returns available export formats (toml, json, and yaml if pyyaml installed).
