@@ -118,7 +118,7 @@ Verify PromptCustomization, PromptsConfig, and WeldConfig integration work corre
 
 ---
 
-## Phase 2: Prompt Customizer Core Module
+## Phase 2: Prompt Customizer Core Module **COMPLETE**
 
 Create the core utility for applying prompt customizations with proper ordering and default focus handling.
 
@@ -146,7 +146,7 @@ Create the prompt_customizer.py module in core/ with apply_customization and get
 
 ---
 
-### Step 2: Implement apply_customization function
+### Step 2: Implement apply_customization function **COMPLETE**
 
 #### Goal
 Implement function that applies global_prefix → task_prefix → prompt → task_suffix → global_suffix ordering.
@@ -172,7 +172,7 @@ print('OK')
 
 ---
 
-### Step 3: Implement get_default_focus function
+### Step 3: Implement get_default_focus function **COMPLETE**
 
 #### Goal
 Implement function that retrieves default focus from config for a given prompt type if explicit focus not provided.
@@ -198,7 +198,7 @@ print('OK')
 
 ---
 
-### Step 4: Export functions from core/__init__.py
+### Step 4: Export functions from core/__init__.py **COMPLETE**
 
 #### Goal
 Add apply_customization and get_default_focus to core module exports.
@@ -217,7 +217,7 @@ Add apply_customization and get_default_focus to core module exports.
 
 ---
 
-### Step 5: Add comprehensive unit tests for prompt customizer
+### Step 5: Add comprehensive unit tests for prompt customizer **COMPLETE**
 
 #### Goal
 Test all customization scenarios: global-only, task-only, combined, empty strings, default focus resolution.
@@ -236,7 +236,7 @@ Test all customization scenarios: global-only, task-only, combined, empty string
 
 ---
 
-## Phase 3: Prompt Viewer Command
+## Phase 3: Prompt Viewer Command **COMPLETE**
 
 Create the weld prompt command with list, show, and export subcommands for viewing prompt templates.
 
@@ -245,7 +245,7 @@ Create the weld prompt command with list, show, and export subcommands for viewi
 .venv/bin/pytest tests/test_prompt_command.py -v && .venv/bin/python -m weld prompt list
 ```
 
-### Step 1: Create prompt command module structure
+### Step 1: Create prompt command module structure **COMPLETE**
 
 #### Goal
 Create commands/prompt.py with Typer app and basic command structure for list, show, export.
@@ -264,7 +264,7 @@ Create commands/prompt.py with Typer app and basic command structure for list, s
 
 ---
 
-### Step 2: Implement prompt list command
+### Step 2: Implement prompt list command **COMPLETE**
 
 #### Goal
 Implement list subcommand that displays all available prompt types with descriptions.
@@ -283,7 +283,7 @@ Implement list subcommand that displays all available prompt types with descript
 
 ---
 
-### Step 3: Implement prompt show command
+### Step 3: Implement prompt show command **COMPLETE**
 
 #### Goal
 Implement show subcommand that displays a specific prompt template with optional customization and focus.
@@ -302,7 +302,7 @@ Implement show subcommand that displays a specific prompt template with optional
 
 ---
 
-### Step 4: Implement prompt export command
+### Step 4: Implement prompt export command **COMPLETE**
 
 #### Goal
 Implement export subcommand that writes all prompt templates to a specified directory.
@@ -321,7 +321,7 @@ TMP=$(mktemp -d) && .venv/bin/python -m weld prompt export "$TMP" --raw && ls "$
 
 ---
 
-### Step 5: Register prompt command in CLI
+### Step 5: Register prompt command in CLI **COMPLETE**
 
 #### Goal
 Add prompt_app to cli.py using add_typer pattern.
@@ -340,7 +340,7 @@ Add prompt_app to cli.py using add_typer pattern.
 
 ---
 
-### Step 6: Add unit tests for prompt command
+### Step 6: Add unit tests for prompt command **COMPLETE**
 
 #### Goal
 Test list, show, and export commands with various options and edge cases.
@@ -359,7 +359,7 @@ Test list, show, and export commands with various options and edge cases.
 
 ---
 
-## Phase 4: Integrate Customization into Commands
+## Phase 4: Integrate Customization into Commands **COMPLETE**
 
 Apply prompt customization to all prompt-generating commands.
 
@@ -368,7 +368,7 @@ Apply prompt customization to all prompt-generating commands.
 make test-unit && make check
 ```
 
-### Step 1: Integrate customization into discover command
+### Step 1: Integrate customization into discover command **COMPLETE**
 
 #### Goal
 Apply customization to generate_discover_prompt result and use get_default_focus for focus parameter.
@@ -391,7 +391,7 @@ print('OK')
 
 ---
 
-### Step 2: Integrate customization into research command
+### Step 2: Integrate customization into research command **COMPLETE**
 
 #### Goal
 Apply customization to generate_research_prompt result and use get_default_focus.
@@ -410,7 +410,7 @@ grep -q "apply_customization" src/weld/commands/research.py && echo "OK"
 
 ---
 
-### Step 3: Integrate customization into plan command
+### Step 3: Integrate customization into plan command **COMPLETE**
 
 #### Goal
 Apply customization to generate_plan_prompt result. Note: plan does not support focus parameter.
@@ -429,7 +429,7 @@ grep -q "apply_customization" src/weld/commands/plan.py && echo "OK"
 
 ---
 
-### Step 4: Integrate customization into interview command
+### Step 4: Integrate customization into interview command **COMPLETE**
 
 #### Goal
 Apply customization to generate_interview_prompt result and use get_default_focus.
@@ -448,7 +448,7 @@ grep -q "apply_customization\|get_default_focus" src/weld/core/interview_engine.
 
 ---
 
-### Step 5: Integrate customization into review command
+### Step 5: Integrate customization into review command **COMPLETE**
 
 #### Goal
 Apply customization to generate_doc_review_prompt and generate_code_review_prompt results.
@@ -467,7 +467,7 @@ grep -q "apply_customization" src/weld/commands/doc_review.py && echo "OK"
 
 ---
 
-### Step 6: Integrate customization into implement command
+### Step 6: Integrate customization into implement command **COMPLETE**
 
 #### Goal
 Apply customization to the inline step prompt in _execute_step function.
@@ -486,7 +486,7 @@ grep -q "apply_customization" src/weld/commands/implement.py && echo "OK"
 
 ---
 
-### Step 7: Integrate customization into commit command
+### Step 7: Integrate customization into commit command **COMPLETE**
 
 #### Goal
 Apply customization to _generate_commit_prompt result.
@@ -505,7 +505,7 @@ grep -q "apply_customization" src/weld/commands/commit.py && echo "OK"
 
 ---
 
-### Step 8: Add integration tests for customized prompts
+### Step 8: Add integration tests for customized prompts **COMPLETE**
 
 #### Goal
 Test that customizations are applied correctly when commands run with custom config.
@@ -533,7 +533,7 @@ Update documentation and ensure all quality checks pass.
 make ci
 ```
 
-### Step 1: Update CLAUDE.md with prompt commands
+### Step 1: Update CLAUDE.md with prompt commands **COMPLETE**
 
 #### Goal
 Document new weld prompt commands and prompts configuration section.
@@ -552,7 +552,7 @@ grep -q "weld prompt" CLAUDE.md && grep -q "\[prompts\]" CLAUDE.md && echo "OK"
 
 ---
 
-### Step 2: Update CHANGELOG.md with new features
+### Step 2: Update CHANGELOG.md with new features **COMPLETE**
 
 #### Goal
 Add entries for prompt personalization and prompt viewer features under [Unreleased].
@@ -571,7 +571,7 @@ grep -q "prompt personalization\|prompt viewer" CHANGELOG.md && echo "OK"
 
 ---
 
-### Step 3: Run full test suite and fix any failures
+### Step 3: Run full test suite and fix any failures **COMPLETE**
 
 #### Goal
 Ensure all tests pass including new tests and existing regression tests.
@@ -590,7 +590,7 @@ make test
 
 ---
 
-### Step 4: Run linting and type checking
+### Step 4: Run linting and type checking **COMPLETE**
 
 #### Goal
 Ensure all code quality checks pass without errors.

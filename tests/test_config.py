@@ -503,13 +503,12 @@ def test_prompt_customization_accepts_values() -> None:
 
 
 def test_prompts_config_defaults() -> None:
-    """PromptsConfig should have empty PromptCustomization defaults for all tasks."""
+    """PromptsConfig should have empty defaults for global and all tasks."""
     config = PromptsConfig()
 
-    # Global default should be empty
-    assert config.default.prefix is None
-    assert config.default.suffix is None
-    assert config.default.default_focus is None
+    # Global prefix/suffix should be None
+    assert config.global_prefix is None
+    assert config.global_suffix is None
 
     # All task-specific should be empty
     assert config.discover.prefix is None
@@ -532,43 +531,40 @@ def test_prompts_config_get_customization() -> None:
     assert discover.prefix is None
 
 
-def test_prompts_config_effective_customization_merges_defaults() -> None:
-    """get_effective_customization should merge global defaults with task config."""
+def test_prompts_config_layered_customization() -> None:
+    """PromptsConfig should support layered global and task-specific customization."""
     config = PromptsConfig(
-        default=PromptCustomization(
-            prefix="Global prefix",
-            suffix="Global suffix",
-            default_focus="security",
-        ),
+        global_prefix="Global prefix",
+        global_suffix="Global suffix",
         research=PromptCustomization(
-            prefix="Research-specific prefix",  # Override global
-            # suffix not set - should use global
-            # default_focus not set - should use global
+            prefix="Research-specific prefix",
+            default_focus="security",
         ),
     )
 
-    effective = config.get_effective_customization(TaskType.RESEARCH)
+    # Global values are accessible directly
+    assert config.global_prefix == "Global prefix"
+    assert config.global_suffix == "Global suffix"
 
-    # Task-specific overrides global
-    assert effective.prefix == "Research-specific prefix"
-    # Falls back to global defaults
-    assert effective.suffix == "Global suffix"
-    assert effective.default_focus == "security"
+    # Task-specific values via get_customization
+    task_custom = config.get_customization(TaskType.RESEARCH)
+    assert task_custom.prefix == "Research-specific prefix"
+    assert task_custom.default_focus == "security"
 
 
-def test_prompts_config_effective_customization_task_only() -> None:
-    """get_effective_customization with only task-specific values."""
+def test_prompts_config_task_only_values() -> None:
+    """PromptsConfig with only task-specific values."""
     config = PromptsConfig(
         plan_generation=PromptCustomization(
             suffix="Break into small steps.",
         ),
     )
 
-    effective = config.get_effective_customization(TaskType.PLAN_GENERATION)
+    task_custom = config.get_customization(TaskType.PLAN_GENERATION)
 
-    assert effective.prefix is None
-    assert effective.suffix == "Break into small steps."
-    assert effective.default_focus is None
+    assert task_custom.prefix is None
+    assert task_custom.suffix == "Break into small steps."
+    assert task_custom.default_focus is None
 
 
 def test_weld_config_includes_prompts() -> None:
@@ -578,17 +574,18 @@ def test_weld_config_includes_prompts() -> None:
     assert hasattr(config, "prompts")
     assert isinstance(config.prompts, PromptsConfig)
     # Default prompts should be empty customizations
-    assert config.prompts.default.prefix is None
+    assert config.prompts.global_prefix is None
+    assert config.prompts.global_suffix is None
 
 
 def test_weld_config_with_custom_prompts() -> None:
     """WeldConfig should accept custom prompts configuration."""
     config = WeldConfig(
         prompts=PromptsConfig(
-            default=PromptCustomization(prefix="Python 3.12 project"),
+            global_prefix="Python 3.12 project",
             discover=PromptCustomization(default_focus="architecture"),
         )
     )
 
-    assert config.prompts.default.prefix == "Python 3.12 project"
+    assert config.prompts.global_prefix == "Python 3.12 project"
     assert config.prompts.discover.default_focus == "architecture"

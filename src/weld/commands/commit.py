@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from ..config import WeldConfig, load_config
-from ..core import get_weld_dir, log_command
+from ..core import apply_customization, get_weld_dir, log_command
 from ..models.session import TrackedSession
 from ..output import OutputContext, get_output_context
 from ..services import (
@@ -417,6 +417,7 @@ def _commit_by_sessions(
         # Generate commit message via Claude
         diff = get_diff(staged=True, cwd=repo_root)
         prompt = _generate_commit_prompt(diff, files, "")
+        prompt = apply_customization(prompt, "commit", config)
 
         try:
             response = run_claude(
@@ -585,6 +586,7 @@ def _commit_with_fallback_transcript(
     diff = get_diff(staged=True, cwd=repo_root)
     ctx.console.print("[cyan]Analyzing changes...[/cyan]")
     prompt = _generate_commit_prompt(diff, staged_files, changelog_unreleased)
+    prompt = apply_customization(prompt, "commit", config)
 
     try:
         response = run_claude(

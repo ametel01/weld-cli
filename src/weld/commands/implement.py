@@ -21,8 +21,9 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from simple_term_menu import TerminalMenu
 
-from ..config import WeldConfig, load_config
+from ..config import TaskType, WeldConfig, load_config
 from ..core import (
+    apply_customization,
     generate_code_review_prompt,
     get_doc_review_dir,
     get_weld_dir,
@@ -834,7 +835,7 @@ def _execute_step(
     Smart error recovery: If Claude crashes after making file changes,
     prompts user to mark step complete anyway.
     """
-    prompt = f"""## Implement Step {step.number}: {step.title}
+    base_prompt = f"""## Implement Step {step.number}: {step.title}
 
 {step.content}
 
@@ -864,6 +865,9 @@ If the step is NOT complete:
 
 When complete, confirm the implementation is done.
 """
+
+    # Apply user-configured prompt customization
+    prompt = apply_customization(base_prompt, TaskType.IMPLEMENTATION, config)
 
     ctx.console.print(f"\n[bold]Implementing Step {step.number}: {step.title}[/bold]\n")
 
@@ -1125,7 +1129,7 @@ def _execute_step_autopilot(
     current_session = detect_current_session(repo_root)
 
     # Build implementation prompt (same as _execute_step)
-    prompt = f"""## Implement Step {step.number}: {step.title}
+    base_prompt = f"""## Implement Step {step.number}: {step.title}
 
 {step.content}
 
@@ -1155,6 +1159,9 @@ If the step is NOT complete:
 
 When complete, confirm the implementation is done.
 """
+
+    # Apply user-configured prompt customization
+    prompt = apply_customization(base_prompt, TaskType.IMPLEMENTATION, config)
 
     # Execute Claude
     try:

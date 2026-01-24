@@ -7,7 +7,14 @@ from typing import Annotated
 import typer
 
 from ..config import load_config
-from ..core import get_weld_dir, log_command, validate_input_file, validate_output_path
+from ..core import (
+    apply_customization,
+    get_default_focus,
+    get_weld_dir,
+    log_command,
+    validate_input_file,
+    validate_output_path,
+)
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
 
@@ -146,11 +153,17 @@ def research(
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = research_dir / f"{input_file.stem}-{timestamp}.md"
 
-    spec_content = input_file.read_text()
-    prompt = generate_research_prompt(spec_content, input_file.name, focus)
-
     # Load config (falls back to defaults if not initialized)
     config = load_config(weld_dir) if weld_dir else load_config(input_file.parent)
+
+    # Resolve focus: CLI flag takes precedence over configured default
+    effective_focus = get_default_focus("research", config, focus)
+
+    spec_content = input_file.read_text()
+    prompt = generate_research_prompt(spec_content, input_file.name, effective_focus)
+
+    # Apply prefix/suffix customization from config
+    prompt = apply_customization(prompt, "research", config)
 
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would research specification:")

@@ -101,6 +101,7 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "unit: Unit tests for pure logic",
     "cli: CLI integration tests",
+    "integration: Integration tests for feature verification",
     "slow: Tests that take significant time",
 ]
 

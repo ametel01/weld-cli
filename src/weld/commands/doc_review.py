@@ -11,8 +11,9 @@ from typing import Annotated
 import typer
 from rich.panel import Panel
 
-from ..config import WeldConfig, load_config
+from ..config import TaskType, WeldConfig, load_config
 from ..core import (
+    apply_customization,
     generate_code_review_prompt,
     get_weld_dir,
     strip_preamble,
@@ -262,6 +263,7 @@ def _run_code_review(
 
     # Generate and write prompt
     prompt = generate_code_review_prompt(diff_content, apply_mode=apply, focus=focus)
+    prompt = apply_customization(prompt, TaskType.CODE_REVIEW, config)
     prompt_path = artifact_dir / "prompt.md"
     prompt_path.write_text(prompt)
 
@@ -374,6 +376,7 @@ def _run_doc_review(
 
     # Generate and write prompt
     prompt = generate_doc_review_prompt(document_content, apply_mode=apply, focus=focus)
+    prompt = apply_customization(prompt, TaskType.DOC_REVIEW, config)
     prompt_path = artifact_dir / "prompt.md"
     prompt_path.write_text(prompt)
 

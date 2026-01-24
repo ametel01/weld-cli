@@ -5,8 +5,14 @@ from typing import Annotated
 
 import typer
 
-from ..config import load_config
-from ..core import get_weld_dir, log_command, validate_input_file, validate_output_path
+from ..config import TaskType, load_config
+from ..core import (
+    apply_customization,
+    get_weld_dir,
+    log_command,
+    validate_input_file,
+    validate_output_path,
+)
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
 
@@ -285,6 +291,9 @@ def plan(
 
     # Load config (falls back to defaults if not initialized)
     config = load_config(weld_dir) if weld_dir else load_config(input_files[0].parent)
+
+    # Apply prompt customization (prefix/suffix)
+    prompt = apply_customization(prompt, TaskType.PLAN_GENERATION, config)
 
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would generate plan:")

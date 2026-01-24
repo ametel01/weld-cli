@@ -30,6 +30,7 @@ from .plan_parser import (
     parse_plan,
     validate_plan,
 )
+from .prompt_customizer import apply_customization, get_default_focus
 from .validators import validate_input_file, validate_output_path, validate_plan_file
 from .weld_dir import get_sessions_dir, get_weld_dir
 
@@ -39,10 +40,12 @@ __all__ = [
     "Plan",
     "Step",
     "ValidationResult",
+    "apply_customization",
     "generate_code_review_prompt",
     "generate_discover_prompt",
     "generate_doc_review_prompt",
     "generate_interview_prompt",
+    "get_default_focus",
     "get_discover_dir",
     "get_doc_review_dir",
     "get_history_path",

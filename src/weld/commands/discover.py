@@ -7,7 +7,14 @@ from typing import Annotated
 import typer
 
 from ..config import load_config
-from ..core import get_weld_dir, log_command, strip_preamble, validate_output_path
+from ..core import (
+    apply_customization,
+    get_default_focus,
+    get_weld_dir,
+    log_command,
+    strip_preamble,
+    validate_output_path,
+)
 from ..core.discover_engine import generate_discover_prompt, get_discover_dir
 from ..output import get_output_context
 from ..services import ClaudeError, GitError, get_repo_root, run_claude, track_session_activity
@@ -99,11 +106,15 @@ def _run_discover(
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = discover_dir / f"{timestamp}.md"
 
-    # Load config from repo root (weld init not required for discover)
-    config = load_config(repo_root)
+    # Load config from weld directory (falls back to defaults if not initialized)
+    config = load_config(weld_dir)
 
-    # Generate prompt
-    prompt = generate_discover_prompt(focus)
+    # Resolve effective focus (CLI arg takes precedence over config default)
+    effective_focus = get_default_focus("discover", config, focus)
+
+    # Generate prompt and apply customization
+    prompt = generate_discover_prompt(effective_focus)
+    prompt = apply_customization(prompt, "discover", config)
 
     if ctx.dry_run:
         ctx.console.print("[cyan][DRY RUN][/cyan] Would run discover:")

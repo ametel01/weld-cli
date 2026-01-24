@@ -52,6 +52,7 @@ src/weld/
 │   ├── doc_review.py   # weld review - Document/code review
 │   ├── implement.py    # weld implement - Interactive plan execution
 │   ├── commit.py       # weld commit - Session-based commits with transcripts
+│   ├── prompt.py       # weld prompt - Manage prompt customizations
 │   └── doctor.py       # weld doctor - Environment validation
 ├── core/               # Business logic
 │   ├── history.py      # JSONL command history tracking
@@ -59,7 +60,8 @@ src/weld/
 │   ├── plan_parser.py  # Phased plan parsing (Phase, Step, Plan)
 │   ├── discover_engine.py    # Codebase discovery prompts
 │   ├── interview_engine.py   # Specification refinement prompts
-│   └── doc_review_engine.py  # Document review prompts
+│   ├── doc_review_engine.py  # Document review prompts
+│   └── prompt_customizer.py  # Prompt prefix/suffix customization
 ├── services/           # External integrations
 │   ├── git.py          # Git operations (never shell=True)
 │   ├── claude.py       # Claude CLI integration with streaming
@@ -153,6 +155,70 @@ Tracking is automatic for implement commands. No flags or setup required.
 If Claude session is not detected (running outside Claude Code),
 tracking is skipped silently and commit uses logical grouping fallback.
 
+### Prompt Customization
+
+Weld supports customizing prompts for each task type via the `[prompts]` section in `.weld/config.toml`.
+Customizations are applied in layers: `global_prefix → task_prefix → prompt → task_suffix → global_suffix`.
+
+#### CLI Commands
+
+```bash
+weld prompt                          # List all prompt types with customization status
+weld prompt list                     # Same as above (explicit)
+weld prompt show <type>              # Show customization for a task type
+weld prompt show research --raw      # Output raw template (pipe-friendly)
+weld prompt show discover --focus "security"  # Preview with specific focus
+weld prompt export <dir> --raw       # Export all templates as markdown files
+weld prompt export --format toml     # Export customizations as TOML (stdout)
+weld prompt export -o prompts.json --format json  # Export as JSON file
+```
+
+#### Task Types
+
+Available task types for customization:
+- `discover`: Brownfield codebase discovery and analysis
+- `interview`: Interactive specification refinement
+- `research`: Research prompts for gathering context
+- `research_review`: Review of research outputs
+- `plan_generation`: Implementation plan generation
+- `plan_review`: Review of generated plans
+- `implementation`: Code implementation phase
+- `implementation_review`: Review of implemented code
+- `fix_generation`: Generate fixes for review feedback
+
+#### Configuration Example
+
+```toml
+[prompts]
+# Global prefix/suffix applied to ALL prompts
+global_prefix = "This is a Python 3.12 project using FastAPI and SQLAlchemy."
+global_suffix = "Always include type hints and docstrings."
+
+# Per-task customizations
+[prompts.discover]
+prefix = "Focus on the data model and API layer."
+default_focus = "architecture"
+
+[prompts.research]
+prefix = "Consider security implications."
+suffix = "Include a risk assessment section."
+default_focus = "security"
+
+[prompts.plan_generation]
+prefix = "Plans should be incremental and testable."
+```
+
+#### How Customizations Apply
+
+When a prompt is generated for a task (e.g., `weld research`):
+1. Global prefix is prepended (if configured)
+2. Task-specific prefix is prepended (if configured)
+3. The base prompt for the task
+4. Task-specific suffix is appended (if configured)
+5. Global suffix is appended (if configured)
+
+The `default_focus` provides a fallback value for the `--focus` flag when not specified on the command line.
+
 ### Configuration System
 
 Config file: `.weld/config.toml` (TOML format, Pydantic validation)
@@ -162,6 +228,7 @@ Key sections:
 - `[checks]`: Multi-category checks (lint/test/typecheck with execution order)
 - `[codex]` / `[claude]`: Provider defaults (exec path, model, timeout)
 - `[task_models]`: Per-task model assignment (discover, plan_generation, implementation, etc.)
+- `[prompts]`: Prompt customization (global/per-task prefix, suffix, default_focus)
 - `[transcripts]`: Transcript generation (enabled, visibility)
 - `[git]`: Commit trailer configuration
 - `[loop]`: Implement-review-fix loop settings

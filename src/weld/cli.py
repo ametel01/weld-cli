@@ -17,6 +17,7 @@ from .commands.implement import implement
 from .commands.init import init
 from .commands.interview import interview
 from .commands.plan import plan
+from .commands.prompt import prompt_app
 from .commands.research import research
 from .logging import configure_logging, setup_debug_logging
 from .output import OutputContext, set_output_context
@@ -38,6 +39,7 @@ app = typer.Typer(
 
 # Sub-command groups
 app.add_typer(discover_app, name="discover")
+app.add_typer(prompt_app, name="prompt")
 app.add_typer(telegram_app, name="telegram")
 
 # Global console (initialized in main callback)

@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 
+from ..config import load_config
 from ..core import get_weld_dir, validate_input_file
 from ..core.interview_engine import run_interview_loop
 from ..output import get_output_context
@@ -40,12 +41,16 @@ def interview(
         repo_root = None
         weld_dir = None
 
+    # Load config for prompt customization
+    config = load_config(weld_dir) if weld_dir else load_config(file.parent)
+
     def _run_interview() -> bool:
         return run_interview_loop(
             file,
             focus,
             console=ctx.console,
             dry_run=ctx.dry_run,
+            config=config,
         )
 
     try:

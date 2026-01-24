@@ -7,6 +7,9 @@ from pathlib import Path
 
 from rich.console import Console
 
+from ..config import WeldConfig
+from .prompt_customizer import apply_customization, get_default_focus
+
 INTERVIEW_SYSTEM_PROMPT = """\
 You are an expert technical interviewer helping flesh out a specification document.
 
@@ -76,6 +79,7 @@ def run_interview_loop(
     focus: str | None = None,
     console: Console | None = None,
     dry_run: bool = False,
+    config: WeldConfig | None = None,
 ) -> bool:
     """Generate interview prompt for use with Claude Code.
 
@@ -87,6 +91,7 @@ def run_interview_loop(
         focus: Optional focus area
         console: Rich console for output (uses default if None)
         dry_run: If True, just show what would happen
+        config: Optional WeldConfig for prompt customization
 
     Returns:
         True (prompt was generated successfully)
@@ -99,8 +104,18 @@ def run_interview_loop(
         con.print(f"  {document_path}")
         return False
 
+    # Resolve effective focus (explicit focus takes precedence over default)
+    effective_focus = focus
+    if config:
+        effective_focus = get_default_focus("interview", config, focus)
+
     # Generate the prompt for Claude Code
-    prompt = generate_interview_prompt(document_path, content, focus)
+    prompt = generate_interview_prompt(document_path, content, effective_focus)
+
+    # Apply customization if config is provided
+    if config:
+        prompt = apply_customization(prompt, "interview", config)
+
     con.print(prompt)
 
     return True
