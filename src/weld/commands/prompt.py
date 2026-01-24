@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from ..completions import complete_task_type
 from ..config import TaskType, load_config
 from ..core import get_weld_dir
 from ..output import get_output_context
@@ -253,7 +254,10 @@ Generate a commit message summarizing the changes.
 def show_prompt(
     task: Annotated[
         str,
-        typer.Argument(help="Task type to show (e.g., discover, research, plan_generation)"),
+        typer.Argument(
+            help="Task type to show (e.g., discover, research, plan_generation)",
+            autocompletion=complete_task_type,
+        ),
     ],
     raw: Annotated[
         bool,

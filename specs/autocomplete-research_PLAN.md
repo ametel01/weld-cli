@@ -187,7 +187,7 @@ Add `autocompletion=complete_phase_number` to the `--phase` option in `src/weld/
 
 ---
 
-### Step 9: Add completion to prompt show command task argument
+### Step 9: Add completion to prompt show command task argument **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_task_type` to the `task` argument in `src/weld/commands/prompt.py` show_prompt function.
