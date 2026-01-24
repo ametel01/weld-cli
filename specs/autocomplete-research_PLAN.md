@@ -58,7 +58,7 @@ Add `complete_export_format` function that returns available export formats (tom
 
 ---
 
-## Phase 2: Add Path-Based Completions
+## Phase 2: Add Path-Based Completions **COMPLETE**
 
 Implement markdown file and step/phase completion functions that follow user input paths.
 
@@ -132,7 +132,7 @@ Connect completion functions to the appropriate Typer arguments and options in c
 make check
 ```
 
-### Step 6: Add completion to implement command plan_file argument
+### Step 6: Add completion to implement command plan_file argument **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_markdown_file` to the `plan_file` argument in `src/weld/commands/implement.py`.

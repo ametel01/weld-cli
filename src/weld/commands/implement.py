@@ -21,6 +21,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from simple_term_menu import TerminalMenu
 
+from ..completions import complete_markdown_file
 from ..config import TaskType, WeldConfig, load_config
 from ..core import (
     apply_customization,
@@ -83,6 +84,7 @@ def implement(
         Path,
         typer.Argument(
             help="Markdown plan file to implement",
+            autocompletion=complete_markdown_file,
         ),
     ],
     step: Annotated[
