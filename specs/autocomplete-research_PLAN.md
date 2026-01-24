@@ -123,7 +123,7 @@ Create `complete_phase_number` function that returns static phase numbers 1-5 as
 
 ---
 
-## Phase 3: Wire Completions to Command Arguments
+## Phase 3: Wire Completions to Command Arguments **COMPLETE**
 
 Connect completion functions to the appropriate Typer arguments and options in command modules.
 
@@ -304,7 +304,7 @@ Add comprehensive unit tests for all completion functions with mocked filesystem
 make test-unit
 ```
 
-### Step 15: Create test file for completion functions
+### Step 15: Create test file for completion functions **COMPLETE**
 
 #### Goal
 Create `tests/test_completions.py` with unit tests for `complete_task_type` and `complete_export_format` functions.
