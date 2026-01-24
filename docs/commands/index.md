@@ -27,6 +27,7 @@ All commands support these global options:
 | [implement](implement.md) | Execute a plan interactively |
 | [review](review.md) | Review documents or code changes |
 | [commit](commit.md) | Commit with transcript provenance |
+| [prompt](prompt.md) | Manage prompt customizations |
 
 ## Command Categories
 
@@ -50,6 +51,10 @@ All commands support these global options:
 - **[implement](implement.md)** - Execute plan steps
 - **[review](review.md)** - Validate documents and code
 - **[commit](commit.md)** - Create commits with provenance
+
+### Configuration Commands
+
+- **[prompt](prompt.md)** - View and export prompt customizations
 
 ## See Also
 

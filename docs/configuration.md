@@ -71,6 +71,15 @@ provider = "codex"
 
 [task_models.fix_generation]
 provider = "claude"
+
+# Prompt customization (optional)
+# [prompts]
+# global_prefix = "This is a Python project."
+# global_suffix = "Include type hints."
+#
+# [prompts.discover]
+# prefix = "Focus on the API layer."
+# default_focus = "architecture"
 ```
 
 ## Configuration Options
@@ -152,6 +161,50 @@ Example:
 provider = "claude"
 model = "claude-opus-4-20250514"
 ```
+
+### `[prompts]`
+
+Customize AI prompts with project-specific context. Customizations are applied in layers:
+
+```
+global_prefix → task_prefix → prompt → task_suffix → global_suffix
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `global_prefix` | string | - | Text prepended to all prompts |
+| `global_suffix` | string | - | Text appended to all prompts |
+
+Per-task customizations use `[prompts.<task_type>]` sections:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `prefix` | string | - | Text prepended to this task's prompts |
+| `suffix` | string | - | Text appended to this task's prompts |
+| `default_focus` | string | - | Default `--focus` value when not specified |
+
+Available task types: `discover`, `interview`, `research`, `research_review`, `plan_generation`, `plan_review`, `implementation`, `implementation_review`, `fix_generation`, `doc_review`, `code_review`, `commit`.
+
+Example:
+```toml
+[prompts]
+global_prefix = "This is a Python 3.12 project using FastAPI and SQLAlchemy."
+global_suffix = "Always include type hints and docstrings."
+
+[prompts.discover]
+prefix = "Focus on the data model and API layer."
+default_focus = "architecture"
+
+[prompts.research]
+prefix = "Consider security implications."
+suffix = "Include a risk assessment section."
+default_focus = "security"
+
+[prompts.plan_generation]
+prefix = "Plans should be incremental and testable."
+```
+
+Use `weld prompt list` to see all task types and their customization status. See the [prompt command](commands/prompt.md) for more details.
 
 ## Minimal Configuration
 

@@ -134,6 +134,7 @@ nav:
       - implement: commands/implement.md
       - review: commands/review.md
       - commit: commands/commit.md
+      - prompt: commands/prompt.md
   - Telegram Bot: telegram.md
   - Reference:
       - Configuration: configuration.md
