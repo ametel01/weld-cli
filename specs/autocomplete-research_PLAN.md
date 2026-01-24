@@ -105,7 +105,7 @@ Create `complete_step_number` function that returns static step numbers 1.1-3.3 
 
 ---
 
-### Step 5: Add phase number completion function
+### Step 5: Add phase number completion function **COMPLETE**
 
 #### Goal
 Create `complete_phase_number` function that returns static phase numbers 1-5 as suggestions.

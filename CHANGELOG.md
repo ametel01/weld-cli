@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shell completion for phase number arguments in CLI commands
+
+### Added
 - Shell completion for step numbers in CLI commands
 
 ### Added

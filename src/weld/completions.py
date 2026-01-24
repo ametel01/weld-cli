@@ -140,3 +140,20 @@ def complete_step_number(incomplete: str) -> list[str]:
     ]
 
     return [s for s in step_numbers if s.startswith(incomplete)]
+
+
+def complete_phase_number(incomplete: str) -> list[str]:
+    """Return phase numbers that start with the given prefix.
+
+    Used for shell completion of phase number arguments in CLI commands.
+    Returns static phase numbers 1-5 as suggestions.
+
+    Args:
+        incomplete: The partial string typed by the user
+
+    Returns:
+        List of matching phase numbers as strings
+    """
+    phase_numbers = ["1", "2", "3", "4", "5"]
+
+    return [p for p in phase_numbers if p.startswith(incomplete)]
