@@ -7,75 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-01-24
+
 ### Added
 - Telegram bot extended prompt detection for y/n confirmations, default prompts ([Y/n], [y/N]), Continue?/Proceed?/Apply? questions, and arrow-key menus
 - Universal `/weld <command>` for running any weld subcommand via Telegram
 - Document upload handling with automatic save to `.weld/telegram/uploads/`
 - Reply-to-document auto-injection of uploaded file path in commands
 - Output file detection with Download button for created files
-
-### Added
-- Telegram bot now detects additional interactive prompt patterns including y/n confirmations and arrow-key menus
-
-### Added
 - Project sync method for Telegram bot to synchronize config projects with database on startup
-
-### Added
 - Telegram bot: runs table pruning to limit stored runs per user
-
-### Changed
-- `weld plan` default output now saves to same directory as input file with `_PLAN.md` suffix
-  - Example: `weld plan /path/to/SPEC.md` → `/path/to/SPEC_PLAN.md`
-  - Previously saved to `.weld/plan/{filename}-{timestamp}.md`
-- `weld implement --autopilot` now respects `--no-review` flag (previously ignored)
-- `weld implement --autopilot` now displays all active options (autopilot, auto-commit, no-review)
-- Telegram support is now included in standard installation (no longer requires `weld[telegram]` extra)
-
-### Added
 - Telegram user management commands: `weld telegram user add/remove/list`
 - Auto-prompt to install weld globally during `weld telegram init`
 - `--skip-hooks` flag for `weld commit` to bypass pre-commit hooks (useful for Telegram bot or CI)
-
-### Changed
-- Telegram support (aiogram) is now included in the main installation, no longer requires `[telegram]` extra
-
-### Fixed
-- Telegram bot status output now shows error messages instead of truncating them
-- Telegram bot now shows clear feedback after selecting prompt options ("Command continuing...")
-- Telegram bot prompt message is updated with final result when command completes
-
-### Added
 - Interactive prompt support in Telegram bot with inline keyboard buttons for command options
-
-### Added
-- Interactive prompt support in Telegram bot for responding to weld command prompts
-
-### Added
 - `weld telegram whoami` command to show bot identity and authentication status
 - `weld telegram doctor` command to validate Telegram bot setup and environment
-
-### Added
 - `weld telegram projects add` command to register projects for Telegram bot access
 - `weld telegram projects remove` command to unregister projects
 - `weld telegram projects list` command to show registered projects
-
-### Added
 - `weld telegram` command group for remote bot interaction
-
-### Added
 - Telegram bot commands: /doctor, /plan, /interview, /implement, /commit for remote weld execution
-
-### Added
 - Telegram bot `/status` command to view current run, queue, and recent history
 - Telegram bot `/cancel` command to abort active runs and clear pending queue
-
-### Fixed
-- Telegram bot now persists `started_at` timestamp when run transitions from pending to running
-
-### Added
 - `/use` command for Telegram bot to switch between configured projects
-
-### Added
 - Rate-limited message editor for Telegram with exponential backoff retry
 - Telegram message formatting utilities with proper Unicode chunking support
 - Per-chat FIFO queue system for Telegram bot to ensure ordered run processing
@@ -85,6 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite state persistence for Telegram bot with user contexts, projects, and command run tracking
 - Telegram bot configuration with user authentication and project registration
 - Initial Telegram bot integration module structure
+
+### Changed
+- `weld plan` default output now saves to same directory as input file with `_PLAN.md` suffix
+  - Example: `weld plan /path/to/SPEC.md` → `/path/to/SPEC_PLAN.md`
+  - Previously saved to `.weld/plan/{filename}-{timestamp}.md`
+- `weld implement --autopilot` now respects `--no-review` flag (previously ignored)
+- `weld implement --autopilot` now displays all active options (autopilot, auto-commit, no-review)
+- Telegram support is now included in standard installation (no longer requires `weld[telegram]` extra)
+
+### Fixed
+- Telegram bot status output now shows error messages instead of truncating them
+- Telegram bot now shows clear feedback after selecting prompt options ("Command continuing...")
+- Telegram bot prompt message is updated with final result when command completes
+- Telegram bot now persists `started_at` timestamp when run transitions from pending to running
 
 ## [0.9.1] - 2026-01-17
 
@@ -477,7 +446,8 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ametel01/weld-cli/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/ametel01/weld-cli/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ametel01/weld-cli/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/ametel01/weld-cli/compare/v0.7.1...v0.8.0
