@@ -2,7 +2,6 @@
 
 ## Planned Features
 
-- Refine Telegram integration
 - Add prompts personalization capability
 
 ## Ideas
@@ -11,4 +10,5 @@
 
 ## Completed
 
+- Refine Telegram integration
 <!-- Move completed features here with version/date -->

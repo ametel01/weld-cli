@@ -1878,20 +1878,17 @@ wheels = [
 
 [[package]]
 name = "weld-cli"
-version = "0.9.1"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiogram" },
     { name = "aiosqlite" },
+    { name = "pathspec" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "simple-term-menu" },
     { name = "tomli-w" },
     { name = "typer" },
-]
-
-[package.optional-dependencies]
-telegram = [
-    { name = "aiogram" },
 ]
 
 [package.dev-dependencies]
@@ -1915,15 +1912,15 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiogram", marker = "extra == 'telegram'", specifier = ">=3.22" },
+    { name = "aiogram", specifier = ">=3.22" },
     { name = "aiosqlite", specifier = ">=0.19" },
+    { name = "pathspec", specifier = ">=0.12" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "rich", specifier = ">=13.7" },
     { name = "simple-term-menu", specifier = ">=1.6" },
     { name = "tomli-w", specifier = ">=1.0" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["telegram"]
 
 [package.metadata.requires-dev]
 dev = [
