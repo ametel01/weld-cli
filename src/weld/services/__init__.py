@@ -11,7 +11,7 @@ This package provides interfaces to external tools and services:
 - gist_uploader: GitHub Gist upload via gh CLI
 """
 
-from .claude import ClaudeError, run_claude
+from .claude import ClaudeError, run_claude, run_claude_interactive
 from .filesystem import (
     dir_exists,
     ensure_directory,
@@ -113,6 +113,7 @@ __all__ = [
     "render_message",
     "render_transcript",
     "run_claude",
+    "run_claude_interactive",
     "run_git",
     "run_transcript_gist",
     "stage_all",

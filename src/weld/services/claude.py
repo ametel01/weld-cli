@@ -265,6 +265,85 @@ def _run_streaming(
         raise ClaudeError(f"Streaming failed: {e}") from e
 
 
+def run_claude_interactive(
+    prompt: str,
+    exec_path: str = "claude",
+    model: str | None = None,
+    cwd: Path | None = None,
+    skip_permissions: bool = False,
+    max_output_tokens: int | None = None,
+    prompt_file: Path | None = None,
+) -> int:
+    """Run Claude CLI in fully interactive mode.
+
+    Connects Claude directly to the terminal for interactive sessions
+    where Claude can use AskUserQuestion and other interactive tools.
+
+    Args:
+        prompt: The initial prompt to send to Claude (passed as positional arg)
+        exec_path: Path to claude executable
+        model: Model to use (e.g., claude-sonnet-4-20250514). If None, uses default.
+        cwd: Working directory
+        skip_permissions: If True, add --dangerously-skip-permissions for write operations
+        max_output_tokens: Max output tokens for response. Defaults to 128000.
+        prompt_file: If provided, write prompt to this file and reference it instead
+                     of passing full prompt on command line (avoids arg length limits)
+
+    Returns:
+        Exit code from Claude process
+
+    Raises:
+        ClaudeError: If claude executable not found
+    """
+    import tempfile
+
+    max_tokens = max_output_tokens or DEFAULT_MAX_OUTPUT_TOKENS
+
+    # Build environment with max output tokens setting
+    env = dict(os.environ)
+    env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(max_tokens)
+
+    # If prompt_file provided, write full prompt there and use short reference prompt
+    temp_file_to_cleanup: str | None = None
+    if prompt_file:
+        # Write full prompt to the specified file
+        prompt_file.write_text(prompt)
+        # Use a short prompt that tells Claude to read the file
+        actual_prompt = f"Read and follow the instructions in {prompt_file}"
+    elif len(prompt) > 100000:
+        # Prompt too long for command line - write to temp file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write(prompt)
+            temp_file_to_cleanup = f.name
+        actual_prompt = f"Read and follow the instructions in {temp_file_to_cleanup}"
+    else:
+        actual_prompt = prompt
+
+    try:
+        # Build command - prompt as positional argument
+        cmd = [exec_path, "-p", actual_prompt]
+        if model:
+            cmd.extend(["--model", model])
+        if skip_permissions:
+            cmd.append("--dangerously-skip-permissions")
+
+        # Run with stdin/stdout/stderr inherited from parent (terminal)
+        # This allows Claude to interact directly with the user
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            env=env,
+            # No capture - let Claude use the terminal directly
+        )
+        return result.returncode
+    except FileNotFoundError:
+        raise ClaudeError(f"Claude executable not found: {exec_path}") from None
+    finally:
+        # Clean up temp file if we created one
+        if temp_file_to_cleanup:
+            Path(temp_file_to_cleanup).unlink(missing_ok=True)
+
+
 def run_claude(
     prompt: str,
     exec_path: str = "claude",
@@ -276,6 +355,9 @@ def run_claude(
     max_output_tokens: int | None = None,
 ) -> str:
     """Run Claude CLI with prompt and return output.
+
+    For interactive sessions where Claude needs to ask the user questions,
+    use run_claude_interactive() instead.
 
     Args:
         prompt: The prompt to send to Claude

@@ -251,16 +251,19 @@ class TestInterviewCommand:
     """Tests for weld interview command."""
 
     def test_interview_help(self, runner: CliRunner) -> None:
-        """interview --help should show usage."""
+        """interview --help should show subcommands."""
         result = runner.invoke(app, ["interview", "--help"])
         assert result.exit_code == 0
-        assert "file" in result.stdout.lower()
+        assert "generate" in result.stdout.lower()
+        assert "apply" in result.stdout.lower()
 
-    def test_interview_file_not_found(self, runner: CliRunner, initialized_weld: Path) -> None:
-        """interview should fail when file doesn't exist."""
-        result = runner.invoke(app, ["interview", "nonexistent.md"])
+    def test_interview_generate_file_not_found(
+        self, runner: CliRunner, initialized_weld: Path
+    ) -> None:
+        """interview generate should fail when file doesn't exist."""
+        result = runner.invoke(app, ["interview", "generate", "nonexistent.md"])
         assert result.exit_code == 1
-        assert "File not found" in result.stdout
+        assert "not found" in result.stdout.lower()
 
 
 class TestReviewCommand:

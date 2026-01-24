@@ -1,4 +1,9 @@
-"""Tests for interview workflow functionality."""
+"""Tests for interview workflow functionality.
+
+The interview workflow has two steps:
+1. Generate questionnaire: `weld interview spec.md`
+2. Apply answers: `weld interview apply questionnaire.md`
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -9,8 +14,11 @@ from typer.testing import CliRunner
 
 from weld.cli import app
 from weld.core.interview_engine import (
+    _extract_markdown,
+    _extract_source_path,
+    apply_questionnaire,
     generate_interview_prompt,
-    run_interview_loop,
+    generate_questionnaire,
 )
 
 runner = CliRunner(
@@ -24,7 +32,7 @@ runner = CliRunner(
 
 @pytest.mark.unit
 class TestGenerateInterviewPrompt:
-    """Tests for generate_interview_prompt function."""
+    """Tests for generate_interview_prompt function (legacy compatibility)."""
 
     def test_includes_document_content(self, tmp_path: Path) -> None:
         """Prompt includes the document content."""
@@ -35,24 +43,17 @@ class TestGenerateInterviewPrompt:
         assert "Implement user login" in prompt
 
     def test_includes_document_path(self, tmp_path: Path) -> None:
-        """Prompt includes the document path for rewriting."""
+        """Prompt includes the document path."""
         doc_path = tmp_path / "spec.md"
         prompt = generate_interview_prompt(doc_path, "test content")
         assert str(doc_path) in prompt
 
-    def test_includes_rules(self, tmp_path: Path) -> None:
-        """Prompt includes interview rules."""
+    def test_includes_questionnaire_instructions(self, tmp_path: Path) -> None:
+        """Prompt includes questionnaire format instructions."""
         doc_path = tmp_path / "spec.md"
         prompt = generate_interview_prompt(doc_path, "test content")
-        assert "AskUserQuestion tool" in prompt
-        assert "ONE question at a time" in prompt
-
-    def test_includes_rewrite_instruction(self, tmp_path: Path) -> None:
-        """Prompt instructs AI to rewrite the document when complete."""
-        doc_path = tmp_path / "spec.md"
-        prompt = generate_interview_prompt(doc_path, "test content")
-        assert "rewrite" in prompt.lower()
-        assert str(doc_path) in prompt
+        assert "questionnaire" in prompt.lower()
+        assert "[ ]" in prompt  # Checkbox format
 
     def test_default_focus(self, tmp_path: Path) -> None:
         """Uses default focus when none specified."""
@@ -67,86 +68,200 @@ class TestGenerateInterviewPrompt:
         assert "security" in prompt
         assert "No specific focus" not in prompt
 
-    def test_document_in_current_document_section(self, tmp_path: Path) -> None:
-        """Document content appears in Current Document section."""
-        doc_path = tmp_path / "spec.md"
-        content = "# My Doc\nDetails here."
-        prompt = generate_interview_prompt(doc_path, content)
-        assert "## Current Document" in prompt
-        doc_index = prompt.index("## Current Document")
-        content_index = prompt.index("# My Doc")
-        assert content_index > doc_index
 
-    def test_focus_in_focus_area_section(self, tmp_path: Path) -> None:
-        """Focus appears in Focus Area section."""
-        doc_path = tmp_path / "spec.md"
-        prompt = generate_interview_prompt(doc_path, "doc", focus="API design")
-        assert "## Focus Area" in prompt
-        focus_index = prompt.index("## Focus Area")
-        api_index = prompt.index("API design")
-        assert api_index > focus_index
+@pytest.mark.unit
+class TestExtractMarkdown:
+    """Tests for _extract_markdown helper."""
 
-    def test_includes_interview_scope(self, tmp_path: Path) -> None:
-        """Prompt includes comprehensive interview scope."""
-        doc_path = tmp_path / "spec.md"
-        prompt = generate_interview_prompt(doc_path, "test content")
-        assert "Technical implementation" in prompt
-        assert "UI & UX" in prompt
-        assert "Tradeoffs" in prompt
-        assert "Security" in prompt
+    def test_plain_text_unchanged(self) -> None:
+        """Plain text is returned unchanged."""
+        text = "# Heading\n\nContent here."
+        assert _extract_markdown(text) == text.strip()
+
+    def test_strips_markdown_fence(self) -> None:
+        """Strips ```markdown ... ``` fences."""
+        text = "```markdown\n# Heading\n\nContent\n```"
+        assert _extract_markdown(text) == "# Heading\n\nContent"
+
+    def test_strips_plain_fence(self) -> None:
+        """Strips ``` ... ``` fences."""
+        text = "```\n# Heading\n\nContent\n```"
+        assert _extract_markdown(text) == "# Heading\n\nContent"
 
 
 @pytest.mark.unit
-class TestRunInterviewLoop:
-    """Tests for run_interview_loop function."""
+class TestExtractSourcePath:
+    """Tests for _extract_source_path helper."""
 
-    def test_dry_run_returns_false(self, tmp_path: Path) -> None:
-        """Dry run mode returns False without printing prompt."""
+    def test_extracts_absolute_path(self) -> None:
+        """Extracts absolute path from questionnaire header."""
+        content = """# Interview Questionnaire
+
+**Source:** /home/user/project/spec.md
+**Generated:** 2024-01-24
+
+## Q1: Test?
+"""
+        path = _extract_source_path(content)
+        assert path == Path("/home/user/project/spec.md")
+
+    def test_extracts_relative_path(self) -> None:
+        """Extracts relative path from questionnaire header."""
+        content = "**Source:** ../specs/spec.md\n\n## Q1"
+        path = _extract_source_path(content)
+        assert path == Path("../specs/spec.md")
+
+    def test_returns_none_if_missing(self) -> None:
+        """Returns None if Source header is missing."""
+        content = "# Questionnaire\n\n## Q1: Test?"
+        assert _extract_source_path(content) is None
+
+
+@pytest.mark.unit
+class TestGenerateQuestionnaire:
+    """Tests for generate_questionnaire function."""
+
+    def test_dry_run_returns_none(self, tmp_path: Path) -> None:
+        """Dry run mode returns None without invoking Claude."""
         doc = tmp_path / "spec.md"
         doc.write_text("# Original")
 
         console = Console(force_terminal=True, width=80, record=True)
-        result = run_interview_loop(doc, dry_run=True, console=console)
+        result = generate_questionnaire(doc, dry_run=True, console=console)
 
-        assert result is False
+        assert result is None
         output = console.export_text()
         assert "DRY RUN" in output
 
-    def test_prints_prompt(self, tmp_path: Path) -> None:
-        """Prints the interview prompt."""
+    @patch("weld.core.interview_engine.run_claude")
+    def test_invokes_claude_and_saves_questionnaire(
+        self, mock_claude: MagicMock, tmp_path: Path
+    ) -> None:
+        """Invokes Claude and saves the generated questionnaire."""
+        mock_claude.return_value = """# Interview Questionnaire
+
+**Source:** {doc_path}
+**Generated:** 2024-01-24 12:00:00
+
+## Q1: Test Question
+
+- [ ] Option A
+- [ ] Option B
+"""
+
         doc = tmp_path / "spec.md"
-        doc.write_text("# My Spec\n\nDetails here.")
+        doc.write_text("# My Spec")
+
+        output_dir = tmp_path / "interviews"
+        console = Console(force_terminal=True, width=80, record=True)
+
+        result = generate_questionnaire(doc, output_dir=output_dir, console=console)
+
+        assert result is not None
+        assert result.exists()
+        assert "spec-interview-" in result.name
+        assert result.suffix == ".md"
+
+        # Check content was written
+        content = result.read_text()
+        assert "Interview Questionnaire" in content
+
+    @patch("weld.core.interview_engine.run_claude")
+    def test_passes_focus_to_prompt(self, mock_claude: MagicMock, tmp_path: Path) -> None:
+        """Focus parameter is included in the prompt."""
+        mock_claude.return_value = "# Questionnaire"
+
+        doc = tmp_path / "spec.md"
+        doc.write_text("# Spec")
+
+        generate_questionnaire(doc, focus="security", output_dir=tmp_path)
+
+        call_kwargs = mock_claude.call_args.kwargs
+        prompt = call_kwargs["prompt"]
+        assert "security" in prompt
+
+
+@pytest.mark.unit
+class TestApplyQuestionnaire:
+    """Tests for apply_questionnaire function."""
+
+    def test_no_answers_selected_returns_false(self, tmp_path: Path) -> None:
+        """Returns False and warns if no answers are selected."""
+        # Create source spec
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Original Spec")
+
+        # Create questionnaire without any [x] marks
+        questionnaire = tmp_path / "questionnaire.md"
+        questionnaire.write_text(f"""# Interview Questionnaire
+
+**Source:** {spec}
+
+## Q1: Test?
+
+- [ ] Option A
+- [ ] Option B
+""")
 
         console = Console(force_terminal=True, width=80, record=True)
-        result = run_interview_loop(doc, console=console)
+        result = apply_questionnaire(questionnaire, console=console)
+
+        assert result is False
+        output = console.export_text()
+        assert "No answers selected" in output
+
+    def test_missing_source_raises_error(self, tmp_path: Path) -> None:
+        """Raises ValueError if Source header is missing."""
+        questionnaire = tmp_path / "questionnaire.md"
+        questionnaire.write_text("# Questionnaire\n\n## Q1")
+
+        with pytest.raises(ValueError) as exc_info:
+            apply_questionnaire(questionnaire)
+
+        assert "Could not find source" in str(exc_info.value)
+
+    def test_source_not_found_raises_error(self, tmp_path: Path) -> None:
+        """Raises ValueError if source file doesn't exist."""
+        questionnaire = tmp_path / "questionnaire.md"
+        questionnaire.write_text(f"""**Source:** {tmp_path / "nonexistent.md"}
+
+## Q1
+
+- [x] Option A
+""")
+
+        with pytest.raises(ValueError) as exc_info:
+            apply_questionnaire(questionnaire)
+
+        assert "not found" in str(exc_info.value)
+
+    @patch("weld.core.interview_engine.run_claude")
+    def test_applies_answers_to_spec(self, mock_claude: MagicMock, tmp_path: Path) -> None:
+        """Applies answered questionnaire to update spec."""
+        # Create source spec
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Original Spec")
+
+        # Claude returns updated content
+        mock_claude.return_value = "# Updated Spec\n\nWith new content."
+
+        # Create questionnaire with answers
+        questionnaire = tmp_path / "questionnaire.md"
+        questionnaire.write_text(f"""# Interview Questionnaire
+
+**Source:** {spec}
+
+## Q1: Authentication?
+
+- [x] Option A - JWT tokens
+- [ ] Option B - Sessions
+""")
+
+        console = Console(force_terminal=True, width=80, record=True)
+        result = apply_questionnaire(questionnaire, console=console)
 
         assert result is True
-        output = console.export_text()
-        assert "# My Spec" in output
-        assert "AskUserQuestion tool" in output
-
-    def test_includes_focus_in_output(self, tmp_path: Path) -> None:
-        """Focus parameter is included in printed prompt."""
-        doc = tmp_path / "spec.md"
-        doc.write_text("# Spec")
-
-        console = Console(force_terminal=True, width=80, record=True)
-        run_interview_loop(doc, focus="security requirements", console=console)
-
-        output = console.export_text()
-        assert "security requirements" in output
-
-    def test_includes_document_path_for_rewrite(self, tmp_path: Path) -> None:
-        """Prompt includes document path for AI to rewrite."""
-        doc = tmp_path / "spec.md"
-        doc.write_text("# Spec")
-
-        console = Console(force_terminal=True, width=80, record=True)
-        run_interview_loop(doc, console=console)
-
-        output = console.export_text()
-        assert str(doc) in output
-        assert "rewrite" in output.lower()
+        assert spec.read_text() == "# Updated Spec\n\nWith new content."
 
 
 @pytest.mark.cli
@@ -154,207 +269,142 @@ class TestInterviewCommand:
     """Tests for interview CLI command."""
 
     def test_interview_help(self) -> None:
-        """Shows help text with options."""
+        """Shows help text with subcommands."""
         result = runner.invoke(app, ["interview", "--help"])
         assert result.exit_code == 0
-        assert "file" in result.output.lower()
-        assert "--focus" in result.output
-        assert "--track" in result.output
+        assert "generate" in result.output.lower()
+        assert "apply" in result.output.lower()
 
-    def test_interview_file_not_found(self, tmp_path: Path) -> None:
+    def test_interview_generate_help(self) -> None:
+        """Shows help for generate subcommand."""
+        result = runner.invoke(app, ["interview", "generate", "--help"])
+        assert result.exit_code == 0
+        assert "questionnaire" in result.output.lower()
+        assert "--focus" in result.output
+
+    def test_interview_apply_help(self) -> None:
+        """Shows help for apply subcommand."""
+        result = runner.invoke(app, ["interview", "apply", "--help"])
+        assert result.exit_code == 0
+        assert "questionnaire" in result.output.lower()
+
+    def test_generate_file_not_found(self, tmp_path: Path) -> None:
         """Fails with exit code 1 when file not found."""
-        result = runner.invoke(app, ["interview", str(tmp_path / "nonexistent.md")])
+        result = runner.invoke(app, ["interview", "generate", str(tmp_path / "nonexistent.md")])
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
-    def test_interview_non_markdown_error(self, tmp_path: Path) -> None:
-        """Fails early for non-markdown files with helpful hint."""
+    def test_generate_non_markdown_error(self, tmp_path: Path) -> None:
+        """Fails early for non-markdown files."""
         txt_file = tmp_path / "spec.txt"
         txt_file.write_text("Some content")
 
-        result = runner.invoke(app, ["interview", str(txt_file)])
+        result = runner.invoke(app, ["interview", "generate", str(txt_file)])
 
-        # Should fail with helpful error message
         assert result.exit_code == 1
         assert "markdown" in result.output.lower()
-        assert ".md" in result.output
 
-    def test_interview_prints_prompt(self, tmp_path: Path) -> None:
-        """Prints interview prompt for markdown file."""
+    @patch("weld.commands.interview.generate_questionnaire")
+    def test_generate_creates_questionnaire(
+        self,
+        mock_generate: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Generate command creates questionnaire."""
+        output_path = tmp_path / "questionnaire.md"
+        mock_generate.return_value = output_path
+
         spec = tmp_path / "spec.md"
-        spec.write_text("# Feature Spec\n\nImplement login.")
+        spec.write_text("# Spec")
 
-        result = runner.invoke(app, ["interview", str(spec)])
+        result = runner.invoke(app, ["interview", "generate", str(spec)])
 
         assert result.exit_code == 0
-        assert "# Feature Spec" in result.output
-        assert "AskUserQuestion tool" in result.output
+        mock_generate.assert_called_once()
 
-    def test_interview_with_focus(self, tmp_path: Path) -> None:
-        """Focus parameter appears in output."""
+    @patch("weld.commands.interview.generate_questionnaire")
+    def test_generate_with_focus(
+        self,
+        mock_generate: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Focus parameter is passed to generator."""
+        mock_generate.return_value = tmp_path / "q.md"
+
         spec = tmp_path / "spec.md"
-        spec.write_text("# API Spec")
+        spec.write_text("# Spec")
 
-        result = runner.invoke(app, ["interview", str(spec), "--focus", "error handling"])
+        result = runner.invoke(app, ["interview", "generate", str(spec), "--focus", "security"])
 
         assert result.exit_code == 0
-        assert "error handling" in result.output
+        call_kwargs = mock_generate.call_args.kwargs
+        assert call_kwargs["focus"] == "security"
 
-    def test_interview_dry_run(self, tmp_path: Path) -> None:
+    def test_generate_dry_run(self, tmp_path: Path) -> None:
         """Dry run shows what would happen."""
         spec = tmp_path / "spec.md"
         spec.write_text("# Spec")
 
-        result = runner.invoke(app, ["--dry-run", "interview", str(spec)])
+        result = runner.invoke(app, ["--dry-run", "interview", "generate", str(spec)])
 
         assert result.exit_code == 0
         assert "DRY RUN" in result.output
 
-    @patch("weld.commands.interview.get_repo_root")
-    def test_interview_outside_git_repo(
+    @patch("weld.commands.interview.generate_questionnaire")
+    def test_generate_claude_error(
         self,
-        mock_repo_root: MagicMock,
+        mock_generate: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Works outside git repo without tracking."""
-        from weld.services import GitError
+        """Handles ClaudeError with exit code 21."""
+        from weld.services import ClaudeError
 
-        mock_repo_root.side_effect = GitError("Not a git repo")
+        mock_generate.side_effect = ClaudeError("Claude failed")
 
         spec = tmp_path / "spec.md"
         spec.write_text("# Spec")
 
-        result = runner.invoke(app, ["interview", str(spec)])
+        result = runner.invoke(app, ["interview", "generate", str(spec)])
 
-        # Should still work (tracking disabled)
-        assert result.exit_code == 0
-        assert "# Spec" in result.output
+        assert result.exit_code == 21
 
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_modified_shows_message(
+    @patch("weld.commands.interview.apply_questionnaire")
+    def test_apply_updates_spec(
         self,
-        mock_loop: MagicMock,
+        mock_apply: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Shows 'Document updated' when modified."""
-        mock_loop.return_value = True
+        """Apply command updates the spec."""
+        mock_apply.return_value = True
 
-        spec = tmp_path / "spec.md"
-        spec.write_text("# Spec")
+        questionnaire = tmp_path / "questionnaire.md"
+        questionnaire.write_text("# Questionnaire")
 
-        result = runner.invoke(app, ["interview", str(spec)])
+        result = runner.invoke(app, ["interview", "apply", str(questionnaire)])
 
         assert result.exit_code == 0
-        assert "document updated" in result.output.lower()
+        assert "updated" in result.output.lower()
+        mock_apply.assert_called_once()
 
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_not_modified_shows_message(
+    @patch("weld.commands.interview.apply_questionnaire")
+    def test_apply_no_changes(
         self,
-        mock_loop: MagicMock,
+        mock_apply: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Shows 'No changes made' when not modified."""
-        mock_loop.return_value = False
+        """Apply command shows message when no changes made."""
+        mock_apply.return_value = False
 
-        spec = tmp_path / "spec.md"
-        spec.write_text("# Spec")
+        questionnaire = tmp_path / "questionnaire.md"
+        questionnaire.write_text("# Questionnaire")
 
-        result = runner.invoke(app, ["interview", str(spec)])
+        result = runner.invoke(app, ["interview", "apply", str(questionnaire)])
 
         assert result.exit_code == 0
         assert "no changes" in result.output.lower()
 
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_keyboard_interrupt(
-        self,
-        mock_loop: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Handles KeyboardInterrupt gracefully."""
-        mock_loop.side_effect = KeyboardInterrupt()
-
-        spec = tmp_path / "spec.md"
-        spec.write_text("# Spec")
-
-        result = runner.invoke(app, ["interview", str(spec)])
-
-        assert result.exit_code == 0
-        assert "cancelled" in result.output.lower()
-
-    @patch("weld.commands.interview.track_session_activity")
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_with_track_flag(
-        self,
-        mock_loop: MagicMock,
-        mock_track: MagicMock,
-        initialized_weld: Path,
-    ) -> None:
-        """--track flag enables session tracking."""
-        mock_loop.return_value = True
-        # Mock the context manager
-        mock_track.return_value.__enter__ = MagicMock()
-        mock_track.return_value.__exit__ = MagicMock(return_value=False)
-
-        spec = initialized_weld / "spec.md"
-        spec.write_text("# Spec")
-
-        result = runner.invoke(app, ["interview", str(spec), "--track"])
-
-        assert result.exit_code == 0
-        mock_track.assert_called_once()
-
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_without_track_flag(
-        self,
-        mock_loop: MagicMock,
-        initialized_weld: Path,
-    ) -> None:
-        """Without --track flag, no session tracking."""
-        mock_loop.return_value = True
-
-        spec = initialized_weld / "spec.md"
-        spec.write_text("# Spec")
-
-        result = runner.invoke(app, ["interview", str(spec)])
-
-        assert result.exit_code == 0
-        # run_interview_loop should be called directly, not inside tracking context
-
-    @patch("weld.commands.interview.get_repo_root")
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_track_outside_git(
-        self,
-        mock_loop: MagicMock,
-        mock_repo_root: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """--track flag is ignored when not in git repo."""
-        from weld.services import GitError
-
-        mock_repo_root.side_effect = GitError("Not a git repo")
-        mock_loop.return_value = True
-
-        spec = tmp_path / "spec.md"
-        spec.write_text("# Spec")
-
-        # Should not fail even with --track
-        result = runner.invoke(app, ["interview", str(spec), "--track"])
-
-        assert result.exit_code == 0
-
-    @patch("weld.commands.interview.run_interview_loop")
-    def test_interview_track_without_weld_dir(
-        self,
-        mock_loop: MagicMock,
-        temp_git_repo: Path,
-    ) -> None:
-        """--track flag is ignored when .weld/ doesn't exist."""
-        mock_loop.return_value = True
-
-        spec = temp_git_repo / "spec.md"
-        spec.write_text("# Spec")
-
-        # Should not fail - tracking skipped when no .weld dir
-        result = runner.invoke(app, ["interview", str(spec), "--track"])
-
-        assert result.exit_code == 0
+    def test_apply_file_not_found(self, tmp_path: Path) -> None:
+        """Apply fails when questionnaire not found."""
+        result = runner.invoke(app, ["interview", "apply", str(tmp_path / "nonexistent.md")])
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
