@@ -2,8 +2,6 @@
 
 ## Planned Features
 
-- Add prompts personalization capability
-- Add command for the user to see the content of each prompt for all commands
 - Add autocomplete support for commands and arguments
 - Add --ai flag to select AI model for tasks
 
@@ -13,5 +11,7 @@
 
 ## Completed
 
+- Prompt customization system via `[prompts]` config section (v0.11.0)
+- `weld prompt` command to list, show, and export prompt templates (v0.11.0)
 - Refine Telegram integration
 <!-- Move completed features here with version/date -->
