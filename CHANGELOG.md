@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shell completion support for task type arguments in CLI commands
+
+### Added
 - `run_claude_interactive` service function for fully interactive Claude sessions
 
 ### Added

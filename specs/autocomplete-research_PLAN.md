@@ -20,7 +20,7 @@ Create the core completion functions module with static completions for TaskType
 .venv/bin/python -c "from weld.completions import complete_task_type, complete_export_format; print('OK')"
 ```
 
-### Step 1: Create completions.py with TaskType completion
+### Step 1: Create completions.py with TaskType completion **COMPLETE**
 
 #### Goal
 Create the new `src/weld/completions.py` module with the `complete_task_type` function that returns matching TaskType enum values.
