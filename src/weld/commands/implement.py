@@ -21,7 +21,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from simple_term_menu import TerminalMenu
 
-from ..completions import complete_markdown_file, complete_step_number
+from ..completions import complete_markdown_file, complete_phase_number, complete_step_number
 from ..config import TaskType, WeldConfig, load_config
 from ..core import (
     apply_customization,
@@ -102,6 +102,7 @@ def implement(
             "--phase",
             "-p",
             help="Phase number to implement non-interactively (all steps sequentially)",
+            autocompletion=complete_phase_number,
         ),
     ] = None,
     quiet: Annotated[

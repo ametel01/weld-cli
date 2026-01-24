@@ -169,7 +169,7 @@ Add `autocompletion=complete_step_number` to the `--step` option in `src/weld/co
 
 ---
 
-### Step 8: Add completion to implement command --phase option
+### Step 8: Add completion to implement command --phase option **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_phase_number` to the `--phase` option in `src/weld/commands/implement.py`.
