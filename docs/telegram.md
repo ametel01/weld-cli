@@ -6,9 +6,9 @@ Remote weld interaction via Telegram. Run weld commands on registered projects f
 
 The Telegram bot provides remote access to weld functionality:
 
-- Execute weld commands on your projects remotely
+- Execute weld commands on your projects remotely (including `/weld <subcommand>`)
 - Rate-limited status updates with output tails
-- File transfers (upload/download) with path validation
+- File transfers (upload/download) with path validation and optional auto-upload handling
 - Per-chat queue system for command ordering
 - Allowlist-based user authentication (supports multiple users)
 
@@ -18,6 +18,8 @@ The Telegram bot provides remote access to weld functionality:
 |------|----------|-------------|
 | **Telegram account** | Yes | For bot interaction |
 | **Bot token** | Yes | Create via [@BotFather](https://t.me/botfather) |
+| **GitHub CLI (`gh`)** | Optional | Required only for `/fetch` fallback to GitHub Gist |
+| **Git** | Optional | Required for `/tree`, `/find`, and `/grep` (respects `.gitignore`) |
 
 ## Quick Start
 
@@ -191,6 +193,18 @@ Once the bot is running, use these commands in Telegram:
 |---------|-------------|
 | `/status` | Show current run, queue status, and recent history |
 | `/cancel` | Cancel active run and clear pending queue |
+| `/runs [--failed] [--today] [n]` | List recent runs (default 10, max 50) |
+| `/logs <run_id> [page\|all]` | Show paginated logs or download full log |
+| `/tail <run_id\|stop>` | Stream live output from a running run |
+| `/status <run_id>` | Show detailed status for a specific run |
+
+Details:
+- `/status` shows the current project, active run (if any), queue size, pending commands, and the last three terminal runs.
+- `/cancel` marks running and pending runs as cancelled and clears the per-chat queue.
+- `/runs` supports `--failed`, `--today`, and a numeric limit (capped at 50).
+- `/logs <run_id> all` sends the full log as a file when output is large.
+- `/tail` allows one active tail per user; use `/tail stop` to stop streaming.
+- `/status <run_id>` includes timestamps, duration, and a truncated result or error.
 
 ### Weld Commands
 
@@ -201,6 +215,36 @@ Once the bot is running, use these commands in Telegram:
 | `/interview [spec.md]` | Interactive spec refinement |
 | `/implement <plan.md>` | Execute plan steps |
 | `/commit [-m msg]` | Commit changes with transcripts |
+| `/weld <subcommand> [args]` | Run any weld subcommand (with safety checks) |
+
+Notes:
+- `/weld` blocks unsafe subcommands like `telegram`.
+- When replying to a document message, `/weld` (and the dedicated weld commands above) will auto-inject the uploaded file path as the first argument.
+
+### Project Navigation
+
+| Command | Description |
+|---------|-------------|
+| `/ls [path] [--all]` | List directory contents (default project root) |
+| `/tree [path] [depth]` | Show directory tree (depth 1–10, default 3) |
+| `/cat <path>` | View file contents with syntax highlighting and pagination |
+| `/head <path> [lines]` | View first N lines (default 20) |
+
+Notes:
+- `/cat` and `/head` only display text files from the allowlist; binary files must be downloaded via `/fetch`.
+- `/tree` respects `.gitignore` by using `git ls-files`; it requires Git and a repo in the project.
+- `/cat` pagination state expires after 5 minutes of inactivity.
+
+### Search
+
+| Command | Description |
+|---------|-------------|
+| `/find <glob>` | Find files by glob pattern (limit 50) |
+| `/grep <pattern> [path]` | Regex search in files (limit 50) |
+
+Notes:
+- `/find` and `/grep` respect `.gitignore` via `git ls-files` and require Git.
+- `/grep` skips binary files and truncates long matched lines.
 
 ### File Transfer
 
@@ -208,10 +252,28 @@ Once the bot is running, use these commands in Telegram:
 |---------|-------------|
 | `/fetch <path>` | Download file from project |
 | `/push <path>` | Upload file (reply to a document message) |
+| `/file <path> <content>` | Create/overwrite a file from inline content (max 4KB) |
 
 Notes:
 - `/push` must be sent as a reply to a document message.
 - `/fetch` uses GitHub Gist as a fallback only for large text files and requires the `gh` CLI with `gh auth login`.
+- `/fetch` rejects directories and only allows paths within registered projects (absolute or relative).
+- `/push` creates parent directories as needed and overwrites existing files.
+- `/file` writes UTF-8 text, creates parent directories, and warns when overwriting.
+
+### File Uploads (Automatic)
+
+If you send a document without replying to `/push`, the bot automatically stores it under:
+
+```
+.weld/telegram/uploads/<sanitized-filename>
+```
+
+Notes:
+- Allowed extensions are a small safe allowlist (e.g., `.md`, `.txt`, `.json`, `.yaml`, `.toml`, `.py`, `.js`, `.ts`, `.sh`).
+- Filename conflicts are resolved with numeric suffixes (e.g., `spec.1.md`).
+- You can reply to that document with `/weld`, `/plan`, `/interview`, `/implement`, or `/commit` and the bot will auto-inject the uploaded file path.
+- Uploads are limited to 50MB (Telegram bot download limit).
 
 ## Usage Examples
 
@@ -361,6 +423,13 @@ Commands that require user input (like `weld commit` session selection) display 
 ### Large File Handling
 
 For files larger than 50MB, `/fetch` falls back to uploading the file to GitHub Gist (text files only) and returns the gist URL instead of the file directly. This requires the `gh` CLI to be installed and authenticated; binary files are rejected.
+
+## Operational Limits
+
+- Queue size: 100 pending runs per chat
+- Command timeout: 10 minutes (SIGTERM then SIGKILL after 5s)
+- Status output buffer: last 3000 bytes stored; status preview shows the last 500 characters
+- Message edits: rate-limited to one edit every 2 seconds
 
 ## Troubleshooting
 
