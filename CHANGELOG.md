@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shell completion for markdown file arguments in `weld research`, `weld plan`, and `weld interview generate` commands
+
+### Added
 - Shell completion for `weld research` input file argument
 
 ### Added

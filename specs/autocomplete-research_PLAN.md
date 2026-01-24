@@ -277,7 +277,7 @@ Add `autocompletion=complete_markdown_file` to the `file` argument in `src/weld/
 
 ---
 
-### Step 14: Add completion to interview apply command questionnaire argument
+### Step 14: Add completion to interview apply command questionnaire argument **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_markdown_file` to the `questionnaire` argument in `src/weld/commands/interview.py` apply function.

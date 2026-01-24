@@ -107,7 +107,10 @@ def generate(
 def apply(
     questionnaire: Annotated[
         Path,
-        typer.Argument(help="Completed questionnaire file with marked answers"),
+        typer.Argument(
+            help="Completed questionnaire file with marked answers",
+            autocompletion=complete_markdown_file,
+        ),
     ],
     track: Annotated[
         bool,
