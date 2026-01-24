@@ -1,12 +1,17 @@
 """SQLite state store for Telegram bot persistence."""
 
+from __future__ import annotations
+
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import aiosqlite
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from weld.telegram.config import TelegramConfig
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +199,7 @@ class StateStore:
             await self._conn.close()
             self._conn = None
 
-    async def __aenter__(self) -> "StateStore":
+    async def __aenter__(self) -> StateStore:
         """Async context manager entry."""
         await self.init()
         return self
@@ -643,3 +648,113 @@ class StateStore:
         if count > 0:
             logger.info(f"Pruned {count} old run(s)")
         return count
+
+    async def sync_projects_from_config(self, config: TelegramConfig) -> dict[str, int]:
+        """Sync projects from TelegramConfig to the projects table.
+
+        This method should be called on bot startup to ensure the database
+        reflects the current config. Config is the source of truth for
+        project definitions, but runtime state (last_accessed_at) is preserved.
+
+        Behavior:
+        - Projects in config but not in DB are added
+        - Projects in both are updated (path, description) while preserving last_accessed_at
+        - Projects in DB but not in config are removed, unless they have active runs
+
+        Args:
+            config: TelegramConfig containing project definitions
+
+        Returns:
+            Dict with counts: {"added": N, "updated": N, "removed": N, "skipped": N}
+
+        Raises:
+            RuntimeError: If database not initialized
+            ValueError: If a project path cannot be resolved
+        """
+        if self._conn is None:
+            raise RuntimeError("Database not initialized")
+
+        result = {"added": 0, "updated": 0, "removed": 0, "skipped": 0}
+
+        # Build set of project names from config
+        config_project_names = {p.name for p in config.projects}
+
+        # Get current projects from DB
+        db_projects = await self.list_projects()
+        db_project_names = {p.name for p in db_projects}
+
+        # Add or update projects from config
+        for config_project in config.projects:
+            try:
+                # Resolve path to ensure it's valid and absolute
+                resolved_path = config_project.path.resolve()
+                path_str = str(resolved_path)
+            except (OSError, RuntimeError) as e:
+                raise ValueError(
+                    f"Cannot resolve path for project '{config_project.name}': {e}"
+                ) from e
+
+            if config_project.name in db_project_names:
+                # Update existing project, preserving last_accessed_at
+                existing = await self.get_project(config_project.name)
+                if existing:
+                    project = Project(
+                        name=config_project.name,
+                        path=path_str,
+                        description=config_project.description,
+                        last_accessed_at=existing.last_accessed_at,
+                        created_at=existing.created_at,
+                    )
+                    await self.upsert_project(project)
+                    result["updated"] += 1
+                    logger.debug(f"Updated project '{config_project.name}'")
+            else:
+                # Add new project
+                project = Project(
+                    name=config_project.name,
+                    path=path_str,
+                    description=config_project.description,
+                )
+                await self.upsert_project(project)
+                result["added"] += 1
+                logger.info(f"Added project '{config_project.name}' from config")
+
+        # Remove projects not in config (unless they have active runs)
+        for db_project in db_projects:
+            if db_project.name not in config_project_names:
+                # Check for active runs before deleting
+                active_runs = await self._count_active_runs_for_project(db_project.name)
+                if active_runs > 0:
+                    logger.warning(
+                        f"Skipping removal of project '{db_project.name}': "
+                        f"{active_runs} active run(s)"
+                    )
+                    result["skipped"] += 1
+                else:
+                    await self.delete_project(db_project.name)
+                    result["removed"] += 1
+                    logger.info(f"Removed project '{db_project.name}' (not in config)")
+
+        return result
+
+    async def _count_active_runs_for_project(self, project_name: str) -> int:
+        """Count running or pending runs for a project.
+
+        Args:
+            project_name: Project name to check
+
+        Returns:
+            Number of active (running/pending) runs
+        """
+        if self._conn is None:
+            raise RuntimeError("Database not initialized")
+
+        async with self._conn.execute(
+            """
+            SELECT COUNT(*) as count FROM runs
+            WHERE project_name = ? AND status IN ('running', 'pending')
+            """,
+            (project_name,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row["count"] if row else 0

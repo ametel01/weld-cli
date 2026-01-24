@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Project sync method for Telegram bot to synchronize config projects with database on startup
+
+### Added
 - Telegram bot: runs table pruning to limit stored runs per user
 
 ### Changed

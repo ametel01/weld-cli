@@ -58,7 +58,7 @@ grep -q "prune_old_runs" src/weld/telegram/state.py && echo "OK"
 
 ---
 
-### Step 3: Add project sync method to StateStore
+### Step 3: Add project sync method to StateStore **COMPLETE**
 
 #### Goal
 Create `sync_projects_from_config()` method to sync projects from TelegramConfig to the projects table on startup.
@@ -78,7 +78,7 @@ grep -q "sync_projects_from_config" src/weld/telegram/state.py && echo "OK"
 
 ---
 
-### Step 4: Call housekeeping methods in serve command startup
+### Step 4: Call housekeeping methods in serve command startup **COMPLETE**
 
 #### Goal
 Integrate the three housekeeping methods into `_run_bot()` startup sequence: sync projects, mark orphaned runs, prune runs.

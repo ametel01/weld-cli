@@ -787,6 +787,11 @@ async def _run_bot(config: "TelegramConfig") -> None:
     state_store = StateStore()
     await state_store.init()
 
+    # Run housekeeping tasks on startup
+    await state_store.sync_projects_from_config(config)
+    await state_store.mark_orphaned_runs_failed()
+    await state_store.prune_old_runs()
+
     queue_manager: QueueManager[int] = QueueManager()
 
     # Auth middleware - check user is allowed before processing any message
