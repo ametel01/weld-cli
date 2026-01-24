@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from ..completions import complete_markdown_file
 from ..config import load_config
 from ..core import (
     apply_customization,
@@ -97,7 +98,10 @@ and line numbers where applicable.
 
 
 def research(
-    input_file: Annotated[Path, typer.Argument(help="Specification markdown file")],
+    input_file: Annotated[
+        Path,
+        typer.Argument(help="Specification markdown file", autocompletion=complete_markdown_file),
+    ],
     output: Annotated[
         Path | None,
         typer.Option("--output", "-o", help="Output path for research"),

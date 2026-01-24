@@ -10,6 +10,7 @@ from typing import Annotated
 
 import typer
 
+from ..completions import complete_markdown_file
 from ..config import load_config
 from ..core import get_weld_dir, validate_input_file
 from ..core.interview_engine import apply_questionnaire, generate_questionnaire
@@ -27,7 +28,10 @@ interview_app = typer.Typer(
 def generate(
     file: Annotated[
         Path,
-        typer.Argument(help="Markdown file to generate questionnaire for"),
+        typer.Argument(
+            help="Markdown file to generate questionnaire for",
+            autocompletion=complete_markdown_file,
+        ),
     ],
     focus: Annotated[
         str | None,

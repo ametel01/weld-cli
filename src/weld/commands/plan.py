@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 
+from ..completions import complete_markdown_file
 from ..config import TaskType, load_config
 from ..core import (
     apply_customization,
@@ -221,7 +222,9 @@ Output ONLY the structured plan now. Begin with `## Phase 1:`
 def plan(
     input_files: Annotated[
         list[Path],
-        typer.Argument(help="Specification markdown file(s)"),
+        typer.Argument(
+            help="Specification markdown file(s)", autocompletion=complete_markdown_file
+        ),
     ],
     output: Annotated[
         Path | None,

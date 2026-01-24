@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shell completion for `weld research` input file argument
+
+### Added
 - Shell completion for `weld prompt export --format` option
 
 ### Added

@@ -223,7 +223,7 @@ Add `autocompletion=complete_export_format` to the `--format` option in `src/wel
 
 ---
 
-### Step 11: Add completion to research command input_file argument
+### Step 11: Add completion to research command input_file argument **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_markdown_file` to the `input_file` argument in `src/weld/commands/research.py`.
@@ -241,7 +241,7 @@ Add `autocompletion=complete_markdown_file` to the `input_file` argument in `src
 
 ---
 
-### Step 12: Add completion to plan command input_file argument
+### Step 12: Add completion to plan command input_file argument **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_markdown_file` to the `input_file` argument in `src/weld/commands/plan.py`.
@@ -259,7 +259,7 @@ Add `autocompletion=complete_markdown_file` to the `input_file` argument in `src
 
 ---
 
-### Step 13: Add completion to interview generate command file argument
+### Step 13: Add completion to interview generate command file argument **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_markdown_file` to the `file` argument in `src/weld/commands/interview.py` generate function.
