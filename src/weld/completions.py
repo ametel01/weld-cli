@@ -111,3 +111,32 @@ def complete_markdown_file(incomplete: str) -> list[str]:
 
     # Sort alphabetically and cap at max_results
     return sorted(results)[:max_results]
+
+
+def complete_step_number(incomplete: str) -> list[str]:
+    """Return step numbers that start with the given prefix.
+
+    Used for shell completion of step number arguments in CLI commands.
+    Returns static step numbers 1.1-3.3 as fallback suggestions when
+    dynamic plan parsing is not available.
+
+    Args:
+        incomplete: The partial string typed by the user
+
+    Returns:
+        List of matching step numbers in format "X.Y"
+    """
+    # Static fallback step numbers covering 3 phases with 3 steps each
+    step_numbers = [
+        "1.1",
+        "1.2",
+        "1.3",
+        "2.1",
+        "2.2",
+        "2.3",
+        "3.1",
+        "3.2",
+        "3.3",
+    ]
+
+    return [s for s in step_numbers if s.startswith(incomplete)]
