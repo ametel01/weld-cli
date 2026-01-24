@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Prompt customization examples in generated config template
+
+### Added
 - Prompt customization configuration support in WeldConfig
 
 ### Added

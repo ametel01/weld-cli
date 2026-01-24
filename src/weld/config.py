@@ -388,4 +388,24 @@ def write_config_template(weld_dir: Path) -> Path:
     }
     with open(config_path, "wb") as f:
         tomli_w.dump(template, f)
+
+    # Append commented prompts section as documentation
+    # (tomli_w doesn't support comments, so we append manually)
+    prompts_section = """
+# Prompt customization: add context to AI prompts
+# Global defaults apply to all prompts; per-task settings override them
+#
+# [prompts.default]
+# prefix = "This is a Python project using FastAPI and SQLAlchemy."
+# suffix = "Follow PEP 8 and include type hints."
+#
+# [prompts.research]
+# prefix = "Focus on security implications."
+# default_focus = "authentication"
+#
+# [prompts.plan_generation]
+# suffix = "Break into small, testable steps."
+"""
+    with open(config_path, "a") as f:
+        f.write(prompts_section)
     return config_path

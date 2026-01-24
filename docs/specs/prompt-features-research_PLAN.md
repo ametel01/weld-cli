@@ -14,7 +14,7 @@
 Let me also verify a few more details about the implement command and config.py line numbers.
 The write_config_template is at line 275 as stated. Now I can produce the corrected document.
 
-## Phase 1: Configuration Infrastructure
+## Phase 1: Configuration Infrastructure **COMPLETE**
 
 Add prompt customization configuration models to support per-task prefix/suffix and default focus.
 
@@ -80,7 +80,7 @@ Add prompts field to WeldConfig using the established Field(default_factory=...)
 
 ---
 
-### Step 4: Update config template with prompts section
+### Step 4: Update config template with prompts section **COMPLETE**
 
 #### Goal
 Add commented prompts section to write_config_template so new weld init includes prompt customization examples.
@@ -99,7 +99,7 @@ Add commented prompts section to write_config_template so new weld init includes
 
 ---
 
-### Step 5: Add unit tests for prompt config models
+### Step 5: Add unit tests for prompt config models **COMPLETE**
 
 #### Goal
 Verify PromptCustomization, PromptsConfig, and WeldConfig integration work correctly with defaults and custom values.
@@ -127,7 +127,7 @@ Create the core utility for applying prompt customizations with proper ordering 
 .venv/bin/pytest tests/test_prompt_customizer.py -v && make typecheck
 ```
 
-### Step 1: Create prompt_customizer module structure
+### Step 1: Create prompt_customizer module structure **COMPLETE**
 
 #### Goal
 Create the prompt_customizer.py module in core/ with apply_customization and get_default_focus functions.
