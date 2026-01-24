@@ -61,7 +61,7 @@ Define the container config for all prompt customizations with global and per-ta
 
 ---
 
-### Step 3: Integrate PromptsConfig into WeldConfig
+### Step 3: Integrate PromptsConfig into WeldConfig **COMPLETE**
 
 #### Goal
 Add prompts field to WeldConfig using the established Field(default_factory=...) pattern.

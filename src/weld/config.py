@@ -221,6 +221,7 @@ class WeldConfig(BaseModel):
     loop: LoopConfig = Field(default_factory=LoopConfig)
     task_models: TaskModelsConfig = Field(default_factory=TaskModelsConfig)
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
+    prompts: PromptsConfig = Field(default_factory=PromptsConfig)
 
     def get_task_model(self, task: TaskType) -> ModelConfig:
         """Get effective model config for a task.
