@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `run_claude_interactive` function for terminal-connected Claude sessions
+
+### Changed
+- `weld interview` overhauled to use two-step questionnaire workflow
+  - `weld interview generate <spec.md>` - generates questionnaire with multiple-choice questions
+  - `weld interview apply <questionnaire.md>` - applies user's answers to update spec
+  - Questionnaires saved to `.weld/interviews/` with timestamped filenames
+  - Users mark answers with `[x]` in markdown checkboxes before applying
+  - Replaces previous interactive session approach which had terminal compatibility issues
+
 ## [0.11.1] - 2026-01-24
 
 ### Changed
