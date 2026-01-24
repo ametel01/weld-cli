@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-01-24
+
+### Changed
+- `weld interview` overhauled to use two-step questionnaire workflow
+  - `weld interview generate <spec.md>` - generates questionnaire with multiple-choice questions
+  - `weld interview apply <questionnaire.md>` - applies user's answers to update spec
+  - Questionnaires saved to `.weld/interviews/` with timestamped filenames
+  - Users mark answers with `[x]` in markdown checkboxes before applying
+  - Replaces previous interactive session approach which had terminal compatibility issues
+
 ## [0.11.0] - 2026-01-24
 
 ### Added
@@ -465,7 +475,9 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/ametel01/weld-cli/compare/v0.11.0...v0.11.1
+[0.11.0]: https://github.com/ametel01/weld-cli/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ametel01/weld-cli/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/ametel01/weld-cli/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ametel01/weld-cli/compare/v0.8.0...v0.9.0

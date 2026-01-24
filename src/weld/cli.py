@@ -15,7 +15,7 @@ from .commands.doc_review import doc_review
 from .commands.doctor import doctor
 from .commands.implement import implement
 from .commands.init import init
-from .commands.interview import interview
+from .commands.interview import interview_app
 from .commands.plan import plan
 from .commands.prompt import prompt_app
 from .commands.research import research
@@ -39,6 +39,7 @@ app = typer.Typer(
 
 # Sub-command groups
 app.add_typer(discover_app, name="discover")
+app.add_typer(interview_app, name="interview")
 app.add_typer(prompt_app, name="prompt")
 app.add_typer(telegram_app, name="telegram")
 
@@ -128,7 +129,6 @@ def main(
 app.command()(init)
 app.command()(commit)
 app.command()(implement)
-app.command()(interview)
 app.command()(doctor)
 app.command()(plan)
 app.command()(research)
