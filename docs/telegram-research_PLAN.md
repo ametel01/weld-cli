@@ -38,7 +38,7 @@ grep -q "mark_orphaned_runs_failed" src/weld/telegram/state.py && echo "OK"
 
 ---
 
-### Step 2: Add runs table pruning method to StateStore
+### Step 2: Add runs table pruning method to StateStore **COMPLETE**
 
 #### Goal
 Create `prune_old_runs()` method in StateStore to keep only the last 100 runs per user, deleting oldest entries.

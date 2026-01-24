@@ -603,3 +603,43 @@ class StateStore:
         if count > 0:
             logger.info(f"Marked {count} orphaned run(s) as failed")
         return count
+
+    async def prune_old_runs(self, keep_per_user: int = 100) -> int:
+        """Prune old runs, keeping only the most recent per user.
+
+        Deletes the oldest runs for each user, retaining only the
+        specified number of most recent runs per user.
+
+        Args:
+            keep_per_user: Number of runs to keep per user (default 100)
+
+        Returns:
+            Number of runs deleted
+        """
+        if self._conn is None:
+            raise RuntimeError("Database not initialized")
+
+        # Use a subquery with ROW_NUMBER to identify runs to keep per user
+        # Delete all runs not in the set of runs to keep
+        cursor = await self._conn.execute(
+            """
+            DELETE FROM runs
+            WHERE id NOT IN (
+                SELECT id FROM (
+                    SELECT id, ROW_NUMBER() OVER (
+                        PARTITION BY user_id
+                        ORDER BY id DESC
+                    ) AS rn
+                    FROM runs
+                )
+                WHERE rn <= ?
+            )
+            """,
+            (keep_per_user,),
+        )
+        await self._conn.commit()
+
+        count = cursor.rowcount
+        if count > 0:
+            logger.info(f"Pruned {count} old run(s)")
+        return count

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Telegram bot: runs table pruning to limit stored runs per user
+
 ### Changed
 - `weld plan` default output now saves to same directory as input file with `_PLAN.md` suffix
   - Example: `weld plan /path/to/SPEC.md` → `/path/to/SPEC_PLAN.md`
