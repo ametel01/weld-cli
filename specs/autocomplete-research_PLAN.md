@@ -151,7 +151,7 @@ Add `autocompletion=complete_markdown_file` to the `plan_file` argument in `src/
 
 ---
 
-### Step 7: Add completion to implement command --step option
+### Step 7: Add completion to implement command --step option **COMPLETE**
 
 #### Goal
 Add `autocompletion=complete_step_number` to the `--step` option in `src/weld/commands/implement.py`.

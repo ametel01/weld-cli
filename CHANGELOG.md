@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shell completion for `weld implement --step` option
+
+### Added
 - Shell autocompletion for plan file argument in `weld implement` command
 
 ### Added
