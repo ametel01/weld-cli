@@ -295,7 +295,7 @@ Add `autocompletion=complete_markdown_file` to the `questionnaire` argument in `
 
 ---
 
-## Phase 4: Unit Tests for Completion Functions
+## Phase 4: Unit Tests for Completion Functions **COMPLETE**
 
 Add comprehensive unit tests for all completion functions with mocked filesystem access.
 
@@ -323,7 +323,7 @@ Create `tests/test_completions.py` with unit tests for `complete_task_type` and 
 
 ---
 
-### Step 16: Add tests for markdown file completion
+### Step 16: Add tests for markdown file completion **COMPLETE**
 
 #### Goal
 Add tests for `complete_markdown_file` function with mocked `pathlib.Path.glob` to verify path-following behavior, prefix filtering, and 20-result cap.
@@ -342,7 +342,7 @@ Add tests for `complete_markdown_file` function with mocked `pathlib.Path.glob` 
 
 ---
 
-### Step 17: Add tests for step and phase completion
+### Step 17: Add tests for step and phase completion **COMPLETE**
 
 #### Goal
 Add tests for `complete_step_number` and `complete_phase_number` functions verifying static fallback values and prefix filtering.
@@ -360,7 +360,7 @@ Add tests for `complete_step_number` and `complete_phase_number` functions verif
 
 ---
 
-## Phase 5: CLI Integration Tests
+## Phase 5: CLI Integration Tests **COMPLETE**
 
 Add integration tests verifying completion infrastructure is available in the CLI.
 
@@ -369,7 +369,7 @@ Add integration tests verifying completion infrastructure is available in the CL
 make test-cli
 ```
 
-### Step 18: Add CLI test for --install-completion flag
+### Step 18: Add CLI test for --install-completion flag **COMPLETE**
 
 #### Goal
 Add test in `tests/test_cli.py` verifying that `weld --help` shows `--install-completion` option.
@@ -387,7 +387,7 @@ Add test in `tests/test_cli.py` verifying that `weld --help` shows `--install-co
 
 ---
 
-## Phase 6: Documentation
+## Phase 6: Documentation **COMPLETE**
 
 Create comprehensive shell completion documentation for users.
 
@@ -396,7 +396,7 @@ Create comprehensive shell completion documentation for users.
 test -f docs/shell-completion.md && echo "OK"
 ```
 
-### Step 19: Create shell completion documentation
+### Step 19: Create shell completion documentation **COMPLETE**
 
 #### Goal
 Create `docs/shell-completion.md` with installation instructions for bash, zsh, fish, and PowerShell, plus troubleshooting section.
@@ -415,7 +415,7 @@ grep -q "install-completion" docs/shell-completion.md && echo "OK"
 
 ---
 
-### Step 20: Update installation documentation with completion reference
+### Step 20: Update installation documentation with completion reference **COMPLETE**
 
 #### Goal
 Add a brief mention of shell completion with link to `shell-completion.md` in `docs/installation.md`.

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shell completion documentation with installation guides for all major shells
+
+### Added
 - Automatic shell completion installation on first run for bash, zsh, and fish
 
 ### Added

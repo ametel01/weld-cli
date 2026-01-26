@@ -49,6 +49,12 @@ This validates:
 
 Note: `weld doctor` checks if tools are in PATH. For `gh`, run `gh auth login` separately to enable transcript uploads.
 
+## Shell Completion
+
+Shell completions are **installed automatically** on first run for bash, zsh, and fish. Just restart your shell after the first `weld` command.
+
+For PowerShell or manual installation options, see [Shell Completion](shell-completion.md).
+
 ## Install from Source
 
 For contributing to weld or running the latest unreleased code:

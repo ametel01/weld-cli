@@ -49,6 +49,12 @@ class TestHelpCommand:
         assert result.exit_code == 2
         assert "Usage:" in result.stdout
 
+    def test_help_shows_install_completion_option(self, runner: CliRunner) -> None:
+        """--help should show --install-completion option for shell completion."""
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "--install-completion" in result.stdout
+
 
 class TestGlobalOptions:
     """Tests for global CLI options."""
