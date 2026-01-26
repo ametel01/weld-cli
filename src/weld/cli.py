@@ -120,6 +120,16 @@ def main(
     ctx = OutputContext(console=output_console, json_mode=json_output, dry_run=dry_run)
     set_output_context(ctx)
 
+    # Auto-install completions on first run (non-blocking)
+    try:
+        from .completions import auto_install_completion
+
+        _, message = auto_install_completion()
+        if message:  # Only print on first install
+            typer.echo(message, err=True)
+    except Exception:
+        pass  # Never fail CLI due to completion issues
+
 
 # ============================================================================
 # Register commands from commands/ package

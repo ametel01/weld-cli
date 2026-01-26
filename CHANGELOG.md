@@ -8,42 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Automatic shell completion installation on first run for bash, zsh, and fish
+
+### Added
+- Auto-install shell completions on first CLI invocation
+
+### Added
+- Auto-install shell completions on first CLI run for seamless onboarding
+
+### Added
+- Auto-install shell completions on first run for bash, zsh, and fish
+- Shell completion documentation with installation instructions for bash, zsh, fish, and PowerShell
 - Shell completion for questionnaire argument in `weld interview apply` command
-
-### Added
 - Shell completion for markdown file arguments in `weld research`, `weld plan`, and `weld interview generate` commands
-
-### Added
 - Shell completion for `weld research` input file argument
-
-### Added
 - Shell completion for `weld prompt export --format` option
-
-### Added
 - Shell completion for `weld implement --step` option
-
-### Added
 - Shell autocompletion for plan file argument in `weld implement` command
-
-### Added
 - Shell completion for phase number arguments in CLI commands
-
-### Added
 - Shell completion for step numbers in CLI commands
-
-### Added
 - Shell completion for markdown file arguments in CLI commands
-
-### Added
 - Shell completion for export format options in prompt export command
-
-### Added
 - Shell completion support for task type arguments in CLI commands
-
-### Added
 - `run_claude_interactive` service function for fully interactive Claude sessions
-
-### Added
 - `run_claude_interactive` function for terminal-connected Claude sessions
 
 ### Changed
