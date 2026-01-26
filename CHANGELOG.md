@@ -7,45 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-01-26
+
 ### Added
 - Automatic shell completion installation during `make bin-install` for bash, zsh, and fish
-
-### Added
-- Shell completion documentation with installation guides for all major shells
-
-### Added
-- Automatic shell completion installation on first run for bash, zsh, and fish
-
-### Added
-- Auto-install shell completions on first CLI invocation
-
-### Added
 - Auto-install shell completions on first CLI run for seamless onboarding
-
-### Added
-- Auto-install shell completions on first run for bash, zsh, and fish
 - Shell completion documentation with installation instructions for bash, zsh, fish, and PowerShell
-- Shell completion for questionnaire argument in `weld interview apply` command
-- Shell completion for markdown file arguments in `weld research`, `weld plan`, and `weld interview generate` commands
-- Shell completion for `weld research` input file argument
-- Shell completion for `weld prompt export --format` option
-- Shell completion for `weld implement --step` option
-- Shell autocompletion for plan file argument in `weld implement` command
-- Shell completion for phase number arguments in CLI commands
-- Shell completion for step numbers in CLI commands
-- Shell completion for markdown file arguments in CLI commands
-- Shell completion for export format options in prompt export command
-- Shell completion support for task type arguments in CLI commands
+- Shell completion for CLI commands:
+  - `weld interview apply` questionnaire argument
+  - `weld research`, `weld plan`, `weld interview generate` markdown file arguments
+  - `weld prompt export --format` option
+  - `weld implement --step` option and plan file argument
+  - Phase and step number arguments
+  - Task type arguments
 - `run_claude_interactive` service function for fully interactive Claude sessions
-- `run_claude_interactive` function for terminal-connected Claude sessions
-
-### Changed
-- `weld interview` overhauled to use two-step questionnaire workflow
-  - `weld interview generate <spec.md>` - generates questionnaire with multiple-choice questions
-  - `weld interview apply <questionnaire.md>` - applies user's answers to update spec
-  - Questionnaires saved to `.weld/interviews/` with timestamped filenames
-  - Users mark answers with `[x]` in markdown checkboxes before applying
-  - Replaces previous interactive session approach which had terminal compatibility issues
 
 ## [0.11.1] - 2026-01-24
 
@@ -515,7 +490,8 @@ Initial release of the weld CLI, a human-in-the-loop coding harness with transcr
   - Transcript generation: 60 seconds
   - Tool availability checks: 10 seconds
 
-[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/ametel01/weld-cli/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/ametel01/weld-cli/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/ametel01/weld-cli/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/ametel01/weld-cli/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ametel01/weld-cli/compare/v0.9.1...v0.10.0
