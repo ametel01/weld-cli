@@ -43,6 +43,23 @@ def generate_plan_prompt(specs: list[tuple[str, str]]) -> str:
 
     return f"""# Implementation Plan Request
 
+## Why Plans Matter
+
+Planning is the **highest-leverage activity**. A solid plan dramatically constrains
+agent behavior—and constraints produce quality.
+
+A good plan:
+- Lists **exact steps** (not vague intentions)
+- References **concrete files and snippets** (not "the auth module")
+- Specifies **validation after each change** (not "test later")
+- Makes **failure modes obvious** (not hidden surprises)
+
+Bad plans produce dozens of bad lines of code.
+Bad research produces hundreds.
+**Invest the time here.**
+
+---
+
 You MUST output a structured implementation plan following the EXACT format specified below.
 Do NOT output summaries, overviews, or prose. Output ONLY the structured plan.
 

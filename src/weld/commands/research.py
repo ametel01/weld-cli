@@ -55,7 +55,17 @@ Pay particular attention to: {focus}
 
     return f"""# Research Request
 
-You are a senior software architect analyzing a specification for planning.
+You are a senior software architect researching how to implement a specification.
+
+## Core Principles
+
+1. **Read code, not docs** - The codebase is the source of truth. Documentation may be stale.
+2. **Identify authoritative files** - Find the actual implementation, not abstractions.
+3. **Eliminate assumptions** - Verify every claim by reading the code.
+4. **Produce a short artifact** - Be concise. This document guides implementation.
+
+If you don't ground your research in actual code, you will fabricate.
+This mirrors Memento: without verified context, you invent narratives.
 
 ## Specification: {spec_name}
 
@@ -63,37 +73,54 @@ You are a senior software architect analyzing a specification for planning.
 
 ---
 {focus_section}
-## Research Requirements
+## Research Process
 
-Analyze this specification and produce a comprehensive research document
-that will inform the implementation plan.
+Before writing anything, you MUST:
 
-Your research should cover:
+1. **Explore the codebase** - Use your tools to find relevant files
+2. **Read actual implementations** - Don't guess based on file names
+3. **Trace data flows** - Follow how data moves through the system
+4. **Note specific locations** - Record file:line references for everything
 
-### 1. Architecture Analysis
-- Identify existing code patterns to follow
-- Note extension points and integration boundaries
-- Flag potential conflicts with existing systems
+## Research Output
 
-### 2. Dependency Mapping
-- External dependencies required
-- Internal module dependencies
-- Version constraints or compatibility concerns
+Produce a **short, focused research document** covering:
 
-### 3. Risk Assessment
-- Technical risks and mitigation strategies
-- Areas requiring prototyping or spikes
-- Performance or security considerations
+### 1. Authoritative Files
+List the key files that govern this area of the codebase:
+- `path/to/file.py:42-100` - What this section does
+- `path/to/other.py:15` - Entry point for X
 
-### 4. Open Questions
-- Ambiguities in the specification
-- Decisions that need human input
-- Alternative approaches worth considering
+### 2. Existing Patterns
+How similar functionality is implemented:
+- Pattern name and where it's used
+- Code example or reference
+- Why this pattern was chosen (if evident)
+
+### 3. Integration Points
+Where the new code will connect:
+- Entry points to modify
+- Interfaces to implement
+- Data structures to use
+
+### 4. Constraints & Risks
+What could go wrong:
+- Technical constraints discovered in code
+- Potential conflicts with existing systems
+- Areas needing careful implementation
+
+### 5. Open Questions
+Decisions requiring human input:
+- Ambiguities that code doesn't resolve
+- Trade-offs to discuss
+- Alternative approaches found
 
 ## Output Format
 
-Write a markdown document with clear sections. Reference specific files
-and line numbers where applicable.
+- Keep it **short** - aim for 1-2 pages, not 10
+- Every claim must have a **file:line reference**
+- Use bullet points, not prose
+- Mark uncertain items with [VERIFY]
 """
 
 
