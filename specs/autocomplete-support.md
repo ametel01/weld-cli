@@ -2,36 +2,86 @@
 
 ## Overview
 
-Add shell tab-completion support for weld commands, subcommands, arguments, and options. This enables users to discover available commands and arguments faster, reducing friction and typos.
+Add shell tab-completion support for weld commands, subcommands, arguments, and options. Completions should work automatically after installing weld - no separate installation step required.
 
 ## Goals
 
-1. **Command completion**: Complete top-level commands (`weld init`, `weld commit`, `weld implement`)
-2. **Subcommand completion**: Complete nested commands (`weld telegram projects add`, `weld prompt show`)
-3. **Option completion**: Complete flags and options (`--quiet`, `--auto-commit`, `--format`)
-4. **Argument completion**: Provide intelligent completions for command arguments
-5. **Installation support**: Provide commands to install completions for bash, zsh, fish, and PowerShell
+1. **Zero-config completions**: Shell completions work automatically after `uv tool install weld`
+2. **Command completion**: Complete top-level commands (`weld init`, `weld commit`, `weld implement`)
+3. **Subcommand completion**: Complete nested commands (`weld telegram projects add`, `weld prompt show`)
+4. **Option completion**: Complete flags and options (`--quiet`, `--auto-commit`, `--format`)
+5. **Argument completion**: Provide intelligent completions for command arguments
+
+## Zero-Config Completion Strategy
+
+### Option 1: argcomplete (Recommended)
+
+Use `argcomplete` library which provides global Python completion without per-tool setup:
+
+1. Add `argcomplete` as a dependency
+2. Register weld for argcomplete in `pyproject.toml`
+3. Users run `activate-global-python-argcomplete` once (or add to shell rc)
+4. All argcomplete-enabled Python tools get completion automatically
+
+```toml
+# pyproject.toml
+[project.entry-points."argcomplete.completers"]
+weld = "weld.cli:app"
+```
+
+**Pros**: Works for all Python tools at once, industry standard
+**Cons**: Requires one-time global activation
+
+### Option 2: Auto-install on first run
+
+Have `weld` automatically install completions on first invocation:
+
+1. Check if completions are installed (look for completion script in shell rc)
+2. If not, inject completion source line into `~/.bashrc` or `~/.zshrc`
+3. Print message: "Shell completions installed. Restart your shell or run: source ~/.bashrc"
+
+```python
+def ensure_completions_installed():
+    """Auto-install completions on first weld run."""
+    shell = os.environ.get("SHELL", "").split("/")[-1]
+    rc_file = Path.home() / f".{shell}rc"
+
+    marker = "# weld shell completion"
+    if rc_file.exists() and marker in rc_file.read_text():
+        return  # Already installed
+
+    # Generate and append completion script
+    completion_script = generate_completion_script(shell)
+    with rc_file.open("a") as f:
+        f.write(f"\n{marker}\n{completion_script}\n")
+```
+
+**Pros**: Truly zero-config for users
+**Cons**: Modifies user's shell config without explicit permission
+
+### Option 3: Completion via eval (cleanest)
+
+Include completion script in package, users add one line to shell rc:
+
+```bash
+# In ~/.bashrc or ~/.zshrc
+eval "$(weld --completion-script)"
+```
+
+This is how `pipx`, `poetry`, and `starship` do it.
+
+**Pros**: Clean, explicit, no magic
+**Cons**: Requires one manual step
 
 ## Typer Shell Completion
 
-Typer provides built-in shell completion via the `typer.main.get_completion_class()` infrastructure. Typer automatically handles:
+Typer provides built-in shell completion via Click's completion infrastructure. Typer automatically handles:
 
 - Command name completion
 - Option name completion (`--help`, `--version`, etc.)
 - Boolean flag completion
 
-For custom argument completion, Typer uses `shell_complete` callbacks on `typer.Argument()` and `typer.Option()`.
-
-### Installation Mechanism
-
-Typer applications support completion installation via:
-
-```bash
-weld --install-completion [bash|zsh|fish|powershell]
-weld --show-completion [bash|zsh|fish|powershell]
-```
-
-These are added automatically when using `typer.Typer()`.
+For custom argument completion, Typer uses `autocompletion` callbacks on `typer.Argument()` and `typer.Option()`.
 
 ## Implementation Strategy
 

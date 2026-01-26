@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Automatic shell completion installation during `make bin-install` for bash, zsh, and fish
+
+### Added
 - Shell completion documentation with installation guides for all major shells
 
 ### Added

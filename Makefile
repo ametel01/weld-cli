@@ -196,11 +196,38 @@ build: ## Build the package
 	@echo -e "$(GREEN)Build complete! Check dist/$(NC)"
 
 .PHONY: bin-install
-bin-install: ## Install weld globally as a CLI tool (with telegram support)
+bin-install: ## Install weld globally as a CLI tool (with telegram support + shell completions)
 	@echo -e "$(BLUE)Installing weld globally...$(NC)"
 	$(UV) tool uninstall weld 2>/dev/null || true
 	$(UV) tool install --force ".[telegram]"
-	@echo -e "$(GREEN)weld installed! Run 'weld --help' to verify.$(NC)"
+	@echo -e "$(GREEN)weld installed!$(NC)"
+	@# Install shell completions
+	@SHELL_NAME=$$(basename "$$SHELL"); \
+	if [ "$$SHELL_NAME" = "bash" ]; then \
+		RC_FILE=~/.bashrc; \
+	elif [ "$$SHELL_NAME" = "zsh" ]; then \
+		RC_FILE=~/.zshrc; \
+	elif [ "$$SHELL_NAME" = "fish" ]; then \
+		RC_FILE=~/.config/fish/config.fish; \
+	else \
+		echo -e "$(YELLOW)Unknown shell: $$SHELL_NAME. Skipping completion install.$(NC)"; \
+		exit 0; \
+	fi; \
+	MARKER="# weld shell completion"; \
+	if grep -q "$$MARKER" "$$RC_FILE" 2>/dev/null; then \
+		echo -e "$(GREEN)✓ Shell completions already installed in $$RC_FILE$(NC)"; \
+	else \
+		echo -e "$(BLUE)Installing shell completions...$(NC)"; \
+		echo "" >> "$$RC_FILE"; \
+		echo "$$MARKER" >> "$$RC_FILE"; \
+		if [ "$$SHELL_NAME" = "fish" ]; then \
+			weld --show-completion fish >> "$$RC_FILE"; \
+		else \
+			echo 'eval "$$(weld --show-completion '"$$SHELL_NAME"')"' >> "$$RC_FILE"; \
+		fi; \
+		echo -e "$(GREEN)✓ Shell completions added to $$RC_FILE$(NC)"; \
+		echo -e "$(YELLOW)  Run: source $$RC_FILE (or restart your shell)$(NC)"; \
+	fi
 
 .PHONY: bin-uninstall
 bin-uninstall: ## Uninstall weld global CLI tool and clean cache
