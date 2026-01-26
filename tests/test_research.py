@@ -26,29 +26,35 @@ class TestGenerateResearchPrompt:
         prompt = generate_research_prompt("content", "spec.md")
         assert "# Research Request" in prompt
 
-    def test_includes_architecture_analysis(self) -> None:
-        """Prompt includes architecture analysis section."""
+    def test_includes_authoritative_files_section(self) -> None:
+        """Prompt includes authoritative files section."""
         prompt = generate_research_prompt("content", "spec.md")
-        assert "Architecture Analysis" in prompt
-        assert "existing code patterns" in prompt
+        assert "Authoritative Files" in prompt
+        assert "key files" in prompt
 
-    def test_includes_dependency_mapping(self) -> None:
-        """Prompt includes dependency mapping section."""
+    def test_includes_integration_points_section(self) -> None:
+        """Prompt includes integration points section."""
         prompt = generate_research_prompt("content", "spec.md")
-        assert "Dependency Mapping" in prompt
-        assert "External dependencies" in prompt
+        assert "Integration Points" in prompt
+        assert "Entry points" in prompt
 
-    def test_includes_risk_assessment(self) -> None:
-        """Prompt includes risk assessment section."""
+    def test_includes_constraints_risks_section(self) -> None:
+        """Prompt includes constraints and risks section."""
         prompt = generate_research_prompt("content", "spec.md")
-        assert "Risk Assessment" in prompt
-        assert "mitigation strategies" in prompt
+        assert "Constraints & Risks" in prompt
+        assert "Technical constraints" in prompt
 
     def test_includes_open_questions(self) -> None:
         """Prompt includes open questions section."""
         prompt = generate_research_prompt("content", "spec.md")
         assert "Open Questions" in prompt
         assert "Ambiguities" in prompt
+
+    def test_includes_core_principles(self) -> None:
+        """Prompt includes core research principles."""
+        prompt = generate_research_prompt("content", "spec.md")
+        assert "Read code, not docs" in prompt
+        assert "Eliminate assumptions" in prompt
 
     def test_focus_not_included_when_none(self) -> None:
         """Prompt does not include focus section when focus is None."""
@@ -61,12 +67,12 @@ class TestGenerateResearchPrompt:
         assert "## Focus Areas" in prompt
         assert "security and authentication" in prompt
 
-    def test_focus_appears_before_research_requirements(self) -> None:
-        """Focus section appears before Research Requirements."""
+    def test_focus_appears_before_research_output(self) -> None:
+        """Focus section appears before Research Output."""
         prompt = generate_research_prompt("content", "spec.md", focus="database design")
         focus_pos = prompt.find("Focus Areas")
-        requirements_pos = prompt.find("Research Requirements")
-        assert focus_pos < requirements_pos
+        output_pos = prompt.find("Research Output")
+        assert focus_pos < output_pos
 
 
 @pytest.mark.unit
