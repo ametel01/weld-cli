@@ -7,13 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- `weld prompt show --raw` now displays actual prompt templates instead of stubs
-- `weld prompt export --raw` exports real templates used by each task type
-
 ## [0.13.0] - 2026-01-26
 
 ### Changed
+- `weld prompt show --raw` now displays actual prompt templates instead of stubs
+- `weld prompt export --raw` exports real templates used by each task type
 - Research prompt overhauled with code-first philosophy
   - Core principles: "Read code, not docs", "Identify authoritative files", "Eliminate assumptions"
   - New sections: Authoritative Files, Existing Patterns, Integration Points, Constraints & Risks
