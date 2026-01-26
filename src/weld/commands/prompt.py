@@ -12,6 +12,12 @@ import typer
 from ..completions import complete_export_format, complete_task_type
 from ..config import TaskType, load_config
 from ..core import get_weld_dir
+from ..core.discover_engine import DISCOVER_PROMPT_TEMPLATE
+from ..core.doc_review_engine import (
+    CODE_REVIEW_PROMPT_TEMPLATE,
+    DOC_REVIEW_PROMPT_TEMPLATE,
+)
+from ..core.interview_engine import QUESTIONNAIRE_PROMPT as INTERVIEW_PROMPT
 from ..output import get_output_context
 from ..services import GitError, get_repo_root
 
@@ -140,114 +146,264 @@ def list_prompts() -> None:
     )
 
 
-# Base prompt templates for each task type (for --raw output)
-# These are sample templates that show the structure - actual prompts come from engines
-_BASE_PROMPT_TEMPLATES: dict[TaskType, str] = {
-    TaskType.DISCOVER: """\
-You are a senior software architect creating a comprehensive technical specification
-document for an existing codebase.
+# =============================================================================
+# Actual prompt templates for each task type
+# =============================================================================
+
+# Research prompt template (from commands/research.py)
+RESEARCH_PROMPT_TEMPLATE = """\
+# Research Request
+
+You are a senior software architect researching how to implement a specification.
+
+## Core Principles
+
+1. **Read code, not docs** - The codebase is the source of truth. Documentation may be stale.
+2. **Identify authoritative files** - Find the actual implementation, not abstractions.
+3. **Eliminate assumptions** - Verify every claim by reading the code.
+4. **Produce a short artifact** - Be concise. This document guides implementation.
+
+If you don't ground your research in actual code, you will fabricate.
+This mirrors Memento: without verified context, you invent narratives.
+
+## Specification: {{spec_name}}
+
+{{spec_content}}
+
+---
 
 ## Focus Areas
-{focus}
 
-## Your Mission
-Produce a detailed, exhaustive technical specification that fully documents this
-codebase. This document will be used by developers to understand, maintain, and
-extend the system.
+Pay particular attention to: {focus}
 
-(Full template in weld.core.discover_engine.DISCOVER_PROMPT_TEMPLATE)
-""",
-    TaskType.INTERVIEW: """\
-You are an expert technical interviewer helping flesh out a specification document.
+## Research Process
 
-## Focus Area
-{focus}
+Before writing anything, you MUST:
 
-## Interview Scope
-Ask about technical implementation details, architecture choices, UI/UX, edge cases,
-tradeoffs, integrations, error handling, performance, and security.
+1. **Explore the codebase** - Use your tools to find relevant files
+2. **Read actual implementations** - Don't guess based on file names
+3. **Trace data flows** - Follow how data moves through the system
+4. **Note specific locations** - Record file:line references for everything
 
-(Full template in weld.core.interview_engine.INTERVIEW_SYSTEM_PROMPT)
-""",
-    TaskType.RESEARCH: """\
-You are a senior software architect analyzing a specification for planning.
+## Research Output
 
-## Focus Areas
-{focus}
+Produce a **short, focused research document** covering:
 
-## Research Requirements
-Analyze this specification and produce comprehensive research covering:
-- Architecture analysis
-- Dependency mapping
-- Risk assessment
-- Open questions
+### 1. Authoritative Files
+List the key files that govern this area of the codebase:
+- `path/to/file.py:42-100` - What this section does
+- `path/to/other.py:15` - Entry point for X
 
-(Full template in weld.commands.research.generate_research_prompt)
-""",
-    TaskType.RESEARCH_REVIEW: """\
-Review research output for completeness and accuracy.
+### 2. Existing Patterns
+How similar functionality is implemented:
+- Pattern name and where it's used
+- Code example or reference
+- Why this pattern was chosen (if evident)
 
-## Focus
-{focus}
-""",
-    TaskType.PLAN_GENERATION: """\
-You MUST output a structured implementation plan following the EXACT format specified.
+### 3. Integration Points
+Where the new code will connect:
+- Entry points to modify
+- Interfaces to implement
+- Data structures to use
+
+### 4. Constraints & Risks
+What could go wrong:
+- Technical constraints discovered in code
+- Potential conflicts with existing systems
+- Areas needing careful implementation
+
+### 5. Open Questions
+Decisions requiring human input:
+- Ambiguities that code doesn't resolve
+- Trade-offs to discuss
+- Alternative approaches found
+
+## Output Format
+
+- Keep it **short** - aim for 1-2 pages, not 10
+- Every claim must have a **file:line reference**
+- Use bullet points, not prose
+- Mark uncertain items with [VERIFY]
+"""
+
+# Plan generation prompt template (from commands/plan.py)
+PLAN_GENERATION_PROMPT_TEMPLATE = """\
+# Implementation Plan Request
+
+## Why Plans Matter
+
+Planning is the **highest-leverage activity**. A solid plan dramatically constrains
+agent behavior—and constraints produce quality.
+
+A good plan:
+- Lists **exact steps** (not vague intentions)
+- References **concrete files and snippets** (not "the auth module")
+- Specifies **validation after each change** (not "test later")
+- Makes **failure modes obvious** (not hidden surprises)
+
+Bad plans produce dozens of bad lines of code.
+Bad research produces hundreds.
+**Invest the time here.**
+
+---
+
+You MUST output a structured implementation plan following the EXACT format specified below.
 Do NOT output summaries, overviews, or prose. Output ONLY the structured plan.
 
-## Focus
-{focus}
+---
 
-(Full template in weld.commands.plan.generate_plan_prompt)
-""",
-    TaskType.PLAN_REVIEW: """\
-Review generated plan for feasibility, completeness, and correctness.
+## CRITICAL: Required Output Format
 
-## Focus
-{focus}
-""",
-    TaskType.IMPLEMENTATION: """\
-Execute the specified implementation step following the plan.
+Your output MUST follow this EXACT structure. Every step MUST have ALL four sections.
 
-## Focus
-{focus}
-""",
-    TaskType.IMPLEMENTATION_REVIEW: """\
-Review implemented code for correctness, style, and adherence to plan.
+**Phase structure:**
+```
+## Phase <N>: <Title>
 
-## Focus
-{focus}
+<One sentence description>
 
-(Full template in weld.core.doc_review_engine.CODE_REVIEW_PROMPT_TEMPLATE)
-""",
-    TaskType.FIX_GENERATION: """\
-Generate fixes based on review feedback.
+### Phase Validation
+```bash
+<command to verify phase>
+```
 
-## Focus
-{focus}
-""",
-    TaskType.DOC_REVIEW: """\
-Review documentation for completeness, accuracy, and clarity.
+### Step <N>: <Title>
 
-## Focus
-{focus}
+#### Goal
+<What this step accomplishes>
 
-(Full template in weld.core.doc_review_engine.DOC_REVIEW_PROMPT_TEMPLATE)
-""",
-    TaskType.CODE_REVIEW: """\
-Review code for correctness, style, performance, and security.
+#### Files
+- `<path>` - <what to change>
 
-## Focus
-{focus}
+#### Validation
+```bash
+<command to verify step>
+```
 
-(Full template in weld.core.doc_review_engine.CODE_REVIEW_PROMPT_TEMPLATE)
-""",
-    TaskType.COMMIT: """\
-Generate a commit message summarizing the changes.
+#### Failure modes
+- <what could go wrong>
 
-## Focus
-{focus}
-""",
-}
+---
+```
+
+---
+
+## Specifications
+
+{{spec_content}}
+
+---
+
+## Planning Process
+
+Before creating the plan, you MUST:
+
+1. **Explore the codebase structure**: Use your tools to understand the project layout,
+   key directories, and architectural patterns
+2. **Identify relevant files**: Find existing files that need modification or that serve
+   as reference implementations
+3. **Understand existing patterns**: Review how similar features are implemented in
+   the codebase
+4. **Reference actual code locations**: Ground your plan in specific files, functions,
+   and line numbers that exist
+
+Your plan should reference concrete existing code locations and follow established
+patterns in the codebase.
+
+---
+
+## Planning Rules
+
+1. **Monotonic phases**: Phases ordered by dependency. No forward references.
+   Later phases never require artifacts not built earlier.
+
+2. **Discrete steps**: Single clear outcome per step, independently verifiable.
+
+3. **Artifact-driven**: Every step produces concrete artifact (code, interface,
+   schema, config, test). Forbid vague actions ("work on", "improve", "handle").
+
+4. **Explicit dependencies**: Each step lists inputs and outputs.
+
+5. **Vertical slices**: Each phase delivers end-to-end capability.
+   Avoid "all infra first, all logic later". System runnable early.
+
+6. **Invariants first**: Establish data models, state machines, invariants before features.
+
+7. **Test parallelism**: Every functional step has paired validation.
+
+8. **Rollback safety**: System builds and runs after each phase. Each phase shippable.
+
+9. **Bounded scope**: Phase defines explicit "in" and "out". Clear completion criteria.
+
+10. **Execution ready**: Imperative language ("Create", "Add", "Implement").
+    Each step maps to concrete code change. No research-only placeholders.
+
+---
+
+## REMINDER: Output Format Checklist
+
+Before outputting your plan, verify:
+
+- [ ] Every phase has `## Phase N: Title` heading
+- [ ] Every phase has `### Phase Validation` with bash command
+- [ ] Every step has `### Step N: Title` heading
+- [ ] Every step has `#### Goal` section
+- [ ] Every step has `#### Files` section with bullet points
+- [ ] Every step has `#### Validation` section with bash command
+- [ ] Every step has `#### Failure modes` section
+- [ ] Steps end with `---` separator
+- [ ] NO bullet-point summaries or overviews
+- [ ] NO prose paragraphs outside the structure
+- [ ] NO questions to the user (e.g., "Would you like me to...")
+- [ ] NO follow-up options or suggestions
+- [ ] NO conversational closing
+
+CRITICAL: This is a CLI tool. Your output will be written directly to a file.
+Do NOT ask questions. Do NOT offer alternatives. Do NOT include any text after the final `---`.
+Do NOT use the Write tool to create any files. Just output the plan content directly.
+Output ONLY the structured plan now. Begin with `## Phase 1:`
+"""
+
+# Placeholder templates for tasks not yet fully implemented
+_PLACEHOLDER_TEMPLATE = """\
+[This task type does not have a dedicated prompt template yet]
+
+Task: {task_type}
+Focus: {focus}
+
+This prompt is generated dynamically or uses the default AI behavior.
+"""
+
+
+def _get_base_prompt_template(task: TaskType) -> str:
+    """Get the actual base prompt template for a task type.
+
+    Returns the real prompt template used by the task, not a stub.
+    """
+    # Map task types to their actual templates
+    templates: dict[TaskType, str] = {
+        TaskType.DISCOVER: DISCOVER_PROMPT_TEMPLATE,
+        TaskType.INTERVIEW: INTERVIEW_PROMPT,
+        TaskType.RESEARCH: RESEARCH_PROMPT_TEMPLATE,
+        TaskType.RESEARCH_REVIEW: _PLACEHOLDER_TEMPLATE.format(
+            task_type="research_review", focus="{focus}"
+        ),
+        TaskType.PLAN_GENERATION: PLAN_GENERATION_PROMPT_TEMPLATE,
+        TaskType.PLAN_REVIEW: _PLACEHOLDER_TEMPLATE.format(
+            task_type="plan_review", focus="{focus}"
+        ),
+        TaskType.IMPLEMENTATION: _PLACEHOLDER_TEMPLATE.format(
+            task_type="implementation", focus="{focus}"
+        ),
+        TaskType.IMPLEMENTATION_REVIEW: CODE_REVIEW_PROMPT_TEMPLATE,
+        TaskType.FIX_GENERATION: _PLACEHOLDER_TEMPLATE.format(
+            task_type="fix_generation", focus="{focus}"
+        ),
+        TaskType.DOC_REVIEW: DOC_REVIEW_PROMPT_TEMPLATE,
+        TaskType.CODE_REVIEW: CODE_REVIEW_PROMPT_TEMPLATE,
+        TaskType.COMMIT: _PLACEHOLDER_TEMPLATE.format(task_type="commit", focus="{focus}"),
+    }
+    return templates.get(task, f"No template defined for {task.value}")
 
 
 @prompt_app.command("show")
@@ -324,8 +480,18 @@ def show_prompt(
 
     if raw:
         # Output raw template for piping
-        base_template = _BASE_PROMPT_TEMPLATES.get(task_type, f"No template for {task_type.value}")
-        formatted_template = base_template.format(focus=effective_focus)
+        base_template = _get_base_prompt_template(task_type)
+        # Handle different placeholder formats in templates
+        # Some use {focus}, some use {focus_areas}, some use {focus_area}
+        try:
+            formatted_template = base_template.format(
+                focus=effective_focus,
+                focus_areas=effective_focus,
+                focus_area=effective_focus,
+            )
+        except KeyError:
+            # Template has other placeholders - show as-is with focus note
+            formatted_template = base_template
 
         # Apply customizations if present
         parts: list[str] = []
@@ -446,7 +612,7 @@ def export_prompts(
 
         if output_ctx.dry_run:
             output_ctx.console.print(
-                f"[cyan][DRY RUN][/cyan] Would export {len(_BASE_PROMPT_TEMPLATES)} "
+                f"[cyan][DRY RUN][/cyan] Would export {len(TaskType)} "
                 f"prompt templates to: {directory}"
             )
             return
@@ -460,7 +626,8 @@ def export_prompts(
 
         # Export each template as a markdown file
         exported_count = 0
-        for task_type, template in _BASE_PROMPT_TEMPLATES.items():
+        for task_type in TaskType:
+            template = _get_base_prompt_template(task_type)
             custom = prompts_config.get_customization(task_type)
             effective_focus = custom.default_focus or "(no focus specified)"
 
@@ -473,8 +640,15 @@ def export_prompts(
             if custom.prefix:
                 parts.append(f"## Task Prefix\n\n{custom.prefix}")
 
-            # Format template with focus
-            formatted_template = template.format(focus=effective_focus)
+            # Format template with focus (handle different placeholder names)
+            try:
+                formatted_template = template.format(
+                    focus=effective_focus,
+                    focus_areas=effective_focus,
+                    focus_area=effective_focus,
+                )
+            except KeyError:
+                formatted_template = template
             parts.append(f"## Base Template\n\n{formatted_template}")
 
             if custom.suffix:
